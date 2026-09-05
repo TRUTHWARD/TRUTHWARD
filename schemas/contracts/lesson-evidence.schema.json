@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.lesson-evidence.v1",
+  "title": "Lesson Evidence Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "lessonEvidenceId", "candidateId", "evidenceRef", "rawRef", "contentHash", "retentionState", "classification", "redactionStatus", "capturedAt"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.lesson-evidence.v1"},
+    "lessonEvidenceId": {"type": "string"},
+    "candidateId": {"type": "string"},
+    "evidenceRef": {"type": "object"},
+    "rawRef": {"type": "object"},
+    "contentHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "retentionState": {"type": "string"},
+    "classification": {"type": "string"},
+    "redactionStatus": {"type": "string"},
+    "capturedAt": {"type": "string"}
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "schemaVersion": "tst-p2-032.artifact-manifest.v1",
+  "benchmarkVersion": "31.1.0",
+  "licenseAudit": {
+    "spdx": "Apache-2.0",
+    "reviewedAt": "2026-08-03",
+    "reviewedFiles": [
+      "examples/public_quality_benchmark/app.py",
+      "examples/public_quality_benchmark/README.md",
+      "examples/public_quality_benchmark/NOTICE",
+      "examples/conformance_adapters/README.md",
+      "examples/conformance_adapters/runner_adapter.py",
+      "examples/conformance_adapters/connector_adapter.py",
+      "examples/conformance_adapters/skill_adapter.py",
+      "benchmarks/public_quality/expected-findings.v1.json",
+      "benchmarks/public_quality/expected-coverage.v1.json",
+      "benchmarks/public_quality/probe-cases.v1.json",
+      "benchmarks/public_quality/model-stub.v1.json",
+      "benchmarks/public_quality/tool-model-versions.v1.json"
+    ],
+    "unknownLicenseFiles": 0,
+    "thirdPartyAssets": false
+  },
+  "artifacts": [
+    {"path": "release/oss/LICENSE", "sha256": "sha256:cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30", "byteSize": 11358},
+    {"path": "examples/public_quality_benchmark/app.py", "sha256": "sha256:d97a01b297ece03be739bf60b1167c1810932076c8fd26d78a61fbce94777efd", "byteSize": 5672},
+    {"path": "examples/public_quality_benchmark/README.md", "sha256": "sha256:5c540b1897a29dc2b72d1a4a71956c1de49c0204c1a2045e2beaec4a6998c0d7", "byteSize": 1316},
+    {"path": "examples/public_quality_benchmark/NOTICE", "sha256": "sha256:694414237169ba6690d0a0bd9ad187210553f3b851590b7197788fdc7f4e675c", "byteSize": 453},
+    {"path": "examples/conformance_adapters/README.md", "sha256": "sha256:391d83af86031092842762572c202d7aea2ecd004addf1b52e091aea4c04191b", "byteSize": 675},
+    {"path": "examples/conformance_adapters/runner_adapter.py", "sha256": "sha256:bc57297374e3e8c17e58f9191d0060b876e35107d2e3d3ab33132bb4d29c9d4e", "byteSize": 1785},
+    {"path": "examples/conformance_adapters/connector_adapter.py", "sha256": "sha256:ca5b7c31d8f80ecb046c38194610e42003ce74d82796872265df76527b62c7f7", "byteSize": 1626},
+    {"path": "examples/conformance_adapters/skill_adapter.py", "sha256": "sha256:af062b0cfd760e035ab88e93cea57acabb3592b67c2712b247b0b9ad6f262b60", "byteSize": 2841},
+    {"path": "benchmarks/public_quality/expected-findings.v1.json", "sha256": "sha256:5046589f6f3c31f9729a0ce478ff924a8547378d9bf0be3efc5ab8398290e6df", "byteSize": 6447},
+    {"path": "benchmarks/public_quality/expected-coverage.v1.json", "sha256": "sha256:c6bae89cd7c52a7ad3513da0c394467240f92d25a6c5ce2c019cd670a6bde861", "byteSize": 915},
+    {"path": "benchmarks/public_quality/probe-cases.v1.json", "sha256": "sha256:8d34f71fabff585a1943c644e10bb9553f2b0e9c705560de840e2d8a6b14d509", "byteSize": 3371},
+    {"path": "benchmarks/public_quality/model-stub.v1.json", "sha256": "sha256:2ee8c8c994cc90d5bd78cbf96b383d7747d681dd3ed1d4ec2003ddd09258de86", "byteSize": 660},
+    {"path": "benchmarks/public_quality/tool-model-versions.v1.json", "sha256": "sha256:a2fa791f18fbd22e49fbeacc102d952c302720bc4ab85f7d086d9abc6bc23a1c", "byteSize": 703},
+    {"path": "benchmarks/public_quality/replay-evidence.v1.json", "sha256": "sha256:bd97c39058a0ea40483d3b17aa86f033a10960330d292555cb91e9ee83bd6c19", "byteSize": 2214},
+    {"path": "benchmarks/public_quality/results/reference-result.v1.json", "sha256": "sha256:afc7e24e7cb31ae5666539c2105c37692078b00302d768ef39fda4a6e6bd6446", "byteSize": 12291},
+    {"path": "benchmarks/public_quality/schemas/expected-findings.schema.json", "sha256": "sha256:90901d993940b8d96990548b774f0cc64ed3f083d444c3fa5d9780317b2dc783", "byteSize": 2574},
+    {"path": "benchmarks/public_quality/schemas/public-quality-report.schema.json", "sha256": "sha256:afac16859bd07daf1aff70f3699fb28b02ff9fec07b9cecbda612b1744dd7573", "byteSize": 3146},
+    {"path": "benchmarks/public_quality/schemas/conformance-report.schema.json", "sha256": "sha256:7ceb6fa92ce1669a2f09749b1e2221eb333753fc3b5d928748bf89ceda082839", "byteSize": 912},
+    {"path": "tools/public_quality/__init__.py", "sha256": "sha256:4a6437e17f7c88de59c190f9fd2963bb345cc4b17431de3a6effccaaee63d372", "byteSize": 240},
+    {"path": "tools/public_quality/common.py", "sha256": "sha256:f34489f94f11bcc10bf07fc17d65da8b2227270d03033fd0508c480cf3597d55", "byteSize": 2247},
+    {"path": "tools/public_quality/conformance.py", "sha256": "sha256:47b7206fa32b0ee35ab32c1ae689dc07b66a05b18203eb4761d20fa7848e1dd3", "byteSize": 19705},
+    {"path": "tools/public_quality/benchmark.py", "sha256": "sha256:01c19d1e97304985f768e75dbe647929c2e7be8e5a129257f6d08324764e55a8", "byteSize": 26256},
+    {"path": "tools/public_quality/schema_validation.py", "sha256": "sha256:17e161ac9a2e94fc8f1d76d1fbc6065ae58925f248aae9da6ff20e01178f9577", "byteSize": 3655},
+    {"path": "scripts/run-contributor-conformance.ps1", "sha256": "sha256:c3f60547f44aa9fc4d1559332a9110e8bbba97878607f85dcf1124fc6669db55", "byteSize": 1375},
+    {"path": "scripts/run-public-quality-benchmark.ps1", "sha256": "sha256:bd20694ab2a8da1c1a82849c2b4c68b9dfb9ad7cf7e59b4912054889b85fe3e1", "byteSize": 7551}
+  ],
+  "artifactSetHash": "sha256:23a7a394bd3527d28f3fd13601c9b5765b360d8554a5d7a3e1a32c1afffa7c86"
+}

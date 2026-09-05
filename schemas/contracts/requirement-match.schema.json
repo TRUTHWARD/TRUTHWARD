@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.requirement-match.v1",
+  "title": "Requirement Match",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "matchId", "prContextVersionId", "candidate", "matchHash", "createdAt"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.requirement-match.v1"},
+    "matchId": {"type": "string", "format": "uuid"},
+    "prContextVersionId": {"type": "string", "format": "uuid"},
+    "candidate": {"type": "object"},
+    "matchHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "createdAt": {"type": "string"}
+  }
+}

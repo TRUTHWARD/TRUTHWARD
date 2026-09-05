@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.decision-timeline.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt", "executionId", "projectId", "authoritative", "readOnly", "writesDecision", "sortOrder", "appliedFilters", "capabilityProjection", "stageGroups", "unavailableReasons", "pagination"],
+  "$defs": {
+    "unavailableReason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "sourceType", "detailKey", "lifecycleStage", "referenceType", "referenceId", "retryable"],
+      "properties": {
+        "code": {"type": "string", "enum": ["PERMISSION_RESTRICTED", "SOURCE_NOT_RECORDED_OR_RETAINED", "SOURCE_PENDING", "EXECUTION_NOT_REACHED", "EXECUTION_IN_PROGRESS", "LEGACY_SCOPE_UNAVAILABLE", "LEGACY_STAGE_LINK_MISSING", "REFERENCE_NOT_FOUND", "REFERENCE_RETAINED_OR_PURGED", "CROSS_SCOPE_REFERENCE_BLOCKED"]},
+        "sourceType": {"type": "string"},
+        "detailKey": {"type": "string"},
+        "lifecycleStage": {"anyOf": [{"type": "string", "enum": ["PREPARE", "EXECUTE", "OBSERVE", "ANALYZE", "NORMALIZE", "GATE"]}, {"type": "null"}], "default": null},
+        "referenceType": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+        "referenceId": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+        "retryable": {"type": "boolean", "default": false}
+      }
+    },
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["referenceType", "referenceId", "relationship", "available", "visibility", "unavailableReasonCode", "href"],
+      "properties": {
+        "referenceType": {"type": "string"},
+        "referenceId": {"type": "string"},
+        "relationship": {"type": "string"},
+        "available": {"type": "boolean", "default": true},
+        "visibility": {"type": "string", "enum": ["full", "redacted", "restricted"], "default": "full"},
+        "unavailableReasonCode": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+        "href": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null}
+      }
+    },
+    "explanationMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["messageKey", "parameters"],
+      "properties": {
+        "messageKey": {"type": "string"},
+        "parameters": {"type": "object"}
+      }
+    },
+    "explanationPlain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "eventId", "sourceRefs", "available", "requiredCapability", "unavailableReasonCode", "reasonCode", "sourceMessageKey", "whatHappened", "why", "impact", "nextAction", "evidenceCount", "cegPathMeaning"],
+      "properties": {
+        "schemaVersion": {"type": "string", "const": "phase8.execution-explanation-plain.v1"},
+        "eventId": {"type": "string"},
+        "sourceRefs": {"type": "array", "items": {"$ref": "#/$defs/reference"}},
+        "available": {"type": "boolean", "const": true},
+        "requiredCapability": {"type": "string", "const": "replay.read"},
+        "unavailableReasonCode": {"type": "null", "default": null},
+        "reasonCode": {"type": "string"},
+        "sourceMessageKey": {"type": "string"},
+        "whatHappened": {"$ref": "#/$defs/explanationMessage"},
+        "why": {"$ref": "#/$defs/explanationMessage"},
+        "impact": {"$ref": "#/$defs/explanationMessage"},
+        "nextAction": {"$ref": "#/$defs/explanationMessage"},
+        "evidenceCount": {"type": "integer", "minimum": 0},
+        "cegPathMeaning": {"anyOf": [{"$ref": "#/$defs/explanationMessage"}, {"type": "null"}], "default": null}
+      }
+    },
+    "explanationPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policyId", "versionId", "versionHash"],
+      "properties": {
+        "policyId": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+        "versionId": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+        "versionHash": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null}
+      }
+    },
+    "explanationProfessional": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "eventId", "sourceRefs", "available", "requiredCapability", "unavailableReasonCode", "reasonCode", "reasonCodes", "ruleIds", "policy", "promotionType", "graphLearningMode", "policyDecisionRefs", "approvalState", "humanApproved", "approvalRefs", "findingRefs", "metricRefs", "evidenceRefs", "integrityStatus"],
+      "properties": {
+        "schemaVersion": {"type": "string", "const": "phase8.execution-explanation-professional.v1"},
+        "eventId": {"type": "string"},
+        "sourceRefs": {"type": "array", "items": {"$ref": "#/$defs/reference"}},
+        "available": {"type": "boolean"},
+        "requiredCapability": {"type": "string", "const": "audit.logs.read"},
+        "unavailableReasonCode": {"anyOf": [{"type": "string", "const": "PERMISSION_RESTRICTED"}, {"type": "null"}], "default": null},
+        "reasonCode": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+        "reasonCodes": {"type": "array", "items": {"type": "string"}},
+        "ruleIds": {"type": "array", "items": {"type": "string"}},
+        "policy": {"anyOf": [{"$ref": "#/$defs/explanationPolicy"}, {"type": "null"}], "default": null},
+        "promotionType": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+        "graphLearningMode": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+        "policyDecisionRefs": {"type": "array", "items": {"$ref": "#/$defs/reference"}},
+        "approvalState": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+        "humanApproved": {"type": "boolean"},
+        "approvalRefs": {"type": "array", "items": {"$ref": "#/$defs/reference"}},
+        "findingRefs": {"type": "array", "items": {"$ref": "#/$defs/reference"}},
+        "metricRefs": {"type": "array", "items": {"$ref": "#/$defs/reference"}},
+        "evidenceRefs": {"type": "array", "items": {"$ref": "#/$defs/reference"}},
+        "integrityStatus": {"anyOf": [{"type": "string", "enum": ["complete", "partial", "unavailable"]}, {"type": "null"}], "default": null}
+      }
+    },
+    "explanationRawSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceType", "sourceTimestamp", "projectedAt", "integrityStatus", "retentionStatus"],
+      "properties": {
+        "sourceType": {"type": "string"},
+        "sourceTimestamp": {"type": "string", "format": "date-time"},
+        "projectedAt": {"type": "string", "format": "date-time"},
+        "integrityStatus": {"type": "string", "enum": ["complete", "partial", "unavailable"]},
+        "retentionStatus": {"type": "string", "enum": ["retained", "partial", "unavailable"]}
+      }
+    },
+    "explanationRaw": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "eventId", "sourceRefs", "available", "requiredCapability", "unavailableReasonCode", "redactionStatus", "labelKey", "source", "projection", "truncated"],
+      "properties": {
+        "schemaVersion": {"type": "string", "const": "phase8.execution-explanation-raw.v1"},
+        "eventId": {"type": "string"},
+        "sourceRefs": {"type": "array", "items": {"$ref": "#/$defs/reference"}},
+        "available": {"type": "boolean"},
+        "requiredCapability": {"type": "string", "const": "replay.export.read"},
+        "unavailableReasonCode": {"anyOf": [{"type": "string", "const": "PERMISSION_RESTRICTED"}, {"type": "null"}], "default": null},
+        "redactionStatus": {"type": "string", "const": "backend_redacted"},
+        "labelKey": {"type": "string", "const": "executionExplanation.authorizedRedactedRaw"},
+        "source": {"anyOf": [{"$ref": "#/$defs/explanationRawSource"}, {"type": "null"}], "default": null},
+        "projection": {"anyOf": [{"type": "object"}, {"type": "null"}], "default": null},
+        "truncated": {"type": "boolean", "default": false}
+      }
+    },
+    "explainView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "eventId", "sourceRefs", "availableViews", "plain", "professional", "raw"],
+      "properties": {
+        "schemaVersion": {"type": "string", "const": "phase8.execution-explanation-views.v1"},
+        "eventId": {"type": "string"},
+        "sourceRefs": {"type": "array", "items": {"$ref": "#/$defs/reference"}},
+        "availableViews": {"type": "array", "items": {"type": "string", "enum": ["plain", "professional", "raw"]}},
+        "plain": {"$ref": "#/$defs/explanationPlain"},
+        "professional": {"$ref": "#/$defs/explanationProfessional"},
+        "raw": {"$ref": "#/$defs/explanationRaw"}
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "eventType", "lifecycleStage", "sequence", "sourceSequence", "sortKey", "occurredAt", "status", "actorType", "actorRef", "plainSummaryKey", "professionalSummary", "refs", "explainView", "traceId", "executionId", "skillInvocationId", "toolCallId", "connectorCallId", "agentRunId", "modelInvocationId", "gateDecisionId", "approvalId", "replayId", "visibility", "unavailableReason", "cegEventKind", "graphLearningMode", "promotionType", "policyDecisionRefs", "approvalRefs"],
+      "properties": {
+        "eventId": {"type": "string"},
+        "eventType": {"type": "string"},
+        "lifecycleStage": {"type": "string", "enum": ["PREPARE", "EXECUTE", "OBSERVE", "ANALYZE", "NORMALIZE", "GATE"]},
+        "sequence": {"type": "integer", "minimum": 1},
+        "sourceSequence": {"anyOf": [{"type": "integer"}, {"type": "null"}], "default": null},
+        "sortKey": {"type": "string"},
+        "occurredAt": {"type": "string", "format": "date-time"},
+        "status": {"type": "string"},
+        "actorType": {"type": "string"},
+        "actorRef": {"anyOf": [{"$ref": "#/$defs/reference"}, {"type": "null"}], "default": null},
+        "plainSummaryKey": {"type": "string"},
+        "professionalSummary": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+        "refs": {"type": "array", "items": {"$ref": "#/$defs/reference"}},
+        "explainView": {"$ref": "#/$defs/explainView"},
+        "traceId": {"anyOf": [{"type": "string", "format": "uuid"}, {"type": "null"}], "default": null},
+        "executionId": {"type": "string", "format": "uuid"},
+        "skillInvocationId": {"anyOf": [{"type": "string", "format": "uuid"}, {"type": "null"}], "default": null},
+        "toolCallId": {"anyOf": [{"type": "string", "format": "uuid"}, {"type": "null"}], "default": null},
+        "connectorCallId": {"anyOf": [{"type": "string", "format": "uuid"}, {"type": "null"}], "default": null},
+        "agentRunId": {"anyOf": [{"type": "string", "format": "uuid"}, {"type": "null"}], "default": null},
+        "modelInvocationId": {"anyOf": [{"type": "string", "format": "uuid"}, {"type": "null"}], "default": null},
+        "gateDecisionId": {"anyOf": [{"type": "string", "format": "uuid"}, {"type": "null"}], "default": null},
+        "approvalId": {"anyOf": [{"type": "string", "format": "uuid"}, {"type": "null"}], "default": null},
+        "replayId": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+        "visibility": {"type": "string", "enum": ["full", "redacted", "restricted"]},
+        "unavailableReason": {"anyOf": [{"$ref": "#/$defs/unavailableReason"}, {"type": "null"}], "default": null},
+        "cegEventKind": {"anyOf": [{"type": "string", "enum": ["observed", "candidate", "validation", "promotion", "suspension", "rollback"]}, {"type": "null"}], "default": null},
+        "graphLearningMode": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+        "promotionType": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+        "policyDecisionRefs": {"type": "array", "items": {"$ref": "#/$defs/reference"}},
+        "approvalRefs": {"type": "array", "items": {"$ref": "#/$defs/reference"}}
+      }
+    },
+    "stageGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lifecycleStage", "sequence", "status", "eventCount", "pageEventCount", "events", "unavailableReason"],
+      "properties": {
+        "lifecycleStage": {"type": "string", "enum": ["PREPARE", "EXECUTE", "OBSERVE", "ANALYZE", "NORMALIZE", "GATE"]},
+        "sequence": {"type": "integer", "minimum": 1, "maximum": 6},
+        "status": {"type": "string", "enum": ["pending", "running", "completed", "failed", "cancelled", "unavailable"]},
+        "eventCount": {"type": "integer", "minimum": 0},
+        "pageEventCount": {"type": "integer", "minimum": 0},
+        "events": {"type": "array", "items": {"$ref": "#/$defs/event"}},
+        "unavailableReason": {"anyOf": [{"$ref": "#/$defs/unavailableReason"}, {"type": "null"}], "default": null}
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pageSize", "totalEvents", "returnedEvents", "hasMore", "nextCursor", "snapshotAt"],
+      "properties": {
+        "pageSize": {"type": "integer", "minimum": 1, "maximum": 200},
+        "totalEvents": {"type": "integer", "minimum": 0},
+        "returnedEvents": {"type": "integer", "minimum": 0},
+        "hasMore": {"type": "boolean"},
+        "nextCursor": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+        "snapshotAt": {"type": "string", "format": "date-time"}
+      }
+    }
+  },
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.decision-timeline.v1"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "executionId": {"type": "string", "format": "uuid"},
+    "projectId": {"anyOf": [{"type": "string", "format": "uuid"}, {"type": "null"}]},
+    "authoritative": {"type": "boolean", "const": true},
+    "readOnly": {"type": "boolean", "const": true},
+    "writesDecision": {"type": "boolean", "const": false},
+    "sortOrder": {"type": "array", "items": {"type": "string"}},
+    "appliedFilters": {"type": "object"},
+    "capabilityProjection": {"type": "object", "additionalProperties": {"type": "boolean"}},
+    "stageGroups": {"type": "array", "minItems": 6, "maxItems": 6, "items": {"$ref": "#/$defs/stageGroup"}},
+    "unavailableReasons": {"type": "array", "items": {"$ref": "#/$defs/unavailableReason"}},
+    "pagination": {"$ref": "#/$defs/pagination"}
+  }
+}

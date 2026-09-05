@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.gate-policy-resolution-request.v1",
+  "title": "Gate Policy Resolution Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "tenantId",
+    "workspaceId",
+    "projectId",
+    "environment",
+    "stage",
+    "domain",
+    "evaluationTime"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.gate-policy-resolution-request.v1"
+    },
+    "tenantId": {"type": "string", "minLength": 1, "maxLength": 128},
+    "workspaceId": {"type": "string", "minLength": 1, "maxLength": 128},
+    "projectId": {"type": ["string", "null"], "maxLength": 255},
+    "environment": {"type": ["string", "null"], "maxLength": 255},
+    "stage": {"type": ["string", "null"], "maxLength": 255},
+    "domain": {"type": ["string", "null"], "maxLength": 255},
+    "evaluationTime": {"type": "string", "format": "date-time"}
+  }
+}

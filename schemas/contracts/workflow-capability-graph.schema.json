@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.workflow-capability-graph.v1",
+  "title": "Workflow Capability Graph Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "nodes",
+    "scope"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.workflow-capability-graph.v1"
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "lifecycleStage",
+          "extensionPointId",
+          "label",
+          "bindable",
+          "currentBindingSummary",
+          "requiredCapability",
+          "requiredEdition",
+          "unavailableReason"
+        ],
+        "properties": {
+          "lifecycleStage": {
+            "type": "string",
+            "minLength": 1
+          },
+          "extensionPointId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "bindable": {
+            "type": "boolean"
+          },
+          "currentBindingSummary": {
+            "type": ["object", "null"]
+          },
+          "requiredCapability": {
+            "type": ["string", "null"]
+          },
+          "requiredEdition": {
+            "type": ["string", "null"]
+          },
+          "unavailableReason": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "scope": {
+      "type": "object"
+    }
+  }
+}

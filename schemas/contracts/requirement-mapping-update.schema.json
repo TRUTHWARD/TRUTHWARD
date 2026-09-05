@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.requirement-mapping-update.v1",
+  "title": "Requirement Mapping Update Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "changeType", "requirementRef", "assetRef", "beforeMapping", "afterMapping", "rationale", "riskLevel", "evidenceRefs", "metadata"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.requirement-mapping-update.v1"},
+    "changeType": {"type": "string", "const": "requirement_mapping_update"},
+    "requirementRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1}
+      }
+    },
+    "assetRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1}
+      }
+    },
+    "beforeMapping": {"type": ["object", "null"]},
+    "afterMapping": {"type": "object"},
+    "rationale": {"type": "string", "minLength": 1},
+    "riskLevel": {"type": "string", "enum": ["low", "medium", "high"]},
+    "evidenceRefs": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "metadata": {"type": "object"}
+  }
+}

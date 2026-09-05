@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.coverage-map.v1",
+  "title": "Coverage Map Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requirementCoverage",
+    "testPointCoverage",
+    "testCaseCoverage",
+    "executionCoverage",
+    "evidenceCoverage",
+    "regressionCoverage",
+    "uncoveredRequirements",
+    "weakCoverageAreas",
+    "duplicateCoverageAreas",
+    "coverageConfidence",
+    "evidenceRefs",
+    "metadata"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.coverage-map.v1"
+    },
+    "requirementCoverage": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "testPointCoverage": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "testCaseCoverage": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "executionCoverage": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "evidenceCoverage": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "regressionCoverage": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "uncoveredRequirements": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "weakCoverageAreas": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "duplicateCoverageAreas": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "coverageConfidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.stale-revision-result.v1",
+  "title": "Stale Revision Check Result", "type": "object", "additionalProperties": false,
+  "required": ["status", "expectedHeadSha", "checkedAt", "writeSuppressed"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.stale-revision-result.v1"}, "status": {"type": "string"},
+    "expectedHeadSha": {"type": "string", "pattern": "^[a-f0-9]{7,64}$"}, "currentHeadSha": {},
+    "checkedAt": {"type": "string", "minLength": 1}, "writeSuppressed": {"type": "boolean"}, "reasonCode": {}, "connectorCallRef": {}
+  }
+}

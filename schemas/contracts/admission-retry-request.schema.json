@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.admission-retry-request.v1",
+  "title": "Governed Admission Retry Request", "type": "object", "additionalProperties": false,
+  "required": [],
+  "properties": {"schemaVersion": {"const": "phase8.admission-retry-request.v1"}, "scope": {}}
+}

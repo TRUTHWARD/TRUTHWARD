@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.coverage-summary.v1",
+  "title": "Coverage Summary Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requirementVersionId",
+    "scope",
+    "status",
+    "reason",
+    "requirementCoverage",
+    "testPointCoverage",
+    "testCaseCoverage",
+    "evidenceCoverage",
+    "findingTraceCoverage",
+    "gateImpactCoverage",
+    "missingLinks",
+    "calculatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.coverage-summary.v1"
+    },
+    "requirementVersionId": {
+      "type": "string"
+    },
+    "scope": {
+      "type": "object"
+    },
+    "status": {
+      "type": "string"
+    },
+    "reason": {
+      "type": ["string", "null"]
+    },
+    "requirementCoverage": {
+      "type": ["number", "null"]
+    },
+    "testPointCoverage": {
+      "type": ["number", "null"]
+    },
+    "testCaseCoverage": {
+      "type": ["number", "null"]
+    },
+    "evidenceCoverage": {
+      "type": ["number", "null"]
+    },
+    "findingTraceCoverage": {
+      "type": ["number", "null"]
+    },
+    "gateImpactCoverage": {
+      "type": ["number", "null"]
+    },
+    "missingLinks": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "calculatedAt": {
+      "type": "string"
+    }
+  }
+}

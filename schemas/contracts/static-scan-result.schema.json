@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.static-scan-result.v1",
+  "title": "Static Scan Result", "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "admissionRunId", "executionId", "status", "headSha", "toolResults", "analyzeCompleted", "normalizeCompleted"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.static-scan-result.v1"}, "admissionRunId": {"type": "string"}, "executionId": {"type": "string"},
+    "status": {"enum": ["completed", "failed", "partial", "unavailable", "cancelled"]}, "headSha": {"type": "string", "pattern": "^[a-f0-9]{7,64}$"},
+    "toolResults": {"type": "array", "minItems": 1}, "artifactRefs": {"type": "array"}, "rawFindingRefs": {"type": "array"},
+    "findingCandidates": {"type": "array"}, "normalizedFindingRefs": {"type": "array"}, "analyzeCompleted": {"type": "boolean"},
+    "normalizeCompleted": {"type": "boolean"}, "gateDecisionCreated": {"const": false}
+  }
+}

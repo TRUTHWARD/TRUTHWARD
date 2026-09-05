@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.gate-policy-activation-request.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["simulationRunId", "idempotencyKey", "reason"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.gate-policy-activation-request.v1"},
+    "simulationRunId": {"type": "string", "format": "uuid"},
+    "expectedCurrentBindingId": {"type": ["string", "null"], "format": "uuid"},
+    "expectedCurrentPolicyVersionId": {"type": ["string", "null"], "format": "uuid"},
+    "maxFalsePassRiskCount": {"type": "integer", "minimum": 0},
+    "maxNewBlockCount": {"type": "integer", "minimum": 0},
+    "idempotencyKey": {"type": "string", "minLength": 1, "maxLength": 255},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 2000}
+  }
+}

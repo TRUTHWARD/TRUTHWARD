@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.replay-repository.v1",
+  "title": "Replay Repository Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "replayId",
+    "executionId",
+    "frozenAt",
+    "sourceReplayExportHash",
+    "manifestHash",
+    "payloadHash",
+    "storageAdapter",
+    "redactionStatus",
+    "validityStatus",
+    "approvalMode",
+    "approvalState",
+    "retentionState",
+    "summaryProjection",
+    "sectionIndex",
+    "auditRefs",
+    "approvalRefs",
+    "guardrailEventRefs"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.replay-repository.v1"
+    },
+    "replayId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "executionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "frozenAt": {
+      "type": "string"
+    },
+    "sourceReplayExportHash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "manifestHash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "payloadHash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "storageAdapter": {
+      "type": "string"
+    },
+    "redactionStatus": {
+      "type": "string"
+    },
+    "validityStatus": {
+      "type": "string",
+      "enum": ["valid", "invalid", "unknown"]
+    },
+    "approvalMode": {
+      "type": "string",
+      "enum": ["always", "policy_only", "threshold"]
+    },
+    "approvalState": {
+      "type": "string",
+      "enum": ["pending", "approved", "not_required", "rejected", "cancelled"]
+    },
+    "retentionState": {
+      "type": "object"
+    },
+    "summaryProjection": {
+      "type": "object"
+    },
+    "sectionIndex": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sectionName",
+          "storageRef",
+          "contentHash",
+          "byteSize",
+          "compression",
+          "redactionStatus"
+        ],
+        "properties": {
+          "sectionName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "storageRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contentHash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "byteSize": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "compression": {
+            "type": "string"
+          },
+          "redactionStatus": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "auditRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "approvalRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "guardrailEventRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "manifest": {
+      "type": ["object", "null"]
+    }
+  }
+}

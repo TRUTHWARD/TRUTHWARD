@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.rollback-record.v1",
+  "title": "Rollback Record Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "rollbackRecordId", "correctionProposalId", "correctionApplicationId", "correctionValidationId", "idempotencyKey", "requestId", "status", "rollbackReason", "rollbackRefs", "evidenceRefs", "traceRefs", "startedAt", "finishedAt", "metadata"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.rollback-record.v1"},
+    "rollbackRecordId": {"type": "string"},
+    "correctionProposalId": {"type": "string"},
+    "correctionApplicationId": {"type": ["string", "null"]},
+    "correctionValidationId": {"type": ["string", "null"]},
+    "idempotencyKey": {"type": "string"},
+    "requestId": {"type": "string"},
+    "status": {"type": "string", "enum": ["rollback_not_required", "rolling_back", "rolled_back", "rollback_failed"]},
+    "rollbackReason": {"type": "string"},
+    "rollbackRefs": {"type": "array", "items": {"type": "object"}},
+    "evidenceRefs": {"type": "array", "items": {"type": "object"}},
+    "traceRefs": {"type": "array", "items": {"type": "string"}},
+    "startedAt": {"type": ["string", "null"]},
+    "finishedAt": {"type": ["string", "null"]},
+    "metadata": {"type": "object"}
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.graph-correction-proposal.v1",
+  "title": "Structured Graph Correction Proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["graphId", "baseVersionId", "baseVersionHash", "baseVersionLockVersion", "candidateVersionId", "candidateVersionHash", "candidateBuildId", "patch", "riskLevel", "rationaleCode", "evidenceRefs", "idempotencyKey"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.graph-correction-proposal.v1"},
+    "graphId": {"type": "string"},
+    "baseVersionId": {"type": "string"},
+    "baseVersionHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "baseVersionLockVersion": {"type": "integer", "minimum": 1},
+    "candidateVersionId": {"type": "string"},
+    "candidateVersionHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "candidateBuildId": {"type": "string"},
+    "patch": {"type": "object"},
+    "riskLevel": {"type": "string", "enum": ["low", "medium", "high"]},
+    "rationaleCode": {"type": "string", "pattern": "^GRAPH_CORRECTION_[A-Z0-9_]+$", "maxLength": 120},
+    "evidenceRefs": {"type": "array", "minItems": 1, "maxItems": 512, "items": {"type": "object"}},
+    "idempotencyKey": {"type": "string", "minLength": 1, "maxLength": 255}
+  }
+}

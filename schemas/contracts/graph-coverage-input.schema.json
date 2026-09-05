@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.graph-coverage-input.v1",
+  "title": "Service-owned Graph Coverage Input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "algorithmVersion", "tenantId", "workspaceId", "projectId",
+    "graphId", "graphVersionId", "graphContentHash", "requirementVersionId",
+    "requirementContentHash", "stalenessStatus", "topologyHash",
+    "sourceStateHash", "coverageProofRef"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "phase8.graph-coverage-input.v1"},
+    "algorithmVersion": {"type": "string", "minLength": 1},
+    "tenantId": {"type": "string", "minLength": 1},
+    "workspaceId": {"type": "string", "minLength": 1},
+    "projectId": {"type": "string"},
+    "graphId": {"type": "string"},
+    "graphVersionId": {"type": "string"},
+    "graphContentHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "requirementVersionId": {"type": "string"},
+    "requirementContentHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "executionId": {"type": ["string", "null"]},
+    "stalenessStatus": {"type": "string"},
+    "stalenessAssessmentRef": {"type": ["string", "null"]},
+    "stalenessAssessmentHash": {"type": ["string", "null"]},
+    "topologyHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "sourceStateHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "coverageProofRef": {"type": "object"},
+    "changeRefs": {"type": "array", "items": {"type": "object"}},
+    "sourceRefs": {"type": "array", "items": {"type": "object"}}
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.gate-policy-import-request.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "content"],
+  "properties": {
+    "format": {"type": "string", "enum": ["json", "yaml"]},
+    "content": {"type": "string", "maxLength": 65536},
+    "policyId": {"type": ["string", "null"], "format": "uuid"},
+    "versionId": {"type": ["string", "null"], "format": "uuid"}
+  }
+}

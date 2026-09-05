@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.domain-event.v1",
+  "title": "Domain Event Envelope Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventId",
+    "eventType",
+    "schemaVersion",
+    "traceId",
+    "correlationRefs",
+    "occurredAt",
+    "actorRef",
+    "sourceRef",
+    "payload",
+    "evidenceRefs",
+    "replayRefs"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string"
+    },
+    "eventType": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.domain-event.v1"
+    },
+    "traceId": {
+      "type": "string"
+    },
+    "correlationRefs": {
+      "type": "object"
+    },
+    "occurredAt": {
+      "type": "string"
+    },
+    "actorRef": {
+      "type": ["object", "null"]
+    },
+    "sourceRef": {
+      "type": ["object", "null"]
+    },
+    "payload": {
+      "type": "object"
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "replayRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}

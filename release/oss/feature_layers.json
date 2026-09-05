@@ -1,0 +1,240 @@
+{
+  "schemaVersion": "truthward.oss-feature-layers.v2",
+  "productIntent": "self_hosted_community_platform",
+  "decisionStatus": "community_core_v1_implemented",
+  "runtimeBaseline": {
+    "manifestPath": "release/oss/manifest.json",
+    "currentProfile": "community_core_v1",
+    "targetProfile": "usable_community_core",
+    "plannedCapabilitiesAreNotRuntimeGrants": true
+  },
+  "visibilityPolicy": {
+    "zeroProject": "show_onboarding_instead_of_project_selector",
+    "oneProject": "show_static_project_scope",
+    "multipleProjects": "show_project_selector",
+    "conditionalModules": "hide_until_backend_readiness_and_required_data_are_present",
+    "unavailableMutations": "do_not_render",
+    "deepLinks": "fail_closed_to_a_relevant_onboarding_or_unavailable_state"
+  },
+  "layers": [
+    {
+      "id": "oss_core",
+      "licenseTarget": "Apache-2.0",
+      "description": "A complete self-hosted community workflow. Security, scope enforcement, redaction, and fail-closed behavior are part of the core and are not Enterprise-only features."
+    },
+    {
+      "id": "oss_conditional",
+      "licenseTarget": "Apache-2.0",
+      "description": "Community features whose navigation is readiness-gated by a configured dependency or persisted upstream data."
+    },
+    {
+      "id": "enterprise",
+      "licenseTarget": "LicenseRef-TRUTHWARD-Proprietary",
+      "description": "Organization-scale, cross-tenant, high-risk governance and commercial administration extensions."
+    }
+  ],
+  "modules": [
+    {
+      "id": "onboarding_workspace",
+      "layer": "oss_core",
+      "runtimeStatus": "implemented",
+      "sourceIsolationStatus": "community_composition_isolated",
+      "targetOperations": ["dependency checks", "first-run onboarding", "community readiness"],
+      "sections": [
+        {"id": "workspace", "currentExposure": "visible", "targetExposure": "visible"}
+      ]
+    },
+    {
+      "id": "identity_access",
+      "layer": "oss_core",
+      "runtimeStatus": "implemented_local_auth",
+      "sourceIsolationStatus": "community_local_auth_isolated_from_enterprise_iam",
+      "targetOperations": ["bootstrap first administrator", "login and token revocation", "fixed community roles", "project membership"],
+      "enterpriseExtensions": ["SAML or OIDC SSO", "SCIM", "custom role and capability policy", "cross-tenant administration"],
+      "sections": [
+        {"id": "access-control", "currentExposure": "hidden", "targetExposure": "visible_when_implemented"}
+      ]
+    },
+    {
+      "id": "project_scope",
+      "layer": "oss_core",
+      "runtimeStatus": "implemented",
+      "sourceIsolationStatus": "community_project_commands_and_scope_authority_exported",
+      "targetOperations": ["create project", "rename project", "archive project", "manage fixed project roles"],
+      "enterpriseExtensions": ["tenant and workspace hierarchy", "cross-project aggregation policy"],
+      "sections": [
+        {"id": "project-settings", "currentExposure": "visible", "targetExposure": "visible"}
+      ]
+    },
+    {
+      "id": "environment_configuration",
+      "layer": "oss_core",
+      "runtimeStatus": "implemented",
+      "sourceIsolationStatus": "community_environment_commands_project_scoped",
+      "targetOperations": ["create environment", "configure base URL", "store non-secret variables", "reference managed secrets"],
+      "enterpriseExtensions": ["organization environment templates", "central secret platform policy"],
+      "sections": [
+        {"id": "environment-settings", "currentExposure": "visible", "targetExposure": "visible"}
+      ]
+    },
+    {
+      "id": "connector_configuration",
+      "layer": "oss_core",
+      "runtimeStatus": "implemented_bounded_scm",
+      "sourceIsolationStatus": "community_project_scoped_allowlist_and_safe_projection",
+      "targetOperations": ["configure project-scoped GitHub, GitLab, or Mock SCM binding", "update or archive binding", "use secret references", "inspect safe projection"],
+      "enterpriseExtensions": ["commercial connectors", "organization credential distribution", "cross-tenant connector governance"],
+      "sections": [
+        {"id": "connector-settings", "currentExposure": "visible", "targetExposure": "visible"}
+      ]
+    },
+    {
+      "id": "model_configuration",
+      "layer": "oss_core",
+      "runtimeStatus": "implemented_project_environment_multi_model",
+      "sourceIsolationStatus": "community_direct_config_separate_from_enterprise_governance",
+      "targetOperations": ["configure local model", "configure OpenAI-compatible endpoint", "use BYOK secret reference", "test connectivity"],
+      "enterpriseExtensions": ["multi-provider policy routing", "organization budgets", "challenger policy", "approval-backed provider governance"],
+      "sections": [
+        {"id": "model-config", "currentExposure": "visible", "targetExposure": "visible"}
+      ]
+    },
+    {
+      "id": "requirements_and_test_assets",
+      "layer": "oss_core",
+      "runtimeStatus": "plan_workflow_implemented_other_intake_hidden",
+      "sourceIsolationStatus": "community_plan_and_workflow_routes_composed",
+      "targetOperations": ["create or import requirements", "create test assets", "create test plan", "create exploratory session", "run a basic workflow"],
+      "enterpriseExtensions": ["bulk AI governance", "organization approval templates"],
+      "sections": [
+        {"id": "requirement-intake", "currentExposure": "hidden", "targetExposure": "visible_when_implemented"},
+        {"id": "workflow-runs", "currentExposure": "visible_read_only", "targetExposure": "visible"},
+        {"id": "workflow", "currentExposure": "visible", "targetExposure": "visible"},
+        {"id": "exploratory-sessions", "currentExposure": "visible_read_only", "targetExposure": "visible"},
+        {"id": "test-assets", "currentExposure": "hidden", "targetExposure": "visible_when_implemented"}
+      ]
+    },
+    {
+      "id": "execution_findings_work",
+      "layer": "oss_core",
+      "runtimeStatus": "implemented_bounded_local_execution",
+      "sourceIsolationStatus": "community_execution_and_work_item_routes_composed",
+      "targetOperations": ["start basic local execution", "cancel execution", "inspect finding", "update finding state", "create and transition work item"],
+      "enterpriseExtensions": ["distributed execution", "elastic queue policy", "organization SLA automation"],
+      "sections": [
+        {"id": "execution-dashboard", "currentExposure": "visible", "targetExposure": "visible"},
+        {"id": "tasks", "currentExposure": "visible", "targetExposure": "visible"},
+        {"id": "findings", "currentExposure": "visible", "targetExposure": "visible"}
+      ]
+    },
+    {
+      "id": "basic_gate",
+      "layer": "oss_core",
+      "runtimeStatus": "hidden_pending_community_policy_split",
+      "sourceIsolationStatus": "requires_basic_policy_enterprise_governance_split",
+      "targetOperations": ["use built-in gate templates", "edit basic project rules", "run local gate", "inspect decision evidence"],
+      "enterpriseExtensions": ["approval-backed activation", "Shadow and Enforce governance", "automatic rollback"],
+      "sections": [
+        {"id": "gate-decisions", "currentExposure": "hidden", "targetExposure": "visible_when_implemented"},
+        {"id": "gate-dashboard", "currentExposure": "hidden", "targetExposure": "visible_when_implemented"},
+        {"id": "gate-policies", "currentExposure": "hidden", "targetExposure": "visible_when_implemented"}
+      ]
+    },
+    {
+      "id": "coverage_replay_audit",
+      "layer": "oss_core",
+      "runtimeStatus": "audit_visible_coverage_and_replay_hidden",
+      "sourceIsolationStatus": "audit_safe_projection_composed",
+      "targetOperations": ["inspect coverage", "record execution replay", "export basic replay", "read project-scoped audit projection"],
+      "enterpriseExtensions": ["cross-project replay comparison", "legal hold", "organization retention policy"],
+      "sections": [
+        {"id": "coverage-matrix", "currentExposure": "hidden", "targetExposure": "visible_when_implemented"},
+        {"id": "replay-center", "currentExposure": "hidden", "targetExposure": "visible_when_implemented"},
+        {"id": "audit-logs", "currentExposure": "visible_read_only", "targetExposure": "role_gated"}
+      ]
+    },
+    {
+      "id": "skill_extension",
+      "layer": "oss_core",
+      "runtimeStatus": "trusted_local_registration_binding_and_observation",
+      "sourceIsolationStatus": "data_only_manifest_catalog_and_project_binding_isolated",
+      "targetOperations": ["develop Skill from public contracts", "register trusted local Skill", "bind low-risk local Skill", "disable local binding", "observe invocation"],
+      "enterpriseExtensions": ["private registry", "dataset evaluation", "Shadow", "approval-backed activation", "automatic rollback", "controlled autonomy"],
+      "sections": [
+        {"id": "skill-invocations", "currentExposure": "visible_read_only", "targetExposure": "visible"},
+        {"id": "capability-bindings", "currentExposure": "visible", "targetExposure": "visible"}
+      ]
+    },
+    {
+      "id": "runtime_operations",
+      "layer": "oss_core",
+      "runtimeStatus": "observability_visible_agent_and_queue_hidden",
+      "sourceIsolationStatus": "frontend_and_query_dependencies_isolated_scope_and_redaction_pending",
+      "targetOperations": ["inspect redacted Agent run metadata", "inspect scoped queue state", "inspect worker readiness", "diagnose failures"],
+      "enterpriseExtensions": ["multi-node operations", "central alert routing", "cross-project operational aggregation"],
+      "sections": [
+        {"id": "observability", "currentExposure": "visible_read_only", "targetExposure": "role_gated"},
+        {"id": "agent-runs", "currentExposure": "hidden", "targetExposure": "role_gated"},
+        {"id": "queue-jobs", "currentExposure": "hidden", "targetExposure": "role_gated"}
+      ]
+    },
+    {
+      "id": "scm_pr_workflow",
+      "layer": "oss_conditional",
+      "runtimeStatus": "scoped_connector_and_read_projections_only",
+      "sourceIsolationStatus": "scm_binding_composed_pr_mutations_hidden",
+      "readinessCondition": "verified SCM Connector binding and persisted repository or PR context",
+      "targetOperations": ["ingest verified webhook", "inspect PR context", "run basic scan and smoke", "write basic CI conclusion"],
+      "enterpriseExtensions": ["approval-backed Enforce policy", "organization branch policy governance", "commercial SCM connectors"],
+      "sections": [
+        {"id": "change-sets", "currentExposure": "visible_read_only", "targetExposure": "readiness_gated"},
+        {"id": "pr-contexts", "currentExposure": "hidden", "targetExposure": "readiness_gated"},
+        {"id": "admission-runs", "currentExposure": "hidden", "targetExposure": "readiness_gated"},
+        {"id": "impact-analysis", "currentExposure": "visible_read_only", "targetExposure": "readiness_gated"},
+        {"id": "selective-replay-plans", "currentExposure": "visible_read_only", "targetExposure": "readiness_gated"}
+      ]
+    },
+    {
+      "id": "graph_and_explanation_insights",
+      "layer": "oss_conditional",
+      "runtimeStatus": "candidate_read_only_other_insights_hidden",
+      "sourceIsolationStatus": "candidate_graph_read_path_isolated_other_graph_queries_mixed",
+      "readinessCondition": "persisted execution, evidence, replay, or graph projection",
+      "targetOperations": ["inspect candidate path", "inspect CEG projection", "read execution explanation", "query redacted evidence"],
+      "enterpriseExtensions": ["cross-project advanced visualization", "organization graph analytics"],
+      "sections": [
+        {"id": "candidate-paths", "currentExposure": "visible_read_only", "targetExposure": "readiness_gated"},
+        {"id": "ceg", "currentExposure": "hidden", "targetExposure": "readiness_gated"},
+        {"id": "execution-explanations", "currentExposure": "hidden", "targetExposure": "readiness_gated"},
+        {"id": "evidence-search", "currentExposure": "hidden", "targetExposure": "readiness_gated"}
+      ]
+    },
+    {
+      "id": "advanced_governance",
+      "layer": "enterprise",
+      "runtimeStatus": "hidden",
+      "sourceIsolationStatus": "frontend_and_query_routes_enterprise_isolated",
+      "targetOperations": ["organization governed correction", "knowledge promotion", "lesson review", "improvement routing"],
+      "sections": [
+        {"id": "correction-governance", "currentExposure": "hidden", "targetExposure": "hidden"},
+        {"id": "graph-corrections", "currentExposure": "hidden", "targetExposure": "hidden"},
+        {"id": "knowledge-governance", "currentExposure": "hidden", "targetExposure": "hidden"},
+        {"id": "lessons-center", "currentExposure": "hidden", "targetExposure": "hidden"},
+        {"id": "improvement-proposals", "currentExposure": "hidden", "targetExposure": "hidden"}
+      ]
+    },
+    {
+      "id": "enterprise_administration",
+      "layer": "enterprise",
+      "runtimeStatus": "hidden",
+      "sourceIsolationStatus": "frontend_pages_and_request_adapter_isolated_backend_partial",
+      "targetOperations": ["enterprise module readiness", "interactive governance", "advanced visualization", "managed replay repository"],
+      "sections": [
+        {"id": "enterprise-modules", "currentExposure": "hidden", "targetExposure": "hidden"},
+        {"id": "interactive-governance", "currentExposure": "hidden", "targetExposure": "hidden"},
+        {"id": "advanced-visualization", "currentExposure": "hidden", "targetExposure": "hidden"},
+        {"id": "replay-repository", "currentExposure": "hidden", "targetExposure": "hidden"}
+      ]
+    }
+  ]
+}

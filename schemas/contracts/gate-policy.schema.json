@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gate-policy.v1",
+  "title": "Gate Policy v1",
+  "description": "Declarative, non-executable Gate Policy version snapshot.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "identity",
+    "version",
+    "status",
+    "scope",
+    "requiredInputs",
+    "rules",
+    "aggregation",
+    "completeness",
+    "confidence",
+    "evidence",
+    "metadata"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "gate-policy.v1"
+    },
+    "identity": {
+      "$ref": "#/$defs/identity"
+    },
+    "version": {
+      "$ref": "#/$defs/version"
+    },
+    "status": {
+      "$ref": "#/$defs/status"
+    },
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
+    "requiredInputs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["normalizedFindings", "metrics", "approvalState", "policySnapshot"]
+      }
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    },
+    "aggregation": {
+      "$ref": "#/$defs/aggregation"
+    },
+    "completeness": {
+      "$ref": "#/$defs/completeness"
+    },
+    "confidence": {
+      "$ref": "#/$defs/confidence"
+    },
+    "evidence": {
+      "$ref": "#/$defs/evidence"
+    },
+    "metadata": {
+      "type": "object",
+      "maxProperties": 32
+    }
+  },
+  "$defs": {
+    "status": {
+      "type": "string",
+      "enum": ["draft", "active", "disabled", "deprecated", "archived"]
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["pass", "warn", "fail", "blocked"]
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policyId", "policyKey", "name", "description"],
+      "properties": {
+        "policyId": {"type": "string", "minLength": 1, "maxLength": 64},
+        "policyKey": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{2,127}$"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 255},
+        "description": {"type": ["string", "null"], "maxLength": 2000}
+      }
+    },
+    "version": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["versionId", "versionNumber"],
+      "properties": {
+        "versionId": {"type": "string", "minLength": 1, "maxLength": 64},
+        "versionNumber": {"type": "integer", "minimum": 1, "maximum": 2147483647}
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "tenantId", "workspaceId", "scopeId"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["global", "workspace", "project", "environment", "stage", "domain"]
+        },
+        "tenantId": {"type": "string", "minLength": 1, "maxLength": 128},
+        "workspaceId": {"type": "string", "minLength": 1, "maxLength": 128},
+        "scopeId": {"type": ["string", "null"], "maxLength": 255}
+      }
+    },
+    "evidenceRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimumCount", "requiredTypes"],
+      "properties": {
+        "minimumCount": {"type": "integer", "minimum": 0, "maximum": 1000},
+        "requiredTypes": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "enum": ["artifact", "finding", "metric", "trace", "replay", "approval"]
+          }
+        }
+      }
+    },
+    "confidenceRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum", "missingDecision"],
+      "properties": {
+        "minimum": {"type": "number", "minimum": 0, "maximum": 1},
+        "missingDecision": {"$ref": "#/$defs/decision"}
+      }
+    },
+    "approvalRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "approvalTypes", "policyRef"],
+      "properties": {
+        "required": {"type": "boolean"},
+        "approvalTypes": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "enum": ["accepted_risk", "gate_override", "other"]
+          }
+        },
+        "policyRef": {"type": ["string", "null"], "minLength": 1, "maxLength": 500}
+      }
+    },
+    "thresholdScalar": {
+      "type": ["string", "integer", "number", "boolean", "null"]
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ruleId",
+        "priority",
+        "category",
+        "severity",
+        "metric",
+        "operator",
+        "threshold",
+        "decision",
+        "reasonCode",
+        "evidenceRequirement",
+        "confidenceRequirement",
+        "approvalRequirement"
+      ],
+      "properties": {
+        "ruleId": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"},
+        "priority": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "category": {
+          "type": "string",
+          "enum": ["functional", "performance", "security", "completeness", "confidence", "evidence"]
+        },
+        "severity": {
+          "type": ["string", "null"],
+          "enum": ["critical", "high", "medium", "low", "info", null]
+        },
+        "metric": {"type": ["string", "null"], "minLength": 1, "maxLength": 160},
+        "operator": {
+          "type": "string",
+          "enum": ["eq", "ne", "gt", "gte", "lt", "lte", "in", "not_in", "exists", "not_exists"]
+        },
+        "threshold": {
+          "anyOf": [
+            {"$ref": "#/$defs/thresholdScalar"},
+            {
+              "type": "array",
+              "minItems": 1,
+              "items": {"type": ["string", "integer", "number", "boolean"]}
+            }
+          ]
+        },
+        "decision": {"$ref": "#/$defs/decision"},
+        "reasonCode": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,127}$"},
+        "evidenceRequirement": {
+          "anyOf": [{"$ref": "#/$defs/evidenceRequirement"}, {"type": "null"}]
+        },
+        "confidenceRequirement": {
+          "anyOf": [{"$ref": "#/$defs/confidenceRequirement"}, {"type": "null"}]
+        },
+        "approvalRequirement": {
+          "anyOf": [{"$ref": "#/$defs/approvalRequirement"}, {"type": "null"}]
+        }
+      }
+    },
+    "aggregation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "decisionOrder", "defaultDecision", "tieBreaker"],
+      "properties": {
+        "strategy": {"type": "string", "const": "decision_order"},
+        "decisionOrder": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/decision"}
+        },
+        "defaultDecision": {"$ref": "#/$defs/decision"},
+        "tieBreaker": {"type": "string", "enum": ["highest_priority", "first_rule"]}
+      }
+    },
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requireAllInputs", "missingInputDecision"],
+      "properties": {
+        "requireAllInputs": {"type": "boolean"},
+        "missingInputDecision": {"$ref": "#/$defs/decision"}
+      }
+    },
+    "confidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum", "belowThresholdDecision"],
+      "properties": {
+        "minimum": {"type": "number", "minimum": 0, "maximum": 1},
+        "belowThresholdDecision": {"$ref": "#/$defs/decision"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimumCount", "requiredTypes", "missingEvidenceDecision"],
+      "properties": {
+        "minimumCount": {"type": "integer", "minimum": 0, "maximum": 1000},
+        "requiredTypes": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "enum": ["artifact", "finding", "metric", "trace", "replay", "approval"]
+          }
+        },
+        "missingEvidenceDecision": {"$ref": "#/$defs/decision"}
+      }
+    }
+  }
+}

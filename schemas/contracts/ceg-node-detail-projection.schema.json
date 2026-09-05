@@ -1,0 +1,825 @@
+{
+  "$defs": {
+    "CoverageBadgeProjection": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "covered",
+            "partial",
+            "uncovered",
+            "not_applicable",
+            "unknown"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "ratio": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ratio"
+        },
+        "covered": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Covered",
+          "type": "integer"
+        },
+        "total": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "snapshotId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Snapshotid"
+        },
+        "snapshotRef": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Snapshotref"
+        },
+        "computedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Computedat"
+        },
+        "reasonCodes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Reasoncodes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "CoverageBadgeProjection",
+      "type": "object"
+    },
+    "EdgeProjectionItem": {
+      "additionalProperties": false,
+      "properties": {
+        "edgeId": {
+          "format": "uuid",
+          "title": "Edgeid",
+          "type": "string"
+        },
+        "edgeRef": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Edgeref",
+          "type": "string"
+        },
+        "edgeType": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Edgetype",
+          "type": "string"
+        },
+        "sourceNodeId": {
+          "format": "uuid",
+          "title": "Sourcenodeid",
+          "type": "string"
+        },
+        "targetNodeId": {
+          "format": "uuid",
+          "title": "Targetnodeid",
+          "type": "string"
+        },
+        "condition": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Condition"
+        },
+        "riskLevel": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Risklevel",
+          "type": "string"
+        },
+        "reviewStatus": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Reviewstatus",
+          "type": "string"
+        },
+        "identity": {
+          "enum": [
+            "observed",
+            "candidate",
+            "canonical"
+          ],
+          "title": "Identity",
+          "type": "string"
+        },
+        "sourceRefs": {
+          "items": {
+            "$ref": "#/$defs/StableProjectionRef"
+          },
+          "maxItems": 1024,
+          "title": "Sourcerefs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "edgeId",
+        "edgeRef",
+        "edgeType",
+        "sourceNodeId",
+        "targetNodeId",
+        "riskLevel",
+        "reviewStatus",
+        "identity"
+      ],
+      "title": "EdgeProjectionItem",
+      "type": "object"
+    },
+    "NodeProjectionItem": {
+      "additionalProperties": false,
+      "properties": {
+        "nodeId": {
+          "format": "uuid",
+          "title": "Nodeid",
+          "type": "string"
+        },
+        "nodeRef": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Noderef",
+          "type": "string"
+        },
+        "semanticKey": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Semantickey",
+          "type": "string"
+        },
+        "nodeType": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Nodetype",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "riskLevel": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Risklevel",
+          "type": "string"
+        },
+        "identity": {
+          "enum": [
+            "observed",
+            "candidate",
+            "canonical"
+          ],
+          "title": "Identity",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "attributes": {
+          "additionalProperties": true,
+          "title": "Attributes",
+          "type": "object"
+        },
+        "sourceRefs": {
+          "items": {
+            "$ref": "#/$defs/StableProjectionRef"
+          },
+          "maxItems": 1024,
+          "title": "Sourcerefs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "nodeId",
+        "nodeRef",
+        "semanticKey",
+        "nodeType",
+        "label",
+        "riskLevel",
+        "identity",
+        "confidence",
+        "attributes"
+      ],
+      "title": "NodeProjectionItem",
+      "type": "object"
+    },
+    "PathProjectionItem": {
+      "additionalProperties": false,
+      "properties": {
+        "graphId": {
+          "format": "uuid",
+          "title": "Graphid",
+          "type": "string"
+        },
+        "graphVersionId": {
+          "format": "uuid",
+          "title": "Graphversionid",
+          "type": "string"
+        },
+        "pathId": {
+          "format": "uuid",
+          "title": "Pathid",
+          "type": "string"
+        },
+        "pathRef": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Pathref",
+          "type": "string"
+        },
+        "pathKey": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Pathkey",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "identity": {
+          "enum": [
+            "observed",
+            "candidate",
+            "canonical"
+          ],
+          "title": "Identity",
+          "type": "string"
+        },
+        "riskLevel": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Risklevel",
+          "type": "string"
+        },
+        "applicability": {
+          "additionalProperties": true,
+          "title": "Applicability",
+          "type": "object"
+        },
+        "applicabilityStatus": {
+          "enum": [
+            "applicable",
+            "excluded",
+            "unknown"
+          ],
+          "title": "Applicabilitystatus",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "stepCount": {
+          "minimum": 0,
+          "title": "Stepcount",
+          "type": "integer"
+        },
+        "capabilityRefs": {
+          "items": {
+            "$ref": "#/$defs/StableProjectionRef"
+          },
+          "maxItems": 1024,
+          "title": "Capabilityrefs",
+          "type": "array"
+        },
+        "coverage": {
+          "$ref": "#/$defs/CoverageBadgeProjection"
+        },
+        "promotion": {
+          "$ref": "#/$defs/PromotionEligibilityProjection"
+        },
+        "sourceRefs": {
+          "items": {
+            "$ref": "#/$defs/StableProjectionRef"
+          },
+          "maxItems": 4096,
+          "minItems": 1,
+          "title": "Sourcerefs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "graphId",
+        "graphVersionId",
+        "pathId",
+        "pathRef",
+        "pathKey",
+        "name",
+        "identity",
+        "riskLevel",
+        "applicability",
+        "applicabilityStatus",
+        "confidence",
+        "stepCount",
+        "coverage",
+        "promotion",
+        "sourceRefs"
+      ],
+      "title": "PathProjectionItem",
+      "type": "object"
+    },
+    "PromotionEligibilityProjection": {
+      "additionalProperties": false,
+      "properties": {
+        "eligible": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Eligible"
+        },
+        "automaticPromotionAllowed": {
+          "title": "Automaticpromotionallowed",
+          "type": "boolean"
+        },
+        "humanReviewRequired": {
+          "title": "Humanreviewrequired",
+          "type": "boolean"
+        },
+        "reasonCodes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Reasoncodes",
+          "type": "array"
+        },
+        "assessmentId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Assessmentid"
+        },
+        "promotionType": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Promotiontype"
+        },
+        "humanApproval": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Humanapproval"
+        },
+        "policyDecisionRefs": {
+          "items": {
+            "$ref": "#/$defs/StableProjectionRef"
+          },
+          "maxItems": 512,
+          "title": "Policydecisionrefs",
+          "type": "array"
+        },
+        "approvalRefs": {
+          "items": {
+            "$ref": "#/$defs/StableProjectionRef"
+          },
+          "maxItems": 512,
+          "title": "Approvalrefs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "eligible",
+        "automaticPromotionAllowed",
+        "humanReviewRequired"
+      ],
+      "title": "PromotionEligibilityProjection",
+      "type": "object"
+    },
+    "StableProjectionRef": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Type",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ref"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "available": {
+          "default": true,
+          "title": "Available",
+          "type": "boolean"
+        },
+        "unavailableReason": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unavailablereason"
+        },
+        "redacted": {
+          "default": false,
+          "title": "Redacted",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "id"
+      ],
+      "title": "StableProjectionRef",
+      "type": "object"
+    },
+    "StepProjectionItem": {
+      "additionalProperties": false,
+      "properties": {
+        "stepId": {
+          "format": "uuid",
+          "title": "Stepid",
+          "type": "string"
+        },
+        "stepRef": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Stepref",
+          "type": "string"
+        },
+        "order": {
+          "minimum": 1,
+          "title": "Order",
+          "type": "integer"
+        },
+        "nodeId": {
+          "format": "uuid",
+          "title": "Nodeid",
+          "type": "string"
+        },
+        "viaEdgeId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Viaedgeid"
+        },
+        "conditions": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 512,
+          "title": "Conditions",
+          "type": "array"
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outcome"
+        },
+        "retryCount": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Retrycount",
+          "type": "integer"
+        },
+        "fallbackTypes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Fallbacktypes",
+          "type": "array"
+        },
+        "verificationStatus": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verificationstatus"
+        },
+        "exceptionRefs": {
+          "items": {
+            "$ref": "#/$defs/StableProjectionRef"
+          },
+          "maxItems": 512,
+          "title": "Exceptionrefs",
+          "type": "array"
+        },
+        "sourceRefs": {
+          "items": {
+            "$ref": "#/$defs/StableProjectionRef"
+          },
+          "maxItems": 2048,
+          "title": "Sourcerefs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "stepId",
+        "stepRef",
+        "order",
+        "nodeId"
+      ],
+      "title": "StepProjectionItem",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "phase8.ceg-node-detail-projection.v1",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "generatedAt": {
+      "format": "date-time",
+      "title": "Generatedat",
+      "type": "string"
+    },
+    "projectId": {
+      "format": "uuid",
+      "title": "Projectid",
+      "type": "string"
+    },
+    "graphId": {
+      "format": "uuid",
+      "title": "Graphid",
+      "type": "string"
+    },
+    "graphVersionId": {
+      "format": "uuid",
+      "title": "Graphversionid",
+      "type": "string"
+    },
+    "pathId": {
+      "format": "uuid",
+      "title": "Pathid",
+      "type": "string"
+    },
+    "availability": {
+      "enum": [
+        "available",
+        "partial",
+        "unavailable"
+      ],
+      "title": "Availability",
+      "type": "string"
+    },
+    "unavailableReason": {
+      "anyOf": [
+        {
+          "maxLength": 160,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Unavailablereason"
+    },
+    "path": {
+      "$ref": "#/$defs/PathProjectionItem"
+    },
+    "nodes": {
+      "items": {
+        "$ref": "#/$defs/NodeProjectionItem"
+      },
+      "maxItems": 10000,
+      "title": "Nodes",
+      "type": "array"
+    },
+    "edges": {
+      "items": {
+        "$ref": "#/$defs/EdgeProjectionItem"
+      },
+      "maxItems": 20000,
+      "title": "Edges",
+      "type": "array"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/StepProjectionItem"
+      },
+      "maxItems": 10000,
+      "title": "Steps",
+      "type": "array"
+    },
+    "orphanNodeRefs": {
+      "items": {
+        "$ref": "#/$defs/StableProjectionRef"
+      },
+      "maxItems": 10000,
+      "title": "Orphannoderefs",
+      "type": "array"
+    },
+    "cycleDetected": {
+      "title": "Cycledetected",
+      "type": "boolean"
+    },
+    "truncated": {
+      "title": "Truncated",
+      "type": "boolean"
+    },
+    "limits": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Limits",
+      "type": "object"
+    },
+    "sourceRefs": {
+      "items": {
+        "$ref": "#/$defs/StableProjectionRef"
+      },
+      "maxItems": 20000,
+      "minItems": 1,
+      "title": "Sourcerefs",
+      "type": "array"
+    },
+    "readOnly": {
+      "const": true,
+      "title": "Readonly",
+      "type": "boolean"
+    },
+    "frontendAuthoritative": {
+      "const": false,
+      "title": "Frontendauthoritative",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "projectId",
+    "graphId",
+    "graphVersionId",
+    "pathId",
+    "availability",
+    "path",
+    "cycleDetected",
+    "truncated",
+    "limits",
+    "sourceRefs",
+    "readOnly",
+    "frontendAuthoritative"
+  ],
+  "title": "NodeDetailProjection",
+  "type": "object"
+}

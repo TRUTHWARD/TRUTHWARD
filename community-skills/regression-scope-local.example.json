@@ -1,0 +1,60 @@
+{
+  "skillId": "regression-scope-local",
+  "displayName": "Local Regression Scope Projection",
+  "version": "1.1.0",
+  "capabilities": {
+    "category": "community-local",
+    "operations": [
+      "recommend_regression_scope"
+    ]
+  },
+  "inputSchema": {
+    "request": "dict",
+    "contextRefs": "list",
+    "constraints": "dict"
+  },
+  "outputSchema": {
+    "result": "dict",
+    "confidence": "float",
+    "evidence": "list",
+    "artifactRefs": "list",
+    "rawFindingRefs": "list",
+    "findingCandidates": "list",
+    "metadata": "dict"
+  },
+  "allowedTools": [],
+  "allowedConnectors": [],
+  "riskProfile": {
+    "level": "low"
+  },
+  "approvalPolicy": {
+    "required": false
+  },
+  "dataAccessPolicy": {
+    "writeDb": false,
+    "writeMemory": false,
+    "writeGate": false,
+    "externalWrite": false,
+    "scope": {
+      "projectRequired": true
+    }
+  },
+  "replayPolicy": {
+    "freezeManifest": true,
+    "freezeInputOutput": true,
+    "freezeResolution": true
+  },
+  "extensionPoints": [
+    "PREPARE.regression_scope"
+  ],
+  "compatibility": {
+    "input": "skill-request.v1",
+    "output": "skill-result.v1",
+    "runtimeAdapter": "community.regression_projection.v1",
+    "runtimeResultKind": "skill_result",
+    "communityProfile": {
+      "groupBy": "domain",
+      "includeCaseIds": true
+    }
+  }
+}

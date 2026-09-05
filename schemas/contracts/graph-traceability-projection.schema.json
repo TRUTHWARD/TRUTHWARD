@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.graph-traceability-projection.v1",
+  "title": "Authoritative CEG Traceability Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "generatedAt", "tenantId", "workspaceId", "projectId",
+    "graphId", "graphVersionId", "graphVersionRef", "graphContentHash",
+    "graphStatus", "stalenessStatus", "requirementVersionId",
+    "requirementVersionRef", "requirementContentHash", "evidenceRefsRedacted"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "phase8.graph-traceability-projection.v1"},
+    "generatedAt": {"type": "string"},
+    "tenantId": {"type": "string", "minLength": 1},
+    "workspaceId": {"type": "string", "minLength": 1},
+    "projectId": {"type": "string"},
+    "graphId": {"type": "string"},
+    "graphVersionId": {"type": "string"},
+    "graphVersionRef": {"type": "string", "pattern": "^ceg-version://[^\\s]+$"},
+    "graphContentHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "graphStatus": {"type": "string", "minLength": 1},
+    "stalenessStatus": {"type": "string"},
+    "stalenessAssessmentRef": {"type": ["string", "null"]},
+    "stalenessAssessmentHash": {"type": ["string", "null"]},
+    "requirementVersionId": {"type": "string"},
+    "requirementVersionRef": {"type": "string", "minLength": 1},
+    "requirementContentHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "executionId": {"type": ["string", "null"]},
+    "links": {"type": "array", "items": {"type": "object"}},
+    "chains": {"type": "array", "items": {"type": "object"}},
+    "missingLinks": {"type": "array", "items": {"type": "object"}},
+    "sourceRefs": {"type": "array", "items": {"type": "object"}},
+    "evidenceRefsRedacted": {"type": "boolean"}
+  }
+}

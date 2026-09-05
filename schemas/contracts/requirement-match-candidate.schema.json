@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.requirement-match-candidate.v1",
+  "title": "Requirement Match Candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["requirementId", "requirementVersionId", "source", "confidence", "status", "reasons", "reviewRequired"],
+  "properties": {
+    "requirementId": {"type": "string", "minLength": 1},
+    "requirementVersionId": {"type": ["string", "null"]},
+    "requirementVersion": {"type": ["integer", "null"]},
+    "source": {"enum": ["explicit_reference", "manual_mapping", "verified_traceability", "rule", "history", "ai_suggestion"]},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "status": {"enum": ["confirmed", "candidate", "rejected", "unknown"]},
+    "reasons": {"type": "array", "minItems": 1},
+    "evidenceRefs": {"type": "array"},
+    "modelInvocationRef": {"type": ["object", "null"]},
+    "reviewRequired": {"type": "boolean"}
+  }
+}

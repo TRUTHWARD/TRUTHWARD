@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.regression-plan.v1",
+  "title": "Regression Plan Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "baseRef",
+    "affectedCases",
+    "recommendedRegressionSuite",
+    "riskBasedPriority",
+    "evidenceRefs",
+    "replayRefs",
+    "metadata"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.regression-plan.v1"
+    },
+    "baseRef": {
+      "type": "object"
+    },
+    "affectedCases": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "recommendedRegressionSuite": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "riskBasedPriority": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "replayRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.traceability-path.v1",
+  "title": "Traceability Path Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sourceType",
+    "sourceId",
+    "upstreamPath",
+    "downstreamPath",
+    "relationStatus",
+    "missingLinks",
+    "staleLinks"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.traceability-path.v1"
+    },
+    "sourceType": {
+      "type": "string"
+    },
+    "sourceId": {
+      "type": "string"
+    },
+    "upstreamPath": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "downstreamPath": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "relationStatus": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "missingLinks": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "staleLinks": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}

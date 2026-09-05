@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.failure-attribution.v1",
+  "title": "Failure Attribution Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "executionId",
+    "taskId",
+    "category",
+    "confidence",
+    "evidence",
+    "suspectedCause",
+    "suggestedNextAction",
+    "reviewRequired",
+    "metadata"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.failure-attribution.v1"
+    },
+    "executionId": {
+      "type": "string"
+    },
+    "taskId": {
+      "type": ["string", "null"]
+    },
+    "category": {
+      "type": "string"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": ["string", "object"]
+      }
+    },
+    "suspectedCause": {
+      "type": "string"
+    },
+    "suggestedNextAction": {
+      "type": "string"
+    },
+    "reviewRequired": {
+      "type": "boolean"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

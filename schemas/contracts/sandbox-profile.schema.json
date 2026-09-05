@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.sandbox-profile.v1",
+  "title": "Sandbox Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [],
+  "properties": {
+    "schemaVersion": {"const": "phase8.sandbox-profile.v1"},
+    "profileId": {"type": "string", "minLength": 1},
+    "engine": {"const": "docker"},
+    "networkMode": {"enum": ["none", "allowlist"]},
+    "networkAllowlist": {"type": "array"},
+    "readOnlySource": {"const": true},
+    "readOnlyRootFilesystem": {"const": true},
+    "tmpfsMB": {"type": "integer", "minimum": 16, "maximum": 2048},
+    "cpuLimit": {"type": "number", "maximum": 8.0},
+    "memoryMB": {"type": "integer", "minimum": 64, "maximum": 8192},
+    "pidsLimit": {"type": "integer", "minimum": 16, "maximum": 1024},
+    "timeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 3600},
+    "secretRefs": {"type": "array"},
+    "hostPathAccess": {"const": false},
+    "dockerSocketAccess": {"const": false},
+    "noNewPrivileges": {"const": true},
+    "dropAllCapabilities": {"const": true},
+    "cleanupRequired": {"const": true}
+  }
+}

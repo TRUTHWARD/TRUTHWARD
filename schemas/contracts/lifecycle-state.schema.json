@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.lifecycle-state.v1",
+  "title": "Lifecycle State Output Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "lifecycle",
+    "state",
+    "owner",
+    "inputContract",
+    "outputContract",
+    "allowedTransitions",
+    "retryStrategy",
+    "blockStrategy",
+    "reviewStrategy",
+    "emittedDomainEvents",
+    "traceId",
+    "evidenceRefs",
+    "replayRefs"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.lifecycle-state.v1"
+    },
+    "lifecycle": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "owner": {
+      "type": "string"
+    },
+    "inputContract": {
+      "type": "object"
+    },
+    "outputContract": {
+      "type": "object"
+    },
+    "allowedTransitions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "retryStrategy": {
+      "type": "object"
+    },
+    "blockStrategy": {
+      "type": "object"
+    },
+    "reviewStrategy": {
+      "type": "object"
+    },
+    "emittedDomainEvents": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "traceId": {
+      "type": ["string", "null"]
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "replayRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}

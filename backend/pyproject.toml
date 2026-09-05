@@ -1,0 +1,88 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-qa-platform"
+version = "0.1.0"
+description = "Agentic QA platform monorepo backend"
+readme = "README.md"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+  "celery[redis]>=5.4.0,<6.0.0",
+  "fastapi>=0.116.0,<1.0.0",
+  "httpx>=0.28.0,<1.0.0",
+  "onnxruntime>=1.20.0,<2.0.0",
+  "Pillow>=11.0.0,<13.0.0",
+  "pypdf>=6.15.0,<7.0.0",
+  "pypdfium2>=4.30.0,<6.0.0",
+  "psycopg[binary]>=3.2.0,<4.0.0",
+  "pydantic>=2.11.0,<3.0.0",
+  "pydantic-settings>=2.8.0,<3.0.0",
+  "PyYAML>=6.0.2,<7.0.0",
+  "python-docx>=1.2.0,<2.0.0",
+  "python-multipart>=0.0.20,<1.0.0",
+  "rapidocr>=3.0.0,<4.0.0",
+  "sqlalchemy>=2.0.39,<3.0.0",
+  "uvicorn[standard]>=0.35.0,<1.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "diff-cover>=9.2.0,<10.0.0",
+  "httpx2>=2.0.0,<3.0.0",
+  "mypy>=1.17.0,<2.0.0",
+  "pip>=26.2,<27.0",
+  "pip-audit>=2.9.0,<3.0.0",
+  "pytest>=9.0.3,<10.0.0",
+  "pytest-cov>=6.2.0,<7.0.0",
+  "pytest-randomly>=3.16.0,<4.0.0",
+  "pytest-timeout>=2.3.0,<3.0.0",
+  "pytest-xdist>=3.6.0,<4.0.0",
+  "ruff>=0.12.0,<1.0.0"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+agentic_qa = ["gate_policies/*.json"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.mypy]
+python_version = "3.14"
+files = ["src/agentic_qa"]
+check_untyped_defs = true
+no_implicit_optional = true
+show_error_codes = true
+warn_redundant_casts = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["celery", "celery.*", "pypdfium2", "pypdfium2.*", "rapidocr", "rapidocr.*"]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+branch = true
+source = ["agentic_qa"]
+
+[tool.coverage.report]
+fail_under = 80
+precision = 2
+show_missing = true
+skip_covered = false
+
+[tool.coverage.html]
+directory = "../coverage/backend/html"
+
+[tool.coverage.xml]
+output = "../coverage/backend/coverage.xml"

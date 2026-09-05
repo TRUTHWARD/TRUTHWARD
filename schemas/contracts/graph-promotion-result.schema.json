@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.graph-promotion-result.v1",
+  "title": "Canonical Graph Promotion Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["promotionId", "proposalId", "graphId", "beforeVersionId", "beforeVersionHash", "targetVersionId", "targetVersionHash", "promotionType", "actorType", "actorRef", "humanApproval", "approvalRefs", "policyDecisionRefs", "assessmentId", "rollbackTargetVersionId", "status", "promotedAt", "idempotencyKey"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.graph-promotion-result.v1"},
+    "promotionId": {"type": "string"},
+    "proposalId": {"type": "string"},
+    "graphId": {"type": "string"},
+    "beforeVersionId": {"type": "string"},
+    "beforeVersionHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "targetVersionId": {"type": "string"},
+    "targetVersionHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "promotionType": {"type": "string", "enum": ["human_approved_promotion", "policy_approved_auto_promotion", "human_approved_rollback"]},
+    "actorType": {"type": "string", "enum": ["human", "system"]},
+    "actorRef": {"type": "string", "minLength": 1, "maxLength": 500},
+    "humanApproval": {"type": "boolean"},
+    "approvalRefs": {"type": "array", "items": {"type": "object"}},
+    "policyDecisionRefs": {"type": "array", "items": {"type": "object"}},
+    "assessmentId": {"type": "string"},
+    "rollbackTargetVersionId": {},
+    "status": {"type": "string", "enum": ["promoted", "rolled_back"]},
+    "promotedAt": {"type": "string"},
+    "idempotencyKey": {"type": "string"}
+  }
+}

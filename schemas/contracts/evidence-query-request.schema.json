@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.evidence-query-request.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["projectId", "question"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.evidence-query-request.v1", "default": "phase8.evidence-query-request.v1"},
+    "projectId": {"type": "string", "format": "uuid"},
+    "question": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "queryMode": {"type": "string", "enum": ["keyword", "semantic", "hybrid"], "default": "hybrid"},
+    "filters": {"type": "object", "default": {}},
+    "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20},
+    "cursor": {"anyOf": [{"type": "string", "maxLength": 4096}, {"type": "null"}], "default": null},
+    "includeAnswer": {"type": "boolean", "default": true}
+  }
+}

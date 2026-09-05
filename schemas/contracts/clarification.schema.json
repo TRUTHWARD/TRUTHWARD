@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.clarification.v1",
+  "title": "Clarification Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "clarificationId", "requirementVersionId", "question", "priority", "status", "answer", "evidenceRefs", "metadata"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.clarification.v1"},
+    "clarificationId": {"type": "string"},
+    "requirementVersionId": {"type": "string"},
+    "question": {"type": "string", "minLength": 1},
+    "priority": {"type": "string"},
+    "status": {"type": "string"},
+    "answer": {"type": ["string", "null"]},
+    "evidenceRefs": {"type": "array", "items": {"type": "object"}},
+    "metadata": {"type": "object"}
+  }
+}

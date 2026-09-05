@@ -1,0 +1,897 @@
+{
+  "$defs": {
+    "CandidateAmbiguity": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "maxLength": 120,
+          "pattern": "^CANDIDATE_[A-Z0-9_]+$",
+          "title": "Code",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "entityRef": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entityref"
+        },
+        "detailKey": {
+          "maxLength": 180,
+          "pattern": "^candidate\\.ambiguity\\.[a-z0-9_.-]+$",
+          "title": "Detailkey",
+          "type": "string"
+        },
+        "sourceEventRefs": {
+          "items": {
+            "$ref": "#/$defs/CandidateSourceRef"
+          },
+          "maxItems": 256,
+          "title": "Sourceeventrefs",
+          "type": "array"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "maxProperties": 32,
+          "title": "Parameters",
+          "type": "object"
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "detailKey",
+        "sourceEventRefs"
+      ],
+      "title": "CandidateAmbiguity",
+      "type": "object"
+    },
+    "CandidateEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "edgeId": {
+          "format": "uuid",
+          "title": "Edgeid",
+          "type": "string"
+        },
+        "edgeRef": {
+          "maxLength": 500,
+          "pattern": "^ceg-edge://[^\\s]+$",
+          "title": "Edgeref",
+          "type": "string"
+        },
+        "edgeType": {
+          "enum": [
+            "precedes",
+            "transitions_to"
+          ],
+          "title": "Edgetype",
+          "type": "string"
+        },
+        "sourceNodeId": {
+          "format": "uuid",
+          "title": "Sourcenodeid",
+          "type": "string"
+        },
+        "targetNodeId": {
+          "format": "uuid",
+          "title": "Targetnodeid",
+          "type": "string"
+        },
+        "reviewStatus": {
+          "enum": [
+            "not_required",
+            "pending_review"
+          ],
+          "title": "Reviewstatus",
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/CandidateProvenance"
+        }
+      },
+      "required": [
+        "edgeId",
+        "edgeRef",
+        "edgeType",
+        "sourceNodeId",
+        "targetNodeId",
+        "reviewStatus",
+        "provenance"
+      ],
+      "title": "CandidateEdge",
+      "type": "object"
+    },
+    "CandidateEvidenceSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "independentRunCount": {
+          "minimum": 0,
+          "title": "Independentruncount",
+          "type": "integer"
+        },
+        "successCount": {
+          "minimum": 0,
+          "title": "Successcount",
+          "type": "integer"
+        },
+        "failureCount": {
+          "minimum": 0,
+          "title": "Failurecount",
+          "type": "integer"
+        },
+        "distinctRevisionCount": {
+          "minimum": 0,
+          "title": "Distinctrevisioncount",
+          "type": "integer"
+        },
+        "distinctEnvironmentCount": {
+          "minimum": 0,
+          "title": "Distinctenvironmentcount",
+          "type": "integer"
+        },
+        "verificationCoverage": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Verificationcoverage",
+          "type": "number"
+        },
+        "retryCount": {
+          "minimum": 0,
+          "title": "Retrycount",
+          "type": "integer"
+        },
+        "fallbackTypes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Fallbacktypes",
+          "type": "array"
+        },
+        "coordinateClickCount": {
+          "minimum": 0,
+          "title": "Coordinateclickcount",
+          "type": "integer"
+        },
+        "conflictRefs": {
+          "items": {
+            "$ref": "#/$defs/CandidateSourceRef"
+          },
+          "maxItems": 2000,
+          "title": "Conflictrefs",
+          "type": "array"
+        },
+        "flakySignals": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Flakysignals",
+          "type": "array"
+        },
+        "lastObservedAt": {
+          "format": "date-time",
+          "title": "Lastobservedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "independentRunCount",
+        "successCount",
+        "failureCount",
+        "distinctRevisionCount",
+        "distinctEnvironmentCount",
+        "verificationCoverage",
+        "retryCount",
+        "fallbackTypes",
+        "coordinateClickCount",
+        "conflictRefs",
+        "flakySignals",
+        "lastObservedAt"
+      ],
+      "title": "CandidateEvidenceSummary",
+      "type": "object"
+    },
+    "CandidateModelSuggestion": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "not_requested",
+            "unavailable",
+            "suggested",
+            "rejected"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "suggestions": {
+          "items": {
+            "$ref": "#/$defs/CandidateSuggestionItem"
+          },
+          "maxItems": 128,
+          "title": "Suggestions",
+          "type": "array"
+        },
+        "modelInvocationRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CandidateSourceRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "applied": {
+          "const": false,
+          "default": false,
+          "title": "Applied",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "status",
+        "suggestions"
+      ],
+      "title": "CandidateModelSuggestion",
+      "type": "object"
+    },
+    "CandidateNode": {
+      "additionalProperties": false,
+      "properties": {
+        "nodeId": {
+          "format": "uuid",
+          "title": "Nodeid",
+          "type": "string"
+        },
+        "nodeRef": {
+          "maxLength": 500,
+          "pattern": "^ceg-node://[^\\s]+$",
+          "title": "Noderef",
+          "type": "string"
+        },
+        "semanticKey": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{1,255}$",
+          "title": "Semantickey",
+          "type": "string"
+        },
+        "nodeType": {
+          "enum": [
+            "action",
+            "assertion"
+          ],
+          "title": "Nodetype",
+          "type": "string"
+        },
+        "actionType": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Actiontype",
+          "type": "string"
+        },
+        "intentKey": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Intentkey",
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/CandidateProvenance"
+        }
+      },
+      "required": [
+        "nodeId",
+        "nodeRef",
+        "semanticKey",
+        "nodeType",
+        "actionType",
+        "intentKey",
+        "provenance"
+      ],
+      "title": "CandidateNode",
+      "type": "object"
+    },
+    "CandidatePath": {
+      "additionalProperties": false,
+      "properties": {
+        "pathId": {
+          "format": "uuid",
+          "title": "Pathid",
+          "type": "string"
+        },
+        "pathRef": {
+          "maxLength": 500,
+          "pattern": "^ceg-path://[^\\s]+$",
+          "title": "Pathref",
+          "type": "string"
+        },
+        "pathKey": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{1,255}$",
+          "title": "Pathkey",
+          "type": "string"
+        },
+        "versionId": {
+          "format": "uuid",
+          "title": "Versionid",
+          "type": "string"
+        },
+        "status": {
+          "const": "candidate",
+          "default": "candidate",
+          "title": "Status",
+          "type": "string"
+        },
+        "source": {
+          "const": "candidate",
+          "default": "candidate",
+          "title": "Source",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/CandidateNode"
+          },
+          "maxItems": 2000,
+          "minItems": 1,
+          "title": "Nodes",
+          "type": "array"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/CandidateEdge"
+          },
+          "maxItems": 2000,
+          "title": "Edges",
+          "type": "array"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/CandidatePathStep"
+          },
+          "maxItems": 2000,
+          "minItems": 1,
+          "title": "Steps",
+          "type": "array"
+        },
+        "provenance": {
+          "$ref": "#/$defs/CandidateProvenance"
+        },
+        "activeCanonical": {
+          "const": false,
+          "default": false,
+          "title": "Activecanonical",
+          "type": "boolean"
+        },
+        "promotionEligible": {
+          "const": false,
+          "default": false,
+          "title": "Promotioneligible",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "pathId",
+        "pathRef",
+        "pathKey",
+        "versionId",
+        "confidence",
+        "nodes",
+        "edges",
+        "steps",
+        "provenance"
+      ],
+      "title": "CandidatePath",
+      "type": "object"
+    },
+    "CandidatePathStep": {
+      "additionalProperties": false,
+      "properties": {
+        "stepId": {
+          "format": "uuid",
+          "title": "Stepid",
+          "type": "string"
+        },
+        "stepRef": {
+          "maxLength": 500,
+          "pattern": "^ceg-step://[^\\s]+$",
+          "title": "Stepref",
+          "type": "string"
+        },
+        "order": {
+          "maximum": 2000,
+          "minimum": 1,
+          "title": "Order",
+          "type": "integer"
+        },
+        "nodeId": {
+          "format": "uuid",
+          "title": "Nodeid",
+          "type": "string"
+        },
+        "viaEdgeId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Viaedgeid"
+        },
+        "outcome": {
+          "enum": [
+            "success",
+            "failure",
+            "partial",
+            "unknown"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "retryCount": {
+          "minimum": 0,
+          "title": "Retrycount",
+          "type": "integer"
+        },
+        "fallbackTypes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Fallbacktypes",
+          "type": "array"
+        },
+        "verificationStatus": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verificationstatus"
+        },
+        "provenance": {
+          "$ref": "#/$defs/CandidateProvenance"
+        }
+      },
+      "required": [
+        "stepId",
+        "stepRef",
+        "order",
+        "nodeId",
+        "viaEdgeId",
+        "outcome",
+        "retryCount",
+        "fallbackTypes",
+        "provenance"
+      ],
+      "title": "CandidatePathStep",
+      "type": "object"
+    },
+    "CandidateProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "sourceEventRefs": {
+          "items": {
+            "$ref": "#/$defs/CandidateSourceRef"
+          },
+          "maxItems": 2000,
+          "minItems": 1,
+          "title": "Sourceeventrefs",
+          "type": "array"
+        },
+        "evidenceRefs": {
+          "items": {
+            "$ref": "#/$defs/CandidateSourceRef"
+          },
+          "maxItems": 2000,
+          "title": "Evidencerefs",
+          "type": "array"
+        },
+        "transformerVersion": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Transformerversion",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "ambiguities": {
+          "items": {
+            "$ref": "#/$defs/CandidateAmbiguity"
+          },
+          "maxItems": 2000,
+          "title": "Ambiguities",
+          "type": "array"
+        }
+      },
+      "required": [
+        "sourceEventRefs",
+        "evidenceRefs",
+        "transformerVersion",
+        "confidence",
+        "ambiguities"
+      ],
+      "title": "CandidateProvenance",
+      "type": "object"
+    },
+    "CandidateSourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "execution",
+            "trace",
+            "trace_span",
+            "execution_task",
+            "visual_attempt",
+            "verification",
+            "tool_call",
+            "connector_call",
+            "artifact",
+            "evidence",
+            "replay",
+            "audit",
+            "guardrail",
+            "model_invocation",
+            "candidate_build"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "ref": {
+          "maxLength": 500,
+          "minLength": 4,
+          "pattern": "^[a-z][a-z0-9+.-]*://[^\\s]+$",
+          "title": "Ref",
+          "type": "string"
+        },
+        "contentHash": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contenthash"
+        },
+        "available": {
+          "default": true,
+          "title": "Available",
+          "type": "boolean"
+        },
+        "unavailableReason": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unavailablereason"
+        }
+      },
+      "required": [
+        "type",
+        "ref"
+      ],
+      "title": "CandidateSourceRef",
+      "type": "object"
+    },
+    "CandidateSuggestionItem": {
+      "additionalProperties": false,
+      "properties": {
+        "suggestionType": {
+          "enum": [
+            "ambiguity",
+            "confidence_review",
+            "semantic_label"
+          ],
+          "title": "Suggestiontype",
+          "type": "string"
+        },
+        "targetSemanticKey": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{1,255}$",
+          "title": "Targetsemantickey",
+          "type": "string"
+        },
+        "reasonCode": {
+          "maxLength": 120,
+          "pattern": "^CANDIDATE_MODEL_[A-Z0-9_]+$",
+          "title": "Reasoncode",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        }
+      },
+      "required": [
+        "suggestionType",
+        "targetSemanticKey",
+        "reasonCode",
+        "confidence"
+      ],
+      "title": "CandidateSuggestionItem",
+      "type": "object"
+    },
+    "ObservedTraceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "executionId": {
+          "format": "uuid",
+          "title": "Executionid",
+          "type": "string"
+        },
+        "traceRefs": {
+          "items": {
+            "$ref": "#/$defs/CandidateSourceRef"
+          },
+          "maxItems": 128,
+          "title": "Tracerefs",
+          "type": "array"
+        },
+        "sourceEventRefs": {
+          "items": {
+            "$ref": "#/$defs/CandidateSourceRef"
+          },
+          "maxItems": 20000,
+          "minItems": 1,
+          "title": "Sourceeventrefs",
+          "type": "array"
+        },
+        "toolCallRefs": {
+          "items": {
+            "$ref": "#/$defs/CandidateSourceRef"
+          },
+          "maxItems": 2000,
+          "title": "Toolcallrefs",
+          "type": "array"
+        },
+        "connectorCallRefs": {
+          "items": {
+            "$ref": "#/$defs/CandidateSourceRef"
+          },
+          "maxItems": 2000,
+          "title": "Connectorcallrefs",
+          "type": "array"
+        },
+        "replayRefs": {
+          "items": {
+            "$ref": "#/$defs/CandidateSourceRef"
+          },
+          "maxItems": 256,
+          "title": "Replayrefs",
+          "type": "array"
+        },
+        "authoritative": {
+          "const": true,
+          "default": true,
+          "title": "Authoritative",
+          "type": "boolean"
+        },
+        "observed": {
+          "const": true,
+          "default": true,
+          "title": "Observed",
+          "type": "boolean"
+        },
+        "immutable": {
+          "const": true,
+          "default": true,
+          "title": "Immutable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "executionId",
+        "traceRefs",
+        "sourceEventRefs",
+        "toolCallRefs",
+        "connectorCallRefs",
+        "replayRefs"
+      ],
+      "title": "ObservedTraceRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "phase8.candidate-build-result.v1",
+      "default": "phase8.candidate-build-result.v1",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "buildId": {
+      "format": "uuid",
+      "title": "Buildid",
+      "type": "string"
+    },
+    "buildRef": {
+      "maxLength": 500,
+      "pattern": "^candidate-build://[^\\s]+$",
+      "title": "Buildref",
+      "type": "string"
+    },
+    "projectId": {
+      "format": "uuid",
+      "title": "Projectid",
+      "type": "string"
+    },
+    "graphId": {
+      "format": "uuid",
+      "title": "Graphid",
+      "type": "string"
+    },
+    "candidateVersionId": {
+      "format": "uuid",
+      "title": "Candidateversionid",
+      "type": "string"
+    },
+    "status": {
+      "const": "completed",
+      "title": "Status",
+      "type": "string"
+    },
+    "transformerVersion": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Transformerversion",
+      "type": "string"
+    },
+    "configHash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Confighash",
+      "type": "string"
+    },
+    "observedTrace": {
+      "$ref": "#/$defs/ObservedTraceRef"
+    },
+    "candidatePath": {
+      "$ref": "#/$defs/CandidatePath"
+    },
+    "evidenceSummary": {
+      "$ref": "#/$defs/CandidateEvidenceSummary"
+    },
+    "ambiguities": {
+      "items": {
+        "$ref": "#/$defs/CandidateAmbiguity"
+      },
+      "maxItems": 5000,
+      "title": "Ambiguities",
+      "type": "array"
+    },
+    "modelSuggestion": {
+      "$ref": "#/$defs/CandidateModelSuggestion"
+    },
+    "traceId": {
+      "format": "uuid",
+      "title": "Traceid",
+      "type": "string"
+    },
+    "guardrailEventRefs": {
+      "items": {
+        "$ref": "#/$defs/CandidateSourceRef"
+      },
+      "maxItems": 128,
+      "title": "Guardraileventrefs",
+      "type": "array"
+    },
+    "auditRefs": {
+      "items": {
+        "$ref": "#/$defs/CandidateSourceRef"
+      },
+      "maxItems": 128,
+      "title": "Auditrefs",
+      "type": "array"
+    },
+    "canonical": {
+      "const": false,
+      "default": false,
+      "title": "Canonical",
+      "type": "boolean"
+    },
+    "active": {
+      "const": false,
+      "default": false,
+      "title": "Active",
+      "type": "boolean"
+    },
+    "promotionPerformed": {
+      "const": false,
+      "default": false,
+      "title": "Promotionperformed",
+      "type": "boolean"
+    },
+    "writesGate": {
+      "const": false,
+      "default": false,
+      "title": "Writesgate",
+      "type": "boolean"
+    },
+    "writesMemory": {
+      "const": false,
+      "default": false,
+      "title": "Writesmemory",
+      "type": "boolean"
+    },
+    "executesActions": {
+      "const": false,
+      "default": false,
+      "title": "Executesactions",
+      "type": "boolean"
+    },
+    "readOnly": {
+      "const": true,
+      "default": true,
+      "title": "Readonly",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "buildId",
+    "buildRef",
+    "projectId",
+    "graphId",
+    "candidateVersionId",
+    "status",
+    "transformerVersion",
+    "configHash",
+    "observedTrace",
+    "candidatePath",
+    "evidenceSummary",
+    "ambiguities",
+    "modelSuggestion",
+    "traceId",
+    "guardrailEventRefs",
+    "auditRefs"
+  ],
+  "title": "CandidateBuildResult",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-qa.local/schemas/candidate-build-result.schema.json"
+}

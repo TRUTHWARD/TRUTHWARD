@@ -1,0 +1,223 @@
+{
+  "schemaVersion": "tst-p2-032.public-quality-report.v1",
+  "benchmarkId": "agentic-qa-public-quality",
+  "benchmarkVersion": "31.1.0",
+  "datasetVersion": "public-quality-dataset.v1",
+  "generatedAt": "2026-08-03T00:00:00+00:00",
+  "license": {
+    "spdx": "Apache-2.0",
+    "scope": "repository-authored sample, probes, oracle, and results",
+    "thirdPartyAssets": false,
+    "noticeRef": "examples/public_quality_benchmark/NOTICE"
+  },
+  "candidateProducer": {
+    "type": "model_stub",
+    "id": "deterministic-triage-stub",
+    "version": "1.0.0",
+    "modelRole": "PRIMARY",
+    "provider": null,
+    "routingOwner": "model-gateway",
+    "configHash": "sha256:2ee8c8c994cc90d5bd78cbf96b383d7747d681dd3ed1d4ec2003ddd09258de86"
+  },
+  "versions": {
+    "schemaVersion": "tst-p2-032.tool-model-pins.v1",
+    "benchmarkVersion": "31.1.0",
+    "sampleApp": {"id": "public-quality-sample", "version": "1.0.0"},
+    "observationTool": {"id": "stdlib-loopback-probe", "version": "1.0.0"},
+    "modelStub": {"id": "deterministic-triage-stub", "version": "1.0.0"},
+    "optionalNamedActualTools": {
+      "playwright": {"version": "1.61.1", "chromiumRevision": "1228", "browserVersion": "149.0.7827.55"},
+      "k6": {"version": "2.0.0"},
+      "semgrep": {"version": "1.163.0"},
+      "nuclei": {"version": "3.8.0"},
+      "zap": {"version": "2.17.0"}
+    },
+    "pinSources": ["frontend/package-lock.json", "security/tool-versions.json", "scripts/install-k6.ps1"]
+  },
+  "executionClass": "contract_only",
+  "actualValidation": {
+    "evidenceClass": "contract_only",
+    "requiredSuites": ["actual_playwright", "actual_k6", "actual_security_tools", "connector_conformance", "document_security", "analyze_normalize_gate", "release_static"],
+    "suites": [
+      {"id": "actual_playwright", "status": "not_run", "passed": 0, "failed": 0, "skipped": 0},
+      {"id": "actual_k6", "status": "not_run", "passed": 0, "failed": 0, "skipped": 0},
+      {"id": "actual_security_tools", "status": "not_run", "passed": 0, "failed": 0, "skipped": 0},
+      {"id": "connector_conformance", "status": "not_run", "passed": 0, "failed": 0, "skipped": 0},
+      {"id": "document_security", "status": "not_run", "passed": 0, "failed": 0, "skipped": 0},
+      {"id": "analyze_normalize_gate", "status": "not_run", "passed": 0, "failed": 0, "skipped": 0},
+      {"id": "release_static", "status": "not_run", "passed": 0, "failed": 0, "skipped": 0}
+    ],
+    "completePublicBenchmark": false,
+    "reason": "Named actual and deployment suites were not requested; publish contract-only result."
+  },
+  "truthSummary": {
+    "knownDefects": 7,
+    "negativeControls": 3,
+    "truthRef": "benchmarks/public_quality/expected-findings.v1.json",
+    "truthSha256": "sha256:5046589f6f3c31f9729a0ce478ff924a8547378d9bf0be3efc5ab8398290e6df"
+  },
+  "coverage": {
+    "observedCases": 10,
+    "totalCases": 10,
+    "ratio": 1.0,
+    "defectProbeCoverage": {"covered": 7, "total": 7, "ratio": 1.0},
+    "negativeControlCoverage": {"covered": 3, "total": 3, "ratio": 1.0},
+    "coverageRef": "benchmarks/public_quality/expected-coverage.v1.json"
+  },
+  "confusionMatrix": {
+    "truePositive": 5,
+    "falsePositive": 1,
+    "falseNegative": 2,
+    "trueNegative": 2,
+    "truePositiveCases": ["cart-quantity", "coupon-case", "reflected-xss", "search-latency", "sql-construction"],
+    "falsePositiveCases": ["health-version"],
+    "falseNegativeCases": ["debug-secret", "missing-csp"],
+    "trueNegativeCases": ["escaped-profile", "safe-order-query"]
+  },
+  "metrics": {
+    "precision": 0.833333,
+    "recall": 0.714286,
+    "falsePositiveRate": 0.333333,
+    "evidenceCompleteness": {
+      "ratio": 0.958333,
+      "presentFields": 23,
+      "requiredFields": 24,
+      "requiredPerFinding": ["rawRef", "location", "reproduction", "traceRef"],
+      "byCandidate": [
+        {"candidateId": "candidate-cart-quantity", "present": 4, "required": 4, "complete": true},
+        {"candidateId": "candidate-coupon-case", "present": 4, "required": 4, "complete": true},
+        {"candidateId": "candidate-search-latency", "present": 4, "required": 4, "complete": true},
+        {"candidateId": "candidate-reflected-xss", "present": 4, "required": 4, "complete": true},
+        {"candidateId": "candidate-sql-construction", "present": 4, "required": 4, "complete": true},
+        {"candidateId": "candidate-health-version", "present": 3, "required": 4, "complete": false}
+      ]
+    },
+    "timeToTriage": {
+      "measurementClass": "deterministic_model_stub_logical",
+      "unit": "ms",
+      "samples": 10,
+      "mean": 21.4,
+      "p50": 20.5,
+      "p95": 31,
+      "max": 31
+    },
+    "reproducibility": {
+      "ratio": 1.0,
+      "runs": 2,
+      "canonicalHashes": [
+        "sha256:7bd6e3d482440ee26cae04d9de23fae075960821953b7012b76fd1846bf171cb",
+        "sha256:7bd6e3d482440ee26cae04d9de23fae075960821953b7012b76fd1846bf171cb"
+      ],
+      "wallClockExcluded": true
+    }
+  },
+  "candidateFindings": [
+    {
+      "candidateId": "candidate-cart-quantity",
+      "caseId": "cart-quantity",
+      "domain": "functional",
+      "category": "functional_candidate",
+      "severity": "medium",
+      "title": "Triage candidate for cart-quantity",
+      "confidence": 0.98,
+      "evidence": {
+        "rawRef": "artifact://public-quality/observations/cart-quantity.json",
+        "location": "examples/public_quality_benchmark/app.py:21",
+        "reproduction": {"type": "json_value_differs", "path": "/api/cart/total?price=10&quantity=3", "jsonPath": "total", "expected": 30.0},
+        "traceRef": "trace://public-quality/cart-quantity"
+      }
+    },
+    {
+      "candidateId": "candidate-coupon-case",
+      "caseId": "coupon-case",
+      "domain": "functional",
+      "category": "functional_candidate",
+      "severity": "medium",
+      "title": "Triage candidate for coupon-case",
+      "confidence": 0.93,
+      "evidence": {
+        "rawRef": "artifact://public-quality/observations/coupon-case.json",
+        "location": "examples/public_quality_benchmark/app.py:28",
+        "reproduction": {"type": "json_value_differs", "path": "/api/cart/coupon?subtotal=100&coupon=save10", "jsonPath": "total", "expected": 90.0},
+        "traceRef": "trace://public-quality/coupon-case"
+      }
+    },
+    {
+      "candidateId": "candidate-search-latency",
+      "caseId": "search-latency",
+      "domain": "performance",
+      "category": "performance_candidate",
+      "severity": "medium",
+      "title": "Triage candidate for search-latency",
+      "confidence": 0.9,
+      "evidence": {
+        "rawRef": "artifact://public-quality/observations/search-latency.json",
+        "location": "examples/public_quality_benchmark/app.py:99",
+        "reproduction": {"type": "header_numeric_exceeds", "path": "/api/search?q=benchmark", "header": "X-Deterministic-Work-Ms", "threshold": 100},
+        "traceRef": "trace://public-quality/search-latency"
+      }
+    },
+    {
+      "candidateId": "candidate-reflected-xss",
+      "caseId": "reflected-xss",
+      "domain": "security",
+      "category": "security_candidate",
+      "severity": "medium",
+      "title": "Triage candidate for reflected-xss",
+      "confidence": 0.88,
+      "evidence": {
+        "rawRef": "artifact://public-quality/observations/reflected-xss.json",
+        "location": "examples/public_quality_benchmark/app.py:107",
+        "reproduction": {"type": "body_contains", "path": "/api/echo?value=%3Cscript%3Ealert%2831%29%3C%2Fscript%3E", "value": "<script>alert(31)</script>"},
+        "traceRef": "trace://public-quality/reflected-xss"
+      }
+    },
+    {
+      "candidateId": "candidate-sql-construction",
+      "caseId": "sql-construction",
+      "domain": "security",
+      "category": "security_candidate",
+      "severity": "medium",
+      "title": "Triage candidate for sql-construction",
+      "confidence": 0.84,
+      "evidence": {
+        "rawRef": "artifact://public-quality/observations/sql-construction.json",
+        "location": "examples/public_quality_benchmark/app.py:34",
+        "reproduction": {"type": "source_regex", "path": "examples/public_quality_benchmark/app.py", "pattern": "connection\\.execute\\(query\\)"},
+        "traceRef": "trace://public-quality/sql-construction"
+      }
+    },
+    {
+      "candidateId": "candidate-health-version",
+      "caseId": "health-version",
+      "domain": "security",
+      "category": "security_candidate",
+      "severity": "medium",
+      "title": "Triage candidate for health-version",
+      "confidence": 0.7,
+      "evidence": {
+        "rawRef": "artifact://public-quality/observations/health-version.json",
+        "location": "examples/public_quality_benchmark/app.py:85",
+        "reproduction": {"type": "json_key_present", "path": "/api/health", "jsonPath": "version"}
+      }
+    }
+  ],
+  "decisions": [
+    {"caseId": "cart-quantity", "candidate": true, "confidence": 0.98, "logicalTriageMs": 18, "observationRef": "artifact://public-quality/observations/cart-quantity.json", "observationHash": "sha256:498a240727e9871f722ba2059cf9ed7b8b4c7853012085f3ef4f1cd5eacf0cb0", "reason": "triggered_and_above_threshold"},
+    {"caseId": "coupon-case", "candidate": true, "confidence": 0.93, "logicalTriageMs": 20, "observationRef": "artifact://public-quality/observations/coupon-case.json", "observationHash": "sha256:85aab7f1479d12ae149f09e0be32b85b2fc22a4efc80db8c9b250ce50ae174a1", "reason": "triggered_and_above_threshold"},
+    {"caseId": "search-latency", "candidate": true, "confidence": 0.9, "logicalTriageMs": 24, "observationRef": "artifact://public-quality/observations/search-latency.json", "observationHash": "sha256:90b2d7b6b6e5f959a7e0e1e2eaaacef25c3aebeb5137d15cfc3ac6bf80972add", "reason": "triggered_and_above_threshold"},
+    {"caseId": "reflected-xss", "candidate": true, "confidence": 0.88, "logicalTriageMs": 22, "observationRef": "artifact://public-quality/observations/reflected-xss.json", "observationHash": "sha256:7b46083e6598a42447f83d0a8fac645f711c30c1fc57da5dd6997f14ad6ec06c", "reason": "triggered_and_above_threshold"},
+    {"caseId": "sql-construction", "candidate": true, "confidence": 0.84, "logicalTriageMs": 21, "observationRef": "artifact://public-quality/observations/sql-construction.json", "observationHash": "sha256:a9723c8462722748d5689c951308f2f2ef8550f107fa9c02e45ae49d5649a3be", "reason": "triggered_and_above_threshold"},
+    {"caseId": "debug-secret", "candidate": false, "confidence": 0.62, "logicalTriageMs": 30, "observationRef": "artifact://public-quality/observations/debug-secret.json", "observationHash": "sha256:2ea9b12b81c44a2372e872f7b7f18dbacd970da266e55e40f2e68dbcc939f783", "reason": "not_triggered_or_below_threshold"},
+    {"caseId": "missing-csp", "candidate": false, "confidence": 0.55, "logicalTriageMs": 31, "observationRef": "artifact://public-quality/observations/missing-csp.json", "observationHash": "sha256:1645773630015ade16a77cedbde733f9cb90d863c6d817298bfe29458d2d86f5", "reason": "not_triggered_or_below_threshold"},
+    {"caseId": "health-version", "candidate": true, "confidence": 0.7, "logicalTriageMs": 17, "observationRef": "artifact://public-quality/observations/health-version.json", "observationHash": "sha256:2484dd16208638493ba705a3d91cf23a235f6360797c12edfba5aea1e5e6f0e5", "reason": "triggered_and_above_threshold"},
+    {"caseId": "safe-order-query", "candidate": false, "confidence": 0.4, "logicalTriageMs": 16, "observationRef": "artifact://public-quality/observations/safe-order-query.json", "observationHash": "sha256:498098eff14bb6fadc8744823426147e8b3f15eea48ce01ca28e52c433067b11", "reason": "not_triggered_or_below_threshold"},
+    {"caseId": "escaped-profile", "candidate": false, "confidence": 0.2, "logicalTriageMs": 15, "observationRef": "artifact://public-quality/observations/escaped-profile.json", "observationHash": "sha256:1f07c15d84d0907f20d2e6c21e43754b95c69d1bd621f2bd988412626a487aab", "reason": "not_triggered_or_below_threshold"}
+  ],
+  "replayEvidence": {
+    "ref": "benchmarks/public_quality/replay-evidence.v1.json",
+    "inputSnapshotHash": "sha256:86f9f008f5ff546be501277889686500c473cb0d27c336ebc30acd861a6e43bb"
+  },
+  "status": "passed_contract_only",
+  "resultHash": "sha256:1b399ea618d5165fca7818aeef233bda90d79f87e0dfad5fffb30c5bd1cf07f3"
+}

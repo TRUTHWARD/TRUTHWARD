@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.admission-timeline.v1",
+  "title": "PR Admission Fixed Lifecycle Timeline", "type": "object", "additionalProperties": false,
+  "required": ["admissionRunId", "rootTraceRef", "mode", "workflowVersion", "stages", "stageSnapshotHash"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.admission-timeline.v1"}, "admissionRunId": {}, "rootTraceRef": {"minLength": 1},
+    "mode": {}, "workflowVersion": {"minLength": 1}, "stages": {"minItems": 6}, "stageSnapshotHash": {"pattern": "^sha256:[a-f0-9]{64}$"},
+    "nonAuthoritative": {"type": "boolean"}, "readOnly": {"const": true}
+  }
+}

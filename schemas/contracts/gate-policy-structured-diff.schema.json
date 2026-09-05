@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.gate-policy-structured-diff.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "changes", "summary", "redacted", "computedBy"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.gate-policy-structured-diff.v1"},
+    "changes": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["operation", "path", "before", "after"], "properties": {"operation": {"enum": ["add", "remove", "change"]}, "path": {"type": "string"}, "before": {}, "after": {}}}},
+    "summary": {"type": "object", "required": ["add", "remove", "change"], "properties": {"add": {"type": "integer"}, "remove": {"type": "integer"}, "change": {"type": "integer"}}},
+    "redacted": {"const": true}, "computedBy": {"const": "backend"}
+  }
+}

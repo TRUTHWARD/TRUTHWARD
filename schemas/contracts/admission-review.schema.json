@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.admission-review.v1",
+  "title": "Governed Admission Review Projection", "type": "object", "additionalProperties": false,
+  "required": ["admissionRunId", "state", "intent", "approvalRef", "requestedBy", "decidedBy", "requestedAt", "decidedAt", "commentPresent"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.admission-review.v1"}, "admissionRunId": {}, "state": {}, "intent": {},
+    "approvalRef": {}, "requestedBy": {}, "decidedBy": {}, "requestedAt": {}, "decidedAt": {}, "commentPresent": {},
+    "effect": {"const": "annotation_only"}, "mutatesCanonicalFinding": {"const": false},
+    "mutatesGateDecision": {"const": false}, "changesMergeState": {"const": false}, "readOnly": {"const": true}
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.decision-timeline-query.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["executionId"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.decision-timeline-query.v1", "default": "phase8.decision-timeline-query.v1"},
+    "executionId": {"type": "string", "format": "uuid"},
+    "traceId": {"anyOf": [{"type": "string", "format": "uuid"}, {"type": "null"}], "default": null},
+    "lifecycleStages": {"type": "array", "items": {"type": "string", "enum": ["PREPARE", "EXECUTE", "OBSERVE", "ANALYZE", "NORMALIZE", "GATE"]}},
+    "eventTypes": {"type": "array", "items": {"type": "string"}},
+    "statuses": {"type": "array", "items": {"type": "string"}},
+    "actorTypes": {"type": "array", "items": {"type": "string"}},
+    "occurredAfter": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "default": null},
+    "occurredBefore": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "default": null},
+    "cursor": {"anyOf": [{"type": "string", "maxLength": 4096}, {"type": "null"}], "default": null},
+    "snapshotAt": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "default": null},
+    "pageSize": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}
+  }
+}

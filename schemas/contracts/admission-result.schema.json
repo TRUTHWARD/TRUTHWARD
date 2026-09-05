@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.admission-result.v2",
+  "title": "PR Admission Result", "type": "object", "additionalProperties": false,
+  "required": ["mode", "conclusion", "shadowGate", "resultHash"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.admission-result.v2"}, "mode": {}, "conclusion": {},
+    "reasonCodes": {}, "normalizedFindingRefs": {}, "evidenceRefs": {}, "shadowGate": {}, "enforceGate": {}, "resultHash": {"pattern": "^sha256:[a-f0-9]{64}$"},
+    "nonAuthoritative": {"type": "boolean"}, "authoritativeAdmissionDecision": {},
+    "gateDecisionCreated": {"type": "boolean"}, "ciWriteback": {"type": "boolean"}, "mergeBlocking": {"type": "boolean"}
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "tst-p2-032.expected-coverage.v1",
+  "benchmarkVersion": "31.1.0",
+  "sourceOfTruth": "benchmarks/public_quality/expected-findings.v1.json",
+  "knownDefects": 7,
+  "negativeControls": 3,
+  "benchmarkCases": 10,
+  "defectProbeCoverage": {
+    "covered": 7,
+    "total": 7,
+    "ratio": 1.0
+  },
+  "negativeControlCoverage": {
+    "covered": 3,
+    "total": 3,
+    "ratio": 1.0
+  },
+  "domainCoverage": {
+    "functional": {"knownDefects": 2, "probeCases": 2},
+    "performance": {"knownDefects": 1, "probeCases": 1},
+    "security": {"knownDefects": 4, "probeCases": 7}
+  },
+  "canonicalDecisionSource": "published oracle; frontend is not a decision source",
+  "caseRefs": [
+    "cart-quantity",
+    "coupon-case",
+    "search-latency",
+    "reflected-xss",
+    "sql-construction",
+    "debug-secret",
+    "missing-csp",
+    "health-version",
+    "safe-order-query",
+    "escaped-profile"
+  ]
+}

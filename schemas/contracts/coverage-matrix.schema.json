@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.coverage-matrix.v1",
+  "title": "Coverage Matrix Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requirementVersionId",
+    "summary",
+    "rows",
+    "missingLinks",
+    "status",
+    "scope",
+    "calculatedAt",
+    "pagination",
+    "filters"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.coverage-matrix.v1"
+    },
+    "requirementVersionId": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "object"
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "missingLinks": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "status": {
+      "type": "string"
+    },
+    "scope": {
+      "type": "object"
+    },
+    "calculatedAt": {
+      "type": "string"
+    },
+    "pagination": {
+      "type": "object"
+    },
+    "filters": {
+      "type": "object"
+    }
+  }
+}

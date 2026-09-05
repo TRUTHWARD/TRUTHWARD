@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.requirement-version.v1",
+  "title": "Requirement Version Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requirementVersionId", "sourceRef", "version", "contentHash", "document", "requirements", "acceptanceCriteria", "metadata", "createdAt"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.requirement-version.v1"},
+    "requirementVersionId": {"type": "string"},
+    "sourceRef": {"type": "string"},
+    "version": {"type": "integer", "minimum": 1},
+    "contentHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "document": {"type": "string", "minLength": 1},
+    "requirements": {"type": "array", "items": {"type": "string"}},
+    "acceptanceCriteria": {"type": "array", "items": {"type": "string"}},
+    "metadata": {"type": "object"},
+    "createdAt": {"type": "string"}
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.admission-review-request.v1",
+  "title": "Governed Admission Review Request", "type": "object", "additionalProperties": false,
+  "required": ["intent", "idempotencyKey"],
+  "properties": {"schemaVersion": {"const": "phase8.admission-review-request.v1"}, "intent": {}, "comment": {}, "idempotencyKey": {"minLength": 8}}
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.admission-run-request.v1",
+  "title": "Admission Run Request", "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "prContextVersionId", "selectiveReplayPlanId", "sourceArtifactRef", "idempotencyKey"],
+  "properties": {
+    "schemaVersion": {}, "prContextVersionId": {"type": "string"},
+    "selectiveReplayPlanId": {"type": "string"}, "environmentId": {"type": ["string", "null"]},
+    "mode": {}, "sourceArtifactRef": {"type": "object"}, "sandboxProfile": {"type": "object"},
+    "scanTools": {"type": "array", "minItems": 1}, "idempotencyKey": {"type": "string", "minLength": 8, "maxLength": 255}
+  }
+}

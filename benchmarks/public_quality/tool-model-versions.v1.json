@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "tst-p2-032.tool-model-pins.v1",
+  "benchmarkVersion": "31.1.0",
+  "sampleApp": {"id": "public-quality-sample", "version": "1.0.0"},
+  "observationTool": {"id": "stdlib-loopback-probe", "version": "1.0.0"},
+  "modelStub": {"id": "deterministic-triage-stub", "version": "1.0.0"},
+  "optionalNamedActualTools": {
+    "playwright": {"version": "1.61.1", "chromiumRevision": "1228", "browserVersion": "149.0.7827.55"},
+    "k6": {"version": "2.0.0"},
+    "semgrep": {"version": "1.163.0"},
+    "nuclei": {"version": "3.8.0"},
+    "zap": {"version": "2.17.0"}
+  },
+  "pinSources": [
+    "frontend/package-lock.json",
+    "security/tool-versions.json",
+    "scripts/install-k6.ps1"
+  ]
+}

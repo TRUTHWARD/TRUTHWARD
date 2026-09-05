@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.requirement-match-snapshot.v1",
+  "title": "Requirement Match Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "snapshotId", "prContextVersionId", "algorithmVersion", "status", "snapshotHash", "createdAt", "reviewRequired", "readOnly", "executionCreated"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.requirement-match-snapshot.v1"},
+    "snapshotId": {"type": "string", "format": "uuid"},
+    "prContextVersionId": {"type": "string", "format": "uuid"},
+    "algorithmVersion": {"const": "p20.requirement-match.v1"},
+    "status": {"enum": ["confirmed", "candidate", "conflict", "unknown"]},
+    "matches": {"type": "array"},
+    "explicitUnknownRefs": {"type": "array"},
+    "modelInvocationRefs": {"type": "array"},
+    "guardrailEventRefs": {"type": "array"},
+    "auditRefs": {"type": "array"},
+    "snapshotHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "createdAt": {"type": "string"},
+    "reviewRequired": {"type": "boolean"},
+    "readOnly": {"const": true},
+    "gateDecision": {"type": "null"},
+    "executionCreated": {"const": false}
+  }
+}

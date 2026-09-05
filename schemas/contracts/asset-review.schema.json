@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.asset-review.v1",
+  "title": "Asset Review Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "reviewId", "requirementVersionId", "planId", "status", "confidence", "issues", "coverageMap", "evidenceRefs", "metadata"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.asset-review.v1"},
+    "reviewId": {"type": "string"},
+    "requirementVersionId": {"type": "string"},
+    "planId": {"type": "string"},
+    "status": {"type": "string"},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "issues": {"type": "array", "items": {"type": "object"}},
+    "coverageMap": {"type": "object"},
+    "evidenceRefs": {"type": "array", "items": {"type": "object"}},
+    "metadata": {"type": "object"}
+  }
+}

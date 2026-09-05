@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.feedback-taxonomy.v1",
+  "title": "Feedback Taxonomy Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "taxonomyId", "lessonType", "sourceKinds", "descriptionKey", "reviewRequired", "promotionEligible"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.feedback-taxonomy.v1"},
+    "taxonomyId": {"type": "string", "minLength": 1},
+    "lessonType": {"type": "string"},
+    "sourceKinds": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "descriptionKey": {"type": "string", "minLength": 1},
+    "reviewRequired": {"type": "boolean", "const": true},
+    "promotionEligible": {"type": "boolean"}
+  }
+}

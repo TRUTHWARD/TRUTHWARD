@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.lesson-review.v1",
+  "title": "Lesson Review Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "lessonReviewId", "candidateId", "decision", "confirmedFact", "reason", "evidenceRefs", "reviewerRef", "idempotencyKey", "candidateLockVersion", "reviewedAt"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.lesson-review.v1"},
+    "lessonReviewId": {"type": "string"},
+    "candidateId": {"type": "string"},
+    "decision": {"type": "string"},
+    "confirmedFact": {"type": "boolean"},
+    "reason": {"type": "string", "minLength": 1},
+    "evidenceRefs": {"type": "array", "items": {"type": "object"}},
+    "reviewerRef": {"type": "object"},
+    "idempotencyKey": {"type": "string"},
+    "candidateLockVersion": {"type": "integer", "minimum": 1},
+    "reviewedAt": {"type": "string"}
+  }
+}

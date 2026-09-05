@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.correction-application.v1",
+  "title": "Correction Application Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "correctionApplicationId", "correctionProposalId", "idempotencyKey", "requestId", "status", "appliedChangeRefs", "sideEffectRefs", "evidenceRefs", "traceRefs", "startedAt", "finishedAt", "metadata"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.correction-application.v1"},
+    "correctionApplicationId": {"type": "string"},
+    "correctionProposalId": {"type": "string"},
+    "idempotencyKey": {"type": "string"},
+    "requestId": {"type": "string"},
+    "status": {"type": "string", "enum": ["pending", "applying", "applied", "failed_to_apply"]},
+    "appliedChangeRefs": {"type": "array", "items": {"type": "object"}},
+    "sideEffectRefs": {"type": "array", "items": {"type": "object"}},
+    "evidenceRefs": {"type": "array", "items": {"type": "object"}},
+    "traceRefs": {"type": "array", "items": {"type": "string"}},
+    "startedAt": {"type": ["string", "null"]},
+    "finishedAt": {"type": ["string", "null"]},
+    "metadata": {"type": "object"}
+  }
+}

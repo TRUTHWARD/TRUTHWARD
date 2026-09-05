@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.evidence-index-entry.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "entryId", "tenantId", "workspaceId", "projectId", "sourceType", "sourceId", "sourceVersion", "contentHash", "title", "summary", "facets", "evidenceRefs", "artifactRefs", "classification", "redactionVersion", "indexedAt", "sourceUpdatedAt", "stale", "retentionState", "unavailableReasonCode"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.evidence-index-entry.v1"},
+    "entryId": {"type": "string", "format": "uuid"},
+    "tenantId": {"type": "string", "minLength": 1, "maxLength": 128},
+    "workspaceId": {"type": "string", "minLength": 1, "maxLength": 128},
+    "projectId": {"type": "string", "format": "uuid"},
+    "sourceType": {"type": "string", "enum": ["execution", "finding", "gate", "policy", "trace", "replay", "graph", "artifact"]},
+    "sourceId": {"type": "string", "minLength": 1, "maxLength": 255},
+    "sourceVersion": {"type": "string", "minLength": 1, "maxLength": 255},
+    "contentHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "title": {"type": "string", "minLength": 1, "maxLength": 500},
+    "summary": {"type": "string", "maxLength": 4000},
+    "facets": {"type": "object"},
+    "evidenceRefs": {"type": "array", "items": {"type": "object"}},
+    "artifactRefs": {"type": "array", "items": {"type": "object"}},
+    "classification": {"type": "string", "enum": ["public", "internal", "confidential", "restricted"]},
+    "redactionVersion": {"type": "string", "minLength": 1, "maxLength": 80},
+    "indexedAt": {"type": "string", "format": "date-time"},
+    "sourceUpdatedAt": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]},
+    "stale": {"type": "boolean"},
+    "retentionState": {"type": "string", "enum": ["active", "archived", "purge_eligible", "purged", "legal_hold"]},
+    "unavailableReasonCode": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+  }
+}

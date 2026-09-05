@@ -1,0 +1,67 @@
+{
+  "$defs": {
+    "CandidateBuildConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "includeModelSuggestions": {
+          "default": false,
+          "title": "Includemodelsuggestions",
+          "type": "boolean"
+        },
+        "maxActions": {
+          "default": 1000,
+          "maximum": 2000,
+          "minimum": 1,
+          "title": "Maxactions",
+          "type": "integer"
+        },
+        "confidenceFloor": {
+          "default": 0.05,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidencefloor",
+          "type": "number"
+        }
+      },
+      "title": "CandidateBuildConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "phase8.candidate-build-request.v1",
+      "default": "phase8.candidate-build-request.v1",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "graphId": {
+      "format": "uuid",
+      "title": "Graphid",
+      "type": "string"
+    },
+    "executionId": {
+      "format": "uuid",
+      "title": "Executionid",
+      "type": "string"
+    },
+    "transformerVersion": {
+      "default": "trace-to-candidate.v1",
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Transformerversion",
+      "type": "string"
+    },
+    "config": {
+      "$ref": "#/$defs/CandidateBuildConfig"
+    }
+  },
+  "required": [
+    "graphId",
+    "executionId"
+  ],
+  "title": "CandidateBuildRequest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-qa.local/schemas/candidate-build-request.schema.json"
+}

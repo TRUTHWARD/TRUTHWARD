@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.capability-binding.v1",
+  "title": "Capability Binding Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "extensionPointId",
+    "skillId",
+    "skillVersionId",
+    "version",
+    "manifestHash",
+    "scopeType",
+    "scopeId",
+    "projectId",
+    "environment",
+    "stage",
+    "domain",
+    "status",
+    "priority",
+    "bindingConfig",
+    "pendingChange",
+    "approvalRefs",
+    "guardrailEventRefs",
+    "auditRefs",
+    "approvalRequired",
+    "approvalEnvelope",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.capability-binding.v1"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "extensionPointId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "skillId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "skillVersionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "manifestHash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "scopeType": {
+      "type": "string",
+      "enum": [
+        "global",
+        "workspace",
+        "project",
+        "environment",
+        "stage",
+        "domain"
+      ]
+    },
+    "scopeId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "projectId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "environment": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "stage": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "domain": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "active",
+        "disabled",
+        "deprecated",
+        "archived"
+      ]
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "bindingConfig": {
+      "type": "object"
+    },
+    "pendingChange": {
+      "type": "object"
+    },
+    "approvalRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "guardrailEventRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "auditRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "approvalRequired": {
+      "type": "boolean"
+    },
+    "approvalEnvelope": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "updatedAt": {
+      "type": "string"
+    },
+    "stateHash": {
+      "type": ["string", "null"],
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "communityLifecycle": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "policyVersion": {
+          "type": "string"
+        },
+        "canEnable": {
+          "type": "boolean"
+        },
+        "canDisable": {
+          "type": "boolean"
+        },
+        "unavailableReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "policyVersion",
+        "canEnable",
+        "canDisable",
+        "unavailableReason"
+      ]
+    }
+  }
+}

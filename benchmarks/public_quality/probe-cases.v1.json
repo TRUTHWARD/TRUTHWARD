@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "tst-p2-032.public-probes.v1",
+  "datasetVersion": "public-quality-dataset.v1",
+  "seed": 310032,
+  "cases": [
+    {
+      "caseId": "cart-quantity",
+      "domain": "functional",
+      "probe": {"type": "json_value_differs", "path": "/api/cart/total?price=10&quantity=3", "jsonPath": "total", "expected": 30.0},
+      "signalStrength": 0.98,
+      "logicalTriageMs": 18,
+      "location": "examples/public_quality_benchmark/app.py:21"
+    },
+    {
+      "caseId": "coupon-case",
+      "domain": "functional",
+      "probe": {"type": "json_value_differs", "path": "/api/cart/coupon?subtotal=100&coupon=save10", "jsonPath": "total", "expected": 90.0},
+      "signalStrength": 0.93,
+      "logicalTriageMs": 20,
+      "location": "examples/public_quality_benchmark/app.py:28"
+    },
+    {
+      "caseId": "search-latency",
+      "domain": "performance",
+      "probe": {"type": "header_numeric_exceeds", "path": "/api/search?q=benchmark", "header": "X-Deterministic-Work-Ms", "threshold": 100},
+      "signalStrength": 0.9,
+      "logicalTriageMs": 24,
+      "location": "examples/public_quality_benchmark/app.py:99"
+    },
+    {
+      "caseId": "reflected-xss",
+      "domain": "security",
+      "probe": {"type": "body_contains", "path": "/api/echo?value=%3Cscript%3Ealert%2831%29%3C%2Fscript%3E", "value": "<script>alert(31)</script>"},
+      "signalStrength": 0.88,
+      "logicalTriageMs": 22,
+      "location": "examples/public_quality_benchmark/app.py:107"
+    },
+    {
+      "caseId": "sql-construction",
+      "domain": "security",
+      "probe": {"type": "source_regex", "path": "examples/public_quality_benchmark/app.py", "pattern": "connection\\.execute\\(query\\)"},
+      "signalStrength": 0.84,
+      "logicalTriageMs": 21,
+      "location": "examples/public_quality_benchmark/app.py:34"
+    },
+    {
+      "caseId": "debug-secret",
+      "domain": "security",
+      "probe": {"type": "json_key_present", "path": "/api/debug", "jsonPath": "apiKey"},
+      "signalStrength": 0.62,
+      "logicalTriageMs": 30,
+      "location": "examples/public_quality_benchmark/app.py:112"
+    },
+    {
+      "caseId": "missing-csp",
+      "domain": "security",
+      "probe": {"type": "header_absent", "path": "/", "header": "Content-Security-Policy"},
+      "signalStrength": 0.55,
+      "logicalTriageMs": 31,
+      "location": "examples/public_quality_benchmark/app.py:74"
+    },
+    {
+      "caseId": "health-version",
+      "domain": "security",
+      "probe": {"type": "json_key_present", "path": "/api/health", "jsonPath": "version"},
+      "signalStrength": 0.7,
+      "logicalTriageMs": 17,
+      "location": "examples/public_quality_benchmark/app.py:85"
+    },
+    {
+      "caseId": "safe-order-query",
+      "domain": "security",
+      "probe": {"type": "json_value_differs", "path": "/api/orders/safe?id=31", "jsonPath": "parameterCount", "expected": 1},
+      "signalStrength": 0.4,
+      "logicalTriageMs": 16,
+      "location": "examples/public_quality_benchmark/app.py:115"
+    },
+    {
+      "caseId": "escaped-profile",
+      "domain": "security",
+      "probe": {"type": "body_contains", "path": "/api/profile?name=%3Cscript%3Ealert%2831%29%3C%2Fscript%3E", "value": "<script>alert(31)</script>"},
+      "signalStrength": 0.2,
+      "logicalTriageMs": 15,
+      "location": "examples/public_quality_benchmark/app.py:119"
+    }
+  ]
+}

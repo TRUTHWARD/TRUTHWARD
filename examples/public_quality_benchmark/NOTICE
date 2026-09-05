@@ -1,0 +1,10 @@
+Copyright 2026 Agentic QA System contributors
+
+This sample application, its fixtures, and its documentation are original
+repository-authored works designated for Apache-2.0 licensing in an approved
+OSS distribution under `release/oss/LICENSE`.
+They contain no third-party code, media, fonts, datasets, or generated vendor
+content.
+
+The application intentionally contains synthetic defects for local testing.
+It must only be bound to a loopback address.

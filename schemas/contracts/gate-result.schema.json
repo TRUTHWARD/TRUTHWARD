@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.gate-result.v1",
+  "title": "Policy-driven Gate Evaluation Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "evaluatorVersion", "evaluationId", "executionId", "decision",
+    "domainResults", "reasonCodes", "reasons", "matchedRules", "blockingRefs",
+    "warningRefs", "metricEvaluations", "completeness", "confidence", "policy",
+    "input", "decisionSnapshot", "decisionSnapshotHash", "writesGateDecision"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "phase8.gate-result.v1"},
+    "evaluatorVersion": {"type": "string", "minLength": 1},
+    "evaluationId": {"type": "string", "minLength": 1},
+    "executionId": {"type": "string", "minLength": 1},
+    "decision": {"$ref": "#/$defs/decision"},
+    "domainResults": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/domainResult"}},
+    "reasonCodes": {"type": "array", "items": {"$ref": "#/$defs/reasonCode"}},
+    "reasons": {"type": "array", "items": {"type": "string"}},
+    "matchedRules": {"type": "array", "items": {"type": "string"}},
+    "blockingRefs": {"type": "array", "items": {"$ref": "#/$defs/ref"}},
+    "warningRefs": {"type": "array", "items": {"$ref": "#/$defs/ref"}},
+    "metricEvaluations": {"type": "array", "items": {"$ref": "#/$defs/metricEvaluation"}},
+    "completeness": {"$ref": "#/$defs/completeness"},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "policy": {"type": "object"},
+    "input": {"type": "object"},
+    "decisionSnapshot": {"type": "object"},
+    "decisionSnapshotHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "writesGateDecision": {"const": false}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "decision": {"enum": ["pass", "warn", "fail", "blocked"]},
+    "reasonCode": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,127}$"},
+    "ref": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "id", "source"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1}
+      }
+    },
+    "metricEvaluation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["metricRef", "domain", "ruleId", "value", "threshold", "comparisonValue", "outcome", "decision", "reasonCode"],
+      "properties": {
+        "metricRef": {"type": "string", "minLength": 1},
+        "domain": {"enum": ["functional", "performance", "security"]},
+        "ruleId": {"type": ["string", "null"]},
+        "value": {"type": "number"},
+        "threshold": {"type": ["number", "null"]},
+        "comparisonValue": {"type": ["number", "null"]},
+        "outcome": {"enum": ["matched", "not_matched", "ignored", "invalid"]},
+        "decision": {"$ref": "#/$defs/decision"},
+        "reasonCode": {"anyOf": [{"$ref": "#/$defs/reasonCode"}, {"type": "null"}]}
+      }
+    },
+    "domainResult": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "domain", "applicability", "availability", "decision", "reasonCodes", "matchedRules",
+        "blockingRefs", "warningRefs", "metricEvaluations", "completeness", "confidence", "authorityRefs"
+      ],
+      "properties": {
+        "domain": {"enum": ["functional", "performance", "security"]},
+        "applicability": {"enum": ["applicable", "not_applicable", "unknown"]},
+        "availability": {"enum": ["available", "missing", "invalid", "unavailable"]},
+        "decision": {"$ref": "#/$defs/decision"},
+        "reasonCodes": {"type": "array", "items": {"$ref": "#/$defs/reasonCode"}},
+        "matchedRules": {"type": "array", "items": {"type": "string"}},
+        "blockingRefs": {"type": "array", "items": {"$ref": "#/$defs/ref"}},
+        "warningRefs": {"type": "array", "items": {"$ref": "#/$defs/ref"}},
+        "metricEvaluations": {"type": "array", "items": {"$ref": "#/$defs/metricEvaluation"}},
+        "completeness": {"enum": ["complete", "partial", "incomplete", "not_applicable", "unknown"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "authorityRefs": {"type": "array", "items": {"$ref": "#/$defs/ref"}}
+      }
+    },
+    "completeness": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "applicableDomainCount", "evaluatedDomainCount", "excludedDomainCount", "requiredMissingCount", "optionalMissingCount"],
+      "properties": {
+        "status": {"enum": ["complete", "partial", "incomplete", "unknown"]},
+        "applicableDomainCount": {"type": "integer", "minimum": 0},
+        "evaluatedDomainCount": {"type": "integer", "minimum": 0},
+        "excludedDomainCount": {"type": "integer", "minimum": 0},
+        "requiredMissingCount": {"type": "integer", "minimum": 0},
+        "optionalMissingCount": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

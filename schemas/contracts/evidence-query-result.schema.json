@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.evidence-query-result.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "queryHash", "projectId", "answer", "citations", "matchedEntries", "confidence", "limitations", "unavailableReasons", "traceId", "modelInvocationRef", "guardrailEventRefs", "nextCursor", "snapshotAt", "readOnly", "writesCanonicalDecision"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.evidence-query-result.v1"},
+    "queryHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "projectId": {"type": "string", "format": "uuid"},
+    "answer": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+    "citations": {"type": "array", "items": {"type": "object"}},
+    "matchedEntries": {"type": "array", "items": {"type": "object"}},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "unavailableReasons": {"type": "array", "items": {"type": "object"}},
+    "traceId": {"type": "string", "format": "uuid"},
+    "modelInvocationRef": {"anyOf": [{"type": "object"}, {"type": "null"}]},
+    "guardrailEventRefs": {"type": "array", "items": {"type": "object"}},
+    "nextCursor": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+    "snapshotAt": {"type": "string", "format": "date-time"},
+    "readOnly": {"type": "boolean", "const": true},
+    "writesCanonicalDecision": {"type": "boolean", "const": false}
+  }
+}

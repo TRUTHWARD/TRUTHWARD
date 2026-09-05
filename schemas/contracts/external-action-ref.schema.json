@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.external-action-ref.v1",
+  "title": "External CI Action Reference", "type": "object", "additionalProperties": false,
+  "required": ["provider", "connectorCallRef", "responseHash"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.external-action-ref.v1"}, "provider": {"type": "string"}, "operation": {"const": "write_check"},
+    "externalId": {}, "url": {}, "connectorCallRef": {"type": "string", "minLength": 1},
+    "responseHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+  }
+}

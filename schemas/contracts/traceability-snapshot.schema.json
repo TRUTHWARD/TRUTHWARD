@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.traceability-snapshot.v1",
+  "title": "Traceability Snapshot Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "traceabilitySnapshotRef",
+    "traceabilitySnapshotHash",
+    "coverageSummarySnapshot",
+    "coverageMatrixSnapshotRef",
+    "createdAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.traceability-snapshot.v1"
+    },
+    "traceabilitySnapshotRef": {
+      "type": "string"
+    },
+    "traceabilitySnapshotHash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "requirementScope": {
+      "type": ["object", "null"]
+    },
+    "coverageSummarySnapshot": {
+      "type": "object"
+    },
+    "coverageMatrixSnapshotRef": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string"
+    }
+  }
+}

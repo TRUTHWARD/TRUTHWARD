@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-qa.local/schemas/tst-p2-032-conformance-report-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kitVersion", "generatedAt", "evidenceClass", "adapters", "summary", "cases", "status", "reportHash"],
+  "properties": {
+    "schemaVersion": {"const": "tst-p2-032.conformance-report.v1"},
+    "kitVersion": {"type": "string"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "evidenceClass": {"const": "static_contract"},
+    "adapters": {"type": "array", "minItems": 1},
+    "summary": {
+      "type": "object",
+      "required": ["adapters", "tests", "passed", "failed", "skipped"]
+    },
+    "cases": {"type": "array", "minItems": 1},
+    "status": {"enum": ["passed", "failed"]},
+    "reportHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.test-asset.v1",
+  "title": "Test Asset Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "assetId", "requirementVersionId", "assetType", "domain", "title", "objective", "requirementRefs", "status", "evidenceRefs", "metadata"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.test-asset.v1"},
+    "assetId": {"type": "string"},
+    "requirementVersionId": {"type": "string"},
+    "assetType": {"type": "string"},
+    "domain": {"type": "string"},
+    "title": {"type": "string", "minLength": 1},
+    "objective": {"type": "string", "minLength": 1},
+    "requirementRefs": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "status": {"type": "string"},
+    "evidenceRefs": {"type": "array", "items": {"type": "object"}},
+    "metadata": {"type": "object"}
+  }
+}

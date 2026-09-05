@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.selective-replay-request.v1",
+  "title": "Selective Replay Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "impactResultId", "baseExecutionId", "coverageSnapshotId", "budget", "idempotencyKey"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.selective-replay-request.v1"},
+    "impactResultId": {"type": "string", "format": "uuid"},
+    "baseExecutionId": {"type": "string", "format": "uuid"},
+    "coverageSnapshotId": {"type": "string", "format": "uuid"},
+    "environmentId": {"type": ["string", "null"]},
+    "policyRefs": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/ref"}},
+    "budget": {"$ref": "#/$defs/budget"},
+    "confidenceThreshold": {"type": "number", "minimum": 0.5, "maximum": 1.0},
+    "ttlMinutes": {"type": "integer", "minimum": 5, "maximum": 1440},
+    "expectedHeadRevision": {"type": ["string", "null"]},
+    "idempotencyKey": {"type": "string", "minLength": 8, "maxLength": 255}
+  },
+  "$defs": {
+    "ref": {"type": "object", "additionalProperties": false, "required": ["type", "ref"], "properties": {"type": {"type": "string"}, "ref": {"type": "string"}, "contentHash": {"type": ["string", "null"]}}},
+    "budget": {"type": "object", "additionalProperties": false, "required": ["maxTests", "maxEstimatedSeconds", "overflowBehavior"], "properties": {"maxTests": {"type": "integer", "minimum": 1, "maximum": 10000}, "maxEstimatedSeconds": {"type": "integer", "minimum": 1, "maximum": 86400}, "overflowBehavior": {"enum": ["conservative_fallback", "preserve_high_risk"]}}}
+  }
+}

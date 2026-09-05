@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.admission-run.v3",
+  "title": "PR Admission Observe/Shadow/Enforce Run Projection", "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "admissionRunId", "projectId", "repositoryRef", "pullRequestNumber", "prContextVersionId", "selectiveReplayPlanId", "executionId", "environmentId", "mode", "workflowVersion", "status", "baseSha", "sourceHeadSha", "inputFingerprint", "sandboxProfile", "staticScan", "smokePlan", "smokeRun", "smokeResult", "requirementMatchRef", "impactResultRef", "changeSetRef", "selectiveReplayPlanRef", "stages", "stageSnapshotHash", "admissionResult", "review", "retry", "replaySnapshot", "guardrailEventRefs", "auditRefs", "traceRefs", "createdAt", "updatedAt", "rootTraceRef", "enforcementReadiness"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.admission-run.v3"}, "admissionRunId": {}, "projectId": {},
+    "repositoryRef": {"minLength": 1}, "pullRequestNumber": {"minimum": 1}, "prContextVersionId": {}, "selectiveReplayPlanId": {},
+    "executionId": {}, "environmentId": {}, "mode": {}, "workflowVersion": {"minLength": 1}, "nonAuthoritative": {"type": "boolean"},
+    "status": {}, "baseSha": {"pattern": "^[a-f0-9]{7,64}$"}, "sourceHeadSha": {"pattern": "^[a-f0-9]{7,64}$"}, "inputFingerprint": {"pattern": "^sha256:[a-f0-9]{64}$"}, "sandboxProfile": {},
+    "staticScan": {}, "smokePlan": {}, "smokeRun": {}, "smokeResult": {}, "requirementMatchRef": {},
+    "impactResultRef": {}, "changeSetRef": {}, "selectiveReplayPlanRef": {}, "stages": {"minItems": 6},
+    "stageSnapshotHash": {"pattern": "^sha256:[a-f0-9]{64}$"}, "admissionResult": {}, "review": {}, "retry": {}, "replaySnapshot": {},
+    "guardrailEventRefs": {}, "auditRefs": {}, "traceRefs": {}, "createdAt": {}, "updatedAt": {},
+    "rootTraceRef": {"minLength": 1}, "readOnly": {"const": true}, "admissionDecision": {},
+    "gateDecisionCreated": {"type": "boolean"}, "ciWriteback": {}, "enforcementReadiness": {"type": "object"},
+    "frontendAuthoritative": {"const": false}
+  }
+}

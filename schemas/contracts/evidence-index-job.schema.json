@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.evidence-index-job.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "jobId", "tenantId", "workspaceId", "projectId", "jobType", "status", "idempotencyKey", "sourceTypes", "scannedCount", "upsertedCount", "unchangedCount", "staleCount", "redactionVersion", "traceId", "startedAt", "finishedAt", "errorCode"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.evidence-index-job.v1"},
+    "jobId": {"type": "string", "format": "uuid"},
+    "tenantId": {"type": "string", "minLength": 1, "maxLength": 128},
+    "workspaceId": {"type": "string", "minLength": 1, "maxLength": 128},
+    "projectId": {"type": "string", "format": "uuid"},
+    "jobType": {"type": "string", "enum": ["incremental", "rebuild", "redaction_reindex"]},
+    "status": {"type": "string", "enum": ["queued", "running", "completed", "failed"]},
+    "idempotencyKey": {"type": "string", "minLength": 1, "maxLength": 255},
+    "sourceTypes": {"type": "array", "items": {"type": "string", "enum": ["execution", "finding", "gate", "policy", "trace", "replay", "graph", "artifact"]}},
+    "scannedCount": {"type": "integer", "minimum": 0},
+    "upsertedCount": {"type": "integer", "minimum": 0},
+    "unchangedCount": {"type": "integer", "minimum": 0},
+    "staleCount": {"type": "integer", "minimum": 0},
+    "redactionVersion": {"type": "string", "minLength": 1, "maxLength": 80},
+    "traceId": {"type": "string", "format": "uuid"},
+    "startedAt": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]},
+    "finishedAt": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]},
+    "errorCode": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+  }
+}

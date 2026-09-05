@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.ci-conclusion.v1",
+  "title": "Service-owned CI Conclusion", "type": "object", "additionalProperties": false,
+  "required": ["status", "admissionMode", "gateResult", "authoritative", "blocking", "summary", "platformRunLink"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.ci-conclusion.v1"}, "status": {"type": "string"}, "admissionMode": {"type": "string"},
+    "gateResult": {}, "authoritative": {"type": "boolean"}, "blocking": {"type": "boolean"}, "summary": {"type": "string", "minLength": 1},
+    "reasonCodes": {"type": "array"}, "evidenceLinks": {"type": "array"}, "platformRunLink": {"type": "string", "minLength": 1}
+  }
+}

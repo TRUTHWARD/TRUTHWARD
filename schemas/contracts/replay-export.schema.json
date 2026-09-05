@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.replay-export.v1",
+  "title": "Replay Export Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "exportedAt",
+    "requestId",
+    "executionId",
+    "traceRefs",
+    "storageRef",
+    "exportArtifactRef",
+    "exportHash",
+    "exportPayloadHash",
+    "redactionStatus",
+    "auditRefs",
+    "traceabilitySnapshotRef",
+    "traceabilitySnapshotHash",
+    "coverageSummarySnapshot",
+    "coverageMatrixSnapshotRef",
+    "replay",
+    "auditLogs"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.replay-export.v1"
+    },
+    "exportedAt": {
+      "type": "string"
+    },
+    "requestId": {
+      "type": "string"
+    },
+    "executionId": {
+      "type": "string"
+    },
+    "traceRefs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "storageRef": {
+      "type": ["string", "null"]
+    },
+    "exportArtifactRef": {
+      "type": ["string", "null"]
+    },
+    "exportHash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "exportPayloadHash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "redactionStatus": {
+      "type": "string"
+    },
+    "auditRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "traceabilitySnapshotRef": {
+      "type": ["string", "null"]
+    },
+    "traceabilitySnapshotHash": {
+      "type": ["string", "null"]
+    },
+    "requirementScope": {
+      "type": ["object", "null"]
+    },
+    "coverageSummarySnapshot": {
+      "type": ["object", "null"]
+    },
+    "coverageMatrixSnapshotRef": {
+      "type": ["string", "null"]
+    },
+    "graphCoverageSnapshot": {
+      "type": ["object", "null"]
+    },
+    "replay": {
+      "type": "object"
+    },
+    "auditLogs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}

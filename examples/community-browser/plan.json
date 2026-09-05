@@ -1,0 +1,29 @@
+{
+  "name": "Community browser example",
+  "sourceType": "manual",
+  "sourceRef": "community-browser-example",
+  "environment": "browser-example",
+  "projectId": null,
+  "environmentId": null,
+  "domains": ["functional"],
+  "riskLevel": "low",
+  "input": {"feature": "The Submit button is visible"},
+  "domainConfig": {
+    "functional": {
+      "actualExecution": true,
+      "targetUrl": "http://127.0.0.1:8765",
+      "semanticAction": {
+        "schemaVersion": "phase7.v1",
+        "actionId": "community-example-submit-visible",
+        "actionType": "assert_visible",
+        "semanticTarget": {"role": "button", "name": "Submit"},
+        "targetHints": {"selector": "[data-testid='submit']"},
+        "locatorStrategy": {"primary": "dom", "fallback": ["accessibility"]},
+        "fallbackPolicy": {"allowCoordinateClick": false},
+        "assertionIntent": {},
+        "riskLevel": "low",
+        "policyRefs": []
+      }
+    }
+  }
+}

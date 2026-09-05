@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.assertion-update.v1",
+  "title": "Assertion Update Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "changeType", "assertionRef", "beforeAssertion", "afterAssertion", "rationale", "riskLevel", "evidenceRefs", "metadata"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.assertion-update.v1"},
+    "changeType": {"type": "string", "const": "assertion_update"},
+    "assertionRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1}
+      }
+    },
+    "beforeAssertion": {"type": "object"},
+    "afterAssertion": {"type": "object"},
+    "rationale": {"type": "string", "minLength": 1},
+    "riskLevel": {"type": "string", "enum": ["low", "medium", "high"]},
+    "evidenceRefs": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "metadata": {"type": "object"}
+  }
+}

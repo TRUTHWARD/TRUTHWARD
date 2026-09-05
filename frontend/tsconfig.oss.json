@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@truthward/enterprise-pages": ["src/composition/enterprisePages.oss.tsx"],
+      "@truthward/gate-policies-page": ["src/pages/GatePoliciesPage.oss.tsx"]
+    }
+  },
+  "exclude": [
+    "../enterprise/**",
+    "src/pages/AccessControlPage.tsx",
+    "src/pages/AdvancedVisualizationPage.tsx",
+    "src/pages/CorrectionGovernancePage.tsx",
+    "src/pages/EnterpriseModulesPage.tsx",
+    "src/pages/GraphCorrectionsPage.tsx",
+    "src/pages/GatePoliciesPage.tsx",
+    "src/pages/ImprovementProposalsPage.tsx",
+    "src/pages/InteractiveGovernancePage.tsx",
+    "src/pages/KnowledgeGovernancePage.tsx",
+    "src/pages/LessonsCenterPage.tsx",
+    "src/pages/ModelsPage.tsx",
+    "src/pages/ReplayRepositoryPage.tsx"
+  ]
+}

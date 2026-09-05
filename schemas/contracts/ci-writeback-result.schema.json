@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.ci-writeback-result.v1",
+  "title": "Governed CI Writeback Result", "type": "object", "additionalProperties": false,
+  "required": ["writebackAttemptId", "admissionRunId", "status", "writeStatus", "checkName", "headSha", "conclusion", "enforcement", "staleRevision", "externalAction", "legacyFieldNotice", "attemptCount"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.ci-writeback-result.v1"}, "writebackAttemptId": {"type": "string"}, "admissionRunId": {"type": "string"},
+    "status": {"type": "string"}, "writeStatus": {"type": "string"}, "checkName": {"type": "string", "minLength": 1},
+    "headSha": {"type": "string", "pattern": "^[a-f0-9]{7,64}$"}, "conclusion": {}, "enforcement": {}, "staleRevision": {},
+    "externalAction": {}, "legacyFieldNotice": {}, "reasonCodes": {"type": "array"}, "attemptCount": {"type": "integer", "minimum": 1},
+    "idempotentReplay": {"type": "boolean"}
+  }
+}

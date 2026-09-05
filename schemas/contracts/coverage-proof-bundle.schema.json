@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.coverage-proof-bundle.v1",
+  "title": "Coverage Proof Bundle Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "requirementVersionId",
+    "requirementItemId",
+    "coverageStatus",
+    "proofStatus",
+    "proofChain",
+    "proofIssues",
+    "traceId"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "enum": [
+        "phase8.coverage-proof-bundle.v1",
+        "phase8.coverage-proof-bundle.v2"
+      ]
+    },
+    "generatedAt": {
+      "type": "string"
+    },
+    "requirementVersionId": {
+      "type": "string"
+    },
+    "primaryRequirementVersionId": {
+      "type": ["string", "null"]
+    },
+    "requirementVersionIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "requirementItemId": {
+      "type": "string"
+    },
+    "requirementScope": {
+      "type": ["object", "null"]
+    },
+    "coverageStatus": {
+      "type": "string",
+      "enum": [
+        "covered",
+        "partial",
+        "not_covered",
+        "blocked",
+        "not_applicable",
+        "unknown"
+      ]
+    },
+    "proofStatus": {
+      "type": "string",
+      "enum": [
+        "valid",
+        "stale",
+        "broken",
+        "superseded"
+      ]
+    },
+    "proofChain": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "testPointId",
+          "testCaseId",
+          "executionTaskId",
+          "proofEdges",
+          "evidenceArtifactRefs",
+          "rawFindingRefs",
+          "normalizedFindingRefs",
+          "gateDecisionRef",
+          "gateInputSnapshotRef",
+          "policySnapshotRef",
+          "approvalRefs",
+          "traceRefs",
+          "auditRefs",
+          "traceabilitySnapshotRef",
+          "traceabilitySnapshotHash",
+          "coverageMatrixSnapshotRef",
+          "coverageMatrixSnapshotHash",
+          "replayExportRef",
+          "replayExportHash",
+          "proofIssues"
+        ],
+        "properties": {
+          "testPointId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "testCaseId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "executionTaskId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proofEdges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "relationRef",
+                "sourceId",
+                "targetId",
+                "relationType",
+                "frozenStatus",
+                "currentStatus"
+              ],
+              "properties": {
+                "relationRef": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "table",
+                    "id",
+                    "status",
+                    "source",
+                    "scopeId",
+                    "confidence"
+                  ],
+                  "properties": {
+                    "table": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "confirmed",
+                        "system_verified"
+                      ]
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "scopeId": {
+                      "type": "string"
+                    },
+                    "confidence": {
+                      "type": "number",
+                      "minimum": 0.0,
+                      "maximum": 1.0
+                    }
+                  }
+                },
+                "sourceId": {
+                  "type": "string"
+                },
+                "targetId": {
+                  "type": "string"
+                },
+                "relationType": {
+                  "type": "string"
+                },
+                "frozenStatus": {
+                  "type": "string",
+                  "enum": [
+                    "confirmed",
+                    "system_verified"
+                  ]
+                },
+                "currentStatus": {
+                  "type": "string",
+                  "enum": [
+                    "confirmed",
+                    "system_verified",
+                    "stale",
+                    "invalid",
+                    "missing",
+                    "superseded"
+                  ]
+                }
+              }
+            }
+          },
+          "evidenceArtifactRefs": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "rawFindingRefs": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "normalizedFindingRefs": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "gateDecisionRef": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "gateInputSnapshotRef": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "policySnapshotRef": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "approvalRefs": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "traceRefs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "auditRefs": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "traceabilitySnapshotRef": {
+            "type": "string"
+          },
+          "traceabilitySnapshotHash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "coverageMatrixSnapshotRef": {
+            "type": "string"
+          },
+          "coverageMatrixSnapshotHash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "replayExportRef": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "replayExportHash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "proofIssues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "proofIssues": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "traceId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

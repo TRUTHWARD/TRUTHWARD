@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.gate-policy-draft-save.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["document", "contentHash", "idempotencyKey"],
+  "properties": {
+    "document": {"$ref": "gate-policy.schema.json"}, "contentHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "idempotencyKey": {"type": "string", "minLength": 1, "maxLength": 255}, "expectedVersion": {"type": ["integer", "null"]}
+  }
+}

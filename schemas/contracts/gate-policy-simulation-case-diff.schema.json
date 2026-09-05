@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.gate-policy-simulation-case-diff.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["caseId", "caseIndex", "gateInputSnapshotRef", "gateInputSnapshotHash", "status"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.gate-policy-simulation-case-diff.v1"},
+    "caseId": {"type": "string", "format": "uuid"},
+    "caseIndex": {"type": "integer", "minimum": 0},
+    "gateDecisionId": {"type": ["string", "null"], "format": "uuid"},
+    "executionId": {"type": ["string", "null"], "format": "uuid"},
+    "gateInputSnapshotRef": {"type": "string", "minLength": 1, "maxLength": 500},
+    "gateInputSnapshotHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "inputFingerprint": {"type": ["string", "null"]},
+    "status": {"type": "string", "enum": ["completed", "unavailable", "failed"]},
+    "oldDecision": {"type": ["string", "null"], "enum": ["pass", "warn", "fail", "blocked", null]},
+    "newDecision": {"type": ["string", "null"], "enum": ["pass", "warn", "fail", "blocked", null]},
+    "addedReasonCodes": {"type": "array", "items": {"type": "string"}},
+    "removedReasonCodes": {"type": "array", "items": {"type": "string"}},
+    "falsePassRisk": {"type": "boolean"},
+    "newBlock": {"type": "boolean"},
+    "errorCode": {"type": ["string", "null"]},
+    "authoritative": {"type": "boolean", "const": false}
+  }
+}

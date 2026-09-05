@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.gate-policy-mode-projection.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["projectId", "mode", "active", "authoritative", "blocksGate"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.gate-policy-mode-projection.v1"},
+    "projectId": {"type": "string", "format": "uuid"},
+    "mode": {"type": "string", "enum": ["observe", "shadow", "enforce"]},
+    "bindingId": {"type": ["string", "null"], "format": "uuid"},
+    "policyVersionId": {"type": ["string", "null"], "format": "uuid"},
+    "policyVersionHash": {"type": ["string", "null"]},
+    "active": {"type": "boolean"},
+    "authoritative": {"type": "boolean"},
+    "blocksGate": {"type": "boolean"},
+    "effectiveFrom": {"type": ["string", "null"], "format": "date-time"},
+    "historyRef": {"type": ["string", "null"]}
+  }
+}

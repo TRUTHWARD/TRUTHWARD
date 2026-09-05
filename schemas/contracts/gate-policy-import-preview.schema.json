@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.gate-policy-import-preview.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "format", "valid", "contentHash", "validationIssues", "canonicalPolicy", "diff", "limits", "activatesProduction", "executesGate"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.gate-policy-import-preview.v1"}, "format": {"enum": ["json", "yaml"]}, "valid": {"type": "boolean"},
+    "contentHash": {"type": ["string", "null"]}, "validationIssues": {"type": "array"},
+    "canonicalPolicy": {"type": ["object", "null"]}, "diff": {"$ref": "gate-policy-structured-diff.schema.json"}, "limits": {"type": "object"},
+    "activatesProduction": {"const": false}, "executesGate": {"const": false}
+  }
+}

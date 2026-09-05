@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.skill-result.v1",
+  "title": "Skill Result Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "result",
+    "confidence",
+    "evidence",
+    "artifactRefs",
+    "rawFindingRefs",
+    "findingCandidates",
+    "metadata"
+  ],
+  "properties": {
+    "result": {
+      "type": "object"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "artifactRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "rawFindingRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "findingCandidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "category",
+          "severity",
+          "title",
+          "summary",
+          "evidence",
+          "location",
+          "confidence",
+          "dedupeKey",
+          "rawRef"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "category": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object"
+            }
+          },
+          "location": {
+            "type": "object"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "dedupeKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rawRef": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

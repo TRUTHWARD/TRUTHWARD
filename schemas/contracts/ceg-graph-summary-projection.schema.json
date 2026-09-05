@@ -1,0 +1,691 @@
+{
+  "$defs": {
+    "CegCapabilityProjection": {
+      "additionalProperties": false,
+      "properties": {
+        "read": {
+          "title": "Read",
+          "type": "boolean"
+        },
+        "candidateRead": {
+          "title": "Candidateread",
+          "type": "boolean"
+        },
+        "coverageRead": {
+          "title": "Coverageread",
+          "type": "boolean"
+        },
+        "stalenessRead": {
+          "title": "Stalenessread",
+          "type": "boolean"
+        },
+        "evidenceRead": {
+          "title": "Evidenceread",
+          "type": "boolean"
+        },
+        "rawRead": {
+          "title": "Rawread",
+          "type": "boolean"
+        },
+        "proposeCorrection": {
+          "title": "Proposecorrection",
+          "type": "boolean"
+        },
+        "readOnly": {
+          "const": true,
+          "title": "Readonly",
+          "type": "boolean"
+        },
+        "backendAuthorization": {
+          "const": true,
+          "title": "Backendauthorization",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "read",
+        "candidateRead",
+        "coverageRead",
+        "stalenessRead",
+        "evidenceRead",
+        "rawRead",
+        "proposeCorrection",
+        "readOnly",
+        "backendAuthorization"
+      ],
+      "title": "CegCapabilityProjection",
+      "type": "object"
+    },
+    "CoverageBadgeProjection": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "covered",
+            "partial",
+            "uncovered",
+            "not_applicable",
+            "unknown"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "ratio": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ratio"
+        },
+        "covered": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Covered",
+          "type": "integer"
+        },
+        "total": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "snapshotId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Snapshotid"
+        },
+        "snapshotRef": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Snapshotref"
+        },
+        "computedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Computedat"
+        },
+        "reasonCodes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Reasoncodes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "CoverageBadgeProjection",
+      "type": "object"
+    },
+    "GraphSummaryItem": {
+      "additionalProperties": false,
+      "properties": {
+        "graphId": {
+          "format": "uuid",
+          "title": "Graphid",
+          "type": "string"
+        },
+        "graphRef": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Graphref",
+          "type": "string"
+        },
+        "graphKey": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Graphkey",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "projectId": {
+          "format": "uuid",
+          "title": "Projectid",
+          "type": "string"
+        },
+        "environmentId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Environmentid"
+        },
+        "scopeType": {
+          "enum": [
+            "project",
+            "environment"
+          ],
+          "title": "Scopetype",
+          "type": "string"
+        },
+        "scopeId": {
+          "format": "uuid",
+          "title": "Scopeid",
+          "type": "string"
+        },
+        "status": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        },
+        "graphVersionId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Graphversionid"
+        },
+        "graphVersionRef": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Graphversionref"
+        },
+        "versionNumber": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Versionnumber"
+        },
+        "versionStatus": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Versionstatus"
+        },
+        "versionSource": {
+          "anyOf": [
+            {
+              "enum": [
+                "observed",
+                "candidate",
+                "canonical"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Versionsource"
+        },
+        "contentHash": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contenthash"
+        },
+        "topology": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Topology",
+          "type": "object"
+        },
+        "staleness": {
+          "$ref": "#/$defs/StalenessBadgeProjection"
+        },
+        "coverage": {
+          "$ref": "#/$defs/CoverageBadgeProjection"
+        },
+        "learning": {
+          "$ref": "#/$defs/LearningModeProjection"
+        },
+        "updatedAt": {
+          "format": "date-time",
+          "title": "Updatedat",
+          "type": "string"
+        },
+        "sourceRefs": {
+          "items": {
+            "$ref": "#/$defs/StableProjectionRef"
+          },
+          "maxItems": 1024,
+          "minItems": 1,
+          "title": "Sourcerefs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "graphId",
+        "graphRef",
+        "graphKey",
+        "name",
+        "projectId",
+        "scopeType",
+        "scopeId",
+        "status",
+        "topology",
+        "staleness",
+        "coverage",
+        "learning",
+        "updatedAt",
+        "sourceRefs"
+      ],
+      "title": "GraphSummaryItem",
+      "type": "object"
+    },
+    "LearningModeProjection": {
+      "additionalProperties": false,
+      "properties": {
+        "graphLearningMode": {
+          "enum": [
+            "learn_only",
+            "human_supervised",
+            "controlled_autonomy"
+          ],
+          "title": "Graphlearningmode",
+          "type": "string"
+        },
+        "autonomyPaused": {
+          "title": "Autonomypaused",
+          "type": "boolean"
+        },
+        "pauseReasonCode": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pausereasoncode"
+        },
+        "bindingId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bindingid"
+        },
+        "policyVersionId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Policyversionid"
+        },
+        "fallbackReason": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Fallbackreason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "graphLearningMode",
+        "autonomyPaused",
+        "fallbackReason"
+      ],
+      "title": "LearningModeProjection",
+      "type": "object"
+    },
+    "ProjectionPage": {
+      "additionalProperties": false,
+      "properties": {
+        "pageSize": {
+          "maximum": 200,
+          "minimum": 1,
+          "title": "Pagesize",
+          "type": "integer"
+        },
+        "returned": {
+          "maximum": 200,
+          "minimum": 0,
+          "title": "Returned",
+          "type": "integer"
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nextcursor"
+        },
+        "hasMore": {
+          "title": "Hasmore",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "pageSize",
+        "returned",
+        "hasMore"
+      ],
+      "title": "ProjectionPage",
+      "type": "object"
+    },
+    "StableProjectionRef": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Type",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ref"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "available": {
+          "default": true,
+          "title": "Available",
+          "type": "boolean"
+        },
+        "unavailableReason": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unavailablereason"
+        },
+        "redacted": {
+          "default": false,
+          "title": "Redacted",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "id"
+      ],
+      "title": "StableProjectionRef",
+      "type": "object"
+    },
+    "StalenessBadgeProjection": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "fresh",
+            "suspect",
+            "stale",
+            "invalid",
+            "unknown"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "assessmentId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Assessmentid"
+        },
+        "assessedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Assessedat"
+        },
+        "reasonCodes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Reasoncodes",
+          "type": "array"
+        },
+        "automaticPromotionEligible": {
+          "title": "Automaticpromotioneligible",
+          "type": "boolean"
+        },
+        "autonomySuspended": {
+          "title": "Autonomysuspended",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "status",
+        "automaticPromotionEligible",
+        "autonomySuspended"
+      ],
+      "title": "StalenessBadgeProjection",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "phase8.ceg-graph-summary-projection.v1",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "generatedAt": {
+      "format": "date-time",
+      "title": "Generatedat",
+      "type": "string"
+    },
+    "projectId": {
+      "format": "uuid",
+      "title": "Projectid",
+      "type": "string"
+    },
+    "availability": {
+      "enum": [
+        "available",
+        "partial",
+        "unavailable"
+      ],
+      "title": "Availability",
+      "type": "string"
+    },
+    "unavailableReason": {
+      "anyOf": [
+        {
+          "maxLength": 160,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Unavailablereason"
+    },
+    "filters": {
+      "additionalProperties": true,
+      "title": "Filters",
+      "type": "object"
+    },
+    "capabilities": {
+      "$ref": "#/$defs/CegCapabilityProjection"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/GraphSummaryItem"
+      },
+      "maxItems": 200,
+      "title": "Items",
+      "type": "array"
+    },
+    "page": {
+      "$ref": "#/$defs/ProjectionPage"
+    },
+    "readOnly": {
+      "const": true,
+      "title": "Readonly",
+      "type": "boolean"
+    },
+    "frontendAuthoritative": {
+      "const": false,
+      "title": "Frontendauthoritative",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "projectId",
+    "availability",
+    "filters",
+    "capabilities",
+    "page",
+    "readOnly",
+    "frontendAuthoritative"
+  ],
+  "title": "GraphSummaryProjection",
+  "type": "object"
+}

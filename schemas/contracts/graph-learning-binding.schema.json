@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.graph-learning-binding.v1",
+  "title": "Scoped Graph Learning Policy Binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["policyVersionId", "policyVersionHash", "scopeType", "idempotencyKey"],
+  "properties": {
+    "policyVersionId": {"type": "string"},
+    "policyVersionHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "scopeType": {"type": "string", "enum": ["project", "environment"]},
+    "environmentId": {},
+    "graphLearningMode": {"type": "string", "enum": ["learn_only", "human_supervised", "controlled_autonomy"]},
+    "status": {"type": "string", "enum": ["active", "disabled"]},
+    "idempotencyKey": {"type": "string", "minLength": 1, "maxLength": 255}
+  }
+}

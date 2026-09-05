@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.improvement-validation-result.v1",
+  "title": "Improvement Validation Result Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "validationResultId", "proposalId", "proposalVersion", "status", "checks", "historicalSimulation", "counterexampleRegression", "evidenceRefs", "resultHash", "validatorVersion", "validatedAt"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.improvement-validation-result.v1"},
+    "validationResultId": {"type": "string"},
+    "proposalId": {"type": "string"},
+    "proposalVersion": {"type": "integer", "minimum": 1},
+    "status": {"type": "string", "enum": ["passed", "failed", "insufficient", "unavailable"]},
+    "checks": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "historicalSimulation": {"type": "object"},
+    "counterexampleRegression": {"type": ["object", "null"]},
+    "evidenceRefs": {"type": "array", "items": {"type": "object"}},
+    "resultHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "validatorVersion": {"type": "string", "minLength": 1},
+    "validatedAt": {"type": "string"}
+  }
+}

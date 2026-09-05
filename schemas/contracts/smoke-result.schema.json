@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.smoke-result.v1",
+  "title": "Smoke Result", "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "admissionRunId", "executionId", "status", "flakyDetected", "analyzeCompleted", "normalizeCompleted"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.smoke-result.v1"}, "admissionRunId": {"type": "string"}, "executionId": {"type": "string"},
+    "status": {"enum": ["completed", "failed", "partial", "unavailable", "cancelled"]}, "toolResults": {"type": "array"},
+    "artifactRefs": {"type": "array"}, "rawFindingRefs": {"type": "array"}, "findingCandidates": {"type": "array"},
+    "normalizedFindingRefs": {"type": "array"}, "unsupportedTests": {"type": "array", "items": {"type": "object"}}, "flakyDetected": {"type": ["boolean", "null"]},
+    "analyzeCompleted": {"type": "boolean"}, "normalizeCompleted": {"type": "boolean"}, "gateDecisionCreated": {"const": false}
+  }
+}

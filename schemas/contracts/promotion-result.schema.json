@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.lesson-promotion-result.v1",
+  "title": "Lesson Promotion Result Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "promotionResultId", "candidateId", "status", "memoryType", "memoryRef", "approvalRefs", "approvalState", "guardrailEventRefs", "auditRefs", "evidenceRefs", "rawRefs", "policySnapshot", "projectionState", "reasonCode", "idempotencyKey", "traceId", "createdAt"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.lesson-promotion-result.v1"},
+    "promotionResultId": {"type": "string"},
+    "candidateId": {"type": "string"},
+    "status": {"type": "string"},
+    "memoryType": {"type": "string"},
+    "memoryRef": {"type": "object"},
+    "approvalRefs": {"type": "array", "items": {"type": "object"}},
+    "approvalState": {"type": "string"},
+    "guardrailEventRefs": {"type": "array", "items": {"type": "object"}},
+    "auditRefs": {"type": "array", "items": {"type": "object"}},
+    "evidenceRefs": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "rawRefs": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "policySnapshot": {"type": "object"},
+    "projectionState": {"type": "string"},
+    "reasonCode": {"type": ["string", "null"]},
+    "idempotencyKey": {"type": "string"},
+    "traceId": {"type": "string"},
+    "createdAt": {"type": "string"}
+  }
+}

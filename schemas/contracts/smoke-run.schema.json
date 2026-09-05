@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.smoke-run.v1",
+  "title": "Smoke Run", "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "admissionRunId", "executionId", "status", "sandboxProfileHash"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.smoke-run.v1"}, "admissionRunId": {"type": "string"}, "executionId": {"type": "string"},
+    "status": {"enum": ["queued", "running", "completed", "failed", "partial", "unavailable", "cancelled"]},
+    "taskRefs": {"type": "array"}, "sandboxProfileHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "startedAt": {"type": ["string", "null"]}, "endedAt": {"type": ["string", "null"]}
+  }
+}

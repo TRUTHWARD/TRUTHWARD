@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.knowledge-promotion-record.v1",
+  "title": "Knowledge Promotion Record Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "knowledgePromotionId",
+    "source",
+    "sourceCorrectionId",
+    "correctionValidationId",
+    "replayValidationId",
+    "replayValidationRef",
+    "coverageProofRef",
+    "knowledgeEntry",
+    "evidenceRefs",
+    "replayRefs",
+    "approvalRefs",
+    "approvalState",
+    "policySnapshot",
+    "auditRefs",
+    "rollbackRef",
+    "supersedeRef",
+    "projectionState",
+    "projectionRefs",
+    "status",
+    "promotedAt",
+    "promotedBy",
+    "traceId",
+    "idempotencyKey",
+    "requestId",
+    "metadata"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {"const": "promoted"}
+        }
+      },
+      "then": {
+        "required": ["promotedAt", "promotedBy"],
+        "properties": {
+          "promotedAt": {"type": "string", "minLength": 1},
+          "promotedBy": {"type": "string", "minLength": 1},
+          "rollbackRef": {
+            "type": "object",
+            "maxProperties": 0
+          },
+          "supersedeRef": {
+            "type": "object",
+            "maxProperties": 0
+          },
+          "approvalState": {
+            "type": "string",
+            "enum": ["satisfied", "not_required"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {"const": "rolled_back"}
+        }
+      },
+      "then": {
+        "properties": {
+          "rollbackRef": {
+            "type": "object",
+            "minProperties": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {"const": "superseded"}
+        }
+      },
+      "then": {
+        "properties": {
+          "supersedeRef": {
+            "type": "object",
+            "minProperties": 1
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.knowledge-promotion-record.v1"},
+    "knowledgePromotionId": {"type": "string"},
+    "source": {"type": "string", "enum": ["validated_correction", "replay_validated_correction"]},
+    "sourceCorrectionId": {"type": "string"},
+    "correctionValidationId": {"type": "string"},
+    "replayValidationId": {"type": ["string", "null"]},
+    "replayValidationRef": {
+      "type": "object",
+      "required": ["id", "status", "source"],
+      "additionalProperties": true,
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "status": {"type": "string", "const": "passed"},
+        "source": {
+          "type": "string",
+          "enum": ["persisted_validation_record", "replay_export", "frozen_replay_snapshot"]
+        }
+      }
+    },
+    "coverageProofRef": {
+      "type": "object",
+      "required": ["id", "proofStatus", "source"],
+      "additionalProperties": true,
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "proofStatus": {"type": "string", "const": "valid"},
+        "source": {"type": "string", "const": "persisted_record"},
+        "scope": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "knowledgeEntry": {"type": "object"},
+    "evidenceRefs": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "replayRefs": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "approvalRefs": {"type": "array", "items": {"type": "object"}},
+    "approvalState": {"type": "string", "enum": ["satisfied", "not_required"]},
+    "policySnapshot": {"type": "object"},
+    "auditRefs": {"type": "array", "items": {"type": "object"}},
+    "rollbackRef": {"type": "object"},
+    "supersedeRef": {"type": "object"},
+    "projectionState": {
+      "type": "string",
+      "enum": ["skipped", "projected", "projection_failed", "retry"]
+    },
+    "projectionRefs": {"type": "array", "items": {"type": "object"}},
+    "status": {"type": "string", "enum": ["pending", "promoted", "rejected", "rolled_back", "superseded"]},
+    "promotedAt": {"type": ["string", "null"]},
+    "promotedBy": {"type": ["string", "null"]},
+    "traceId": {"type": "string"},
+    "idempotencyKey": {"type": ["string", "null"]},
+    "requestId": {"type": "string"},
+    "metadata": {"type": "object"}
+  }
+}

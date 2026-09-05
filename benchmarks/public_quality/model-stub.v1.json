@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "tst-p2-032.model-stub.v1",
+  "modelRole": "PRIMARY",
+  "stubId": "deterministic-triage-stub",
+  "version": "1.0.0",
+  "provider": null,
+  "routingOwner": "model-gateway",
+  "decisionPolicy": {
+    "candidateThreshold": 0.65,
+    "traceEvidenceThreshold": 0.75,
+    "requiresTriggeredObservation": true
+  },
+  "timingPolicy": {
+    "measurementClass": "deterministic_model_stub_logical",
+    "unit": "ms",
+    "wallClockIsDiagnosticOnly": true
+  },
+  "notes": [
+    "The stub consumes observations only and never reads expected-findings.v1.json.",
+    "Provider selection remains model-gateway-owned; this file selects no provider."
+  ]
+}

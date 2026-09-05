@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.pr-revision.v1",
+  "title": "PR Revision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "baseRef", "baseSha", "headRef", "headSha"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.pr-revision.v1"},
+    "baseRef": {"type": "string", "minLength": 1, "maxLength": 500},
+    "baseSha": {"type": "string", "pattern": "^[a-fA-F0-9]{40,64}$"},
+    "headRef": {"type": "string", "minLength": 1, "maxLength": 500},
+    "headSha": {"type": "string", "pattern": "^[a-fA-F0-9]{40,64}$"},
+    "previousHeadSha": {"type": ["string", "null"]},
+    "forcePush": {"type": "boolean"}
+  }
+}

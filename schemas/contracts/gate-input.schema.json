@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.gate-input.v1",
+  "title": "Service-owned Gate Input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "evaluationContext", "executionContext", "domainInputStates",
+    "normalizedFindings", "metrics", "approvalState", "normalizationState",
+    "evidenceIntegrity", "policySnapshot", "policySnapshotHash", "inputFingerprint", "metadata"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "phase8.gate-input.v1"},
+    "evaluationContext": {"$ref": "#/$defs/evaluationContext"},
+    "executionContext": {"$ref": "#/$defs/executionContext"},
+    "domainInputStates": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "items": {"$ref": "#/$defs/domainInputState"}
+    },
+    "normalizedFindings": {"type": "array", "items": {"$ref": "#/$defs/normalizedFinding"}},
+    "metrics": {"type": "array", "items": {"$ref": "#/$defs/metric"}},
+    "approvalState": {"type": "array", "items": {"$ref": "#/$defs/approval"}},
+    "normalizationState": {"$ref": "#/$defs/normalizationState"},
+    "evidenceIntegrity": {"$ref": "#/$defs/evidenceIntegrity"},
+    "policySnapshot": {"type": ["object", "null"]},
+    "policySnapshotHash": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+    "inputFingerprint": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "metadata": {"type": "object", "maxProperties": 32}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "ref": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "id", "source"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1}
+      }
+    },
+    "evaluationContext": {
+      "type": "object", "additionalProperties": false,
+      "required": ["evaluationId", "evaluationTime", "traceId", "requestId"],
+      "properties": {
+        "evaluationId": {"type": "string", "minLength": 1},
+        "evaluationTime": {"type": "string", "format": "date-time"},
+        "traceId": {"type": "string", "minLength": 1},
+        "requestId": {"type": "string", "minLength": 1}
+      }
+    },
+    "executionContext": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "executionId", "planId", "executionPlanId", "tenantId", "workspaceId",
+        "projectId", "environmentId", "stage", "status", "riskLevel",
+        "approvalRequired", "authorityRefs"
+      ],
+      "properties": {
+        "executionId": {"type": "string", "minLength": 1},
+        "planId": {"type": "string", "minLength": 1},
+        "executionPlanId": {"type": ["string", "null"]},
+        "tenantId": {"type": "string", "minLength": 1},
+        "workspaceId": {"type": "string", "minLength": 1},
+        "projectId": {"type": ["string", "null"]},
+        "environmentId": {"type": ["string", "null"]},
+        "stage": {"const": "GATE"},
+        "status": {"type": "string", "minLength": 1},
+        "riskLevel": {"enum": ["low", "medium", "high"]},
+        "approvalRequired": {"type": "boolean"},
+        "authorityRefs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/ref"}}
+      }
+    },
+    "domainInputState": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "domain", "applicability", "availability", "required", "requiredInputTypes",
+        "authorityRefs", "inputRefs", "missingInputs", "invalidInputs", "unavailableInputs"
+      ],
+      "properties": {
+        "domain": {"enum": ["functional", "performance", "security"]},
+        "applicability": {"enum": ["applicable", "not_applicable", "unknown"]},
+        "availability": {"enum": ["available", "missing", "invalid", "unavailable"]},
+        "required": {"type": "boolean"},
+        "requiredInputTypes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/inputType"}},
+        "authorityRefs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/ref"}},
+        "inputRefs": {"type": "array", "items": {"$ref": "#/$defs/ref"}},
+        "missingInputs": {"type": "array", "items": {"$ref": "#/$defs/inputType"}},
+        "invalidInputs": {"type": "array", "items": {"$ref": "#/$defs/inputType"}},
+        "unavailableInputs": {"type": "array", "items": {"$ref": "#/$defs/inputType"}}
+      }
+    },
+    "inputType": {
+      "type": "string",
+      "enum": ["normalizedFindings", "metrics", "approvalState", "evidence", "normalization", "policySnapshot"]
+    },
+    "normalizedFinding": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "id", "executionId", "taskId", "domain", "source", "category", "severity",
+        "status", "confidence", "dedupeKey", "rawRef", "evidenceRefs"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "executionId": {"type": "string", "minLength": 1},
+        "taskId": {"type": ["string", "null"]},
+        "domain": {"enum": ["functional", "performance", "security"]},
+        "source": {"type": "string", "minLength": 1},
+        "category": {"type": "string", "minLength": 1},
+        "severity": {"enum": ["critical", "high", "medium", "low", "info"]},
+        "status": {"type": "string", "minLength": 1},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "dedupeKey": {"type": "string", "minLength": 1},
+        "rawRef": {"type": "string", "minLength": 1},
+        "evidenceRefs": {"type": "array", "items": {"$ref": "#/$defs/ref"}}
+      }
+    },
+    "metric": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "id", "executionId", "taskId", "name", "value", "unit", "threshold",
+        "baseline", "domain", "source", "evidenceRefs"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "executionId": {"type": "string", "minLength": 1},
+        "taskId": {"type": ["string", "null"]},
+        "name": {"type": "string", "minLength": 1},
+        "value": {"type": "number"},
+        "unit": {"type": ["string", "null"]},
+        "threshold": {"type": ["number", "null"]},
+        "baseline": {"type": ["number", "null"]},
+        "domain": {"enum": ["functional", "performance", "security"]},
+        "source": {"type": "string", "minLength": 1},
+        "evidenceRefs": {"type": "array", "items": {"$ref": "#/$defs/ref"}}
+      }
+    },
+    "approval": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "type", "status", "resourceType", "resourceId", "decidedAt"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "type": {"type": "string", "minLength": 1},
+        "status": {"enum": ["pending", "approved", "rejected", "cancelled", "expired"]},
+        "resourceType": {"type": "string", "minLength": 1},
+        "resourceId": {"type": "string", "minLength": 1},
+        "decidedAt": {"type": ["string", "null"], "format": "date-time"}
+      }
+    },
+    "normalizationState": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "rawFindingCount", "normalizedFindingCount", "unresolvedRawFindingCount", "authorityRefs"],
+      "properties": {
+        "status": {"enum": ["not_started", "in_progress", "completed", "failed", "unknown"]},
+        "rawFindingCount": {"type": "integer", "minimum": 0},
+        "normalizedFindingCount": {"type": "integer", "minimum": 0},
+        "unresolvedRawFindingCount": {"type": "integer", "minimum": 0},
+        "authorityRefs": {"type": "array", "items": {"$ref": "#/$defs/ref"}}
+      }
+    },
+    "evidenceIntegrity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "checkedRefCount", "missingRefs", "invalidRefs", "authorityRefs"],
+      "properties": {
+        "status": {"enum": ["valid", "missing", "invalid", "unknown"]},
+        "checkedRefCount": {"type": "integer", "minimum": 0},
+        "missingRefs": {"type": "array", "items": {"$ref": "#/$defs/ref"}},
+        "invalidRefs": {"type": "array", "items": {"$ref": "#/$defs/ref"}},
+        "authorityRefs": {"type": "array", "items": {"$ref": "#/$defs/ref"}}
+      }
+    }
+  }
+}

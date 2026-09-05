@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.smoke-plan.v1",
+  "title": "Smoke Plan", "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "selectiveReplayPlanId", "selectiveReplayPlanHash", "headSha"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.smoke-plan.v1"}, "selectiveReplayPlanId": {"type": "string"},
+    "selectiveReplayPlanHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "headSha": {"type": "string", "pattern": "^[a-f0-9]{7,64}$"}, "tests": {"type": "array"},
+    "unsupportedTests": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["testRef", "reasonCode"], "properties": {"testRef": {"type": "string"}, "reasonCode": {"enum": ["SMOKE_NON_FUNCTIONAL_UNSUPPORTED", "SMOKE_TASK_REF_INVALID", "SMOKE_RUNNER_NOT_SANDBOXED", "SMOKE_SELECTOR_INVALID"]}}}}, "conservativeSelectionPreserved": {"const": true}
+  }
+}

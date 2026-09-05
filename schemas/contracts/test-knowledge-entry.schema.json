@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.test-knowledge-entry.v1",
+  "title": "Test Knowledge Entry Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "knowledgeId",
+    "knowledgeType",
+    "status",
+    "content",
+    "sourceRefs",
+    "evidenceRefs",
+    "traceRefs",
+    "replayRefs",
+    "confidence",
+    "lifecycle",
+    "metadata"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.test-knowledge-entry.v1"
+    },
+    "knowledgeId": {
+      "type": "string"
+    },
+    "knowledgeType": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "content": {
+      "type": "object"
+    },
+    "sourceRefs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object"
+      }
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object"
+      }
+    },
+    "traceRefs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "replayRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "lifecycle": {
+      "type": "object"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

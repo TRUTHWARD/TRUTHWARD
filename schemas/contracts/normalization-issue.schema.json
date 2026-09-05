@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.normalization-issue.v1",
+  "title": "Change Set Normalization Issue",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "issueId", "category", "code", "message", "field", "recoverable", "evidence"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.normalization-issue.v1"},
+    "issueId": {"type": "string", "minLength": 1},
+    "category": {"enum": ["incomplete", "ambiguous", "unsupported", "sensitive"]},
+    "code": {"type": "string", "minLength": 1, "maxLength": 120},
+    "message": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "field": {"type": ["string", "null"]},
+    "recoverable": {"type": "boolean"},
+    "evidence": {"type": "array", "items": {"type": "object"}}
+  }
+}

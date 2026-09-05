@@ -1,0 +1,576 @@
+{
+  "$defs": {
+    "CegCapabilityProjection": {
+      "additionalProperties": false,
+      "properties": {
+        "read": {
+          "title": "Read",
+          "type": "boolean"
+        },
+        "candidateRead": {
+          "title": "Candidateread",
+          "type": "boolean"
+        },
+        "coverageRead": {
+          "title": "Coverageread",
+          "type": "boolean"
+        },
+        "stalenessRead": {
+          "title": "Stalenessread",
+          "type": "boolean"
+        },
+        "evidenceRead": {
+          "title": "Evidenceread",
+          "type": "boolean"
+        },
+        "rawRead": {
+          "title": "Rawread",
+          "type": "boolean"
+        },
+        "proposeCorrection": {
+          "title": "Proposecorrection",
+          "type": "boolean"
+        },
+        "readOnly": {
+          "const": true,
+          "title": "Readonly",
+          "type": "boolean"
+        },
+        "backendAuthorization": {
+          "const": true,
+          "title": "Backendauthorization",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "read",
+        "candidateRead",
+        "coverageRead",
+        "stalenessRead",
+        "evidenceRead",
+        "rawRead",
+        "proposeCorrection",
+        "readOnly",
+        "backendAuthorization"
+      ],
+      "title": "CegCapabilityProjection",
+      "type": "object"
+    },
+    "EvidenceProjectionItem": {
+      "additionalProperties": false,
+      "properties": {
+        "evidenceId": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Evidenceid",
+          "type": "string"
+        },
+        "type": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Type",
+          "type": "string"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ref"
+        },
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary"
+        },
+        "status": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        },
+        "occurredAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurredat"
+        },
+        "contentHash": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contenthash"
+        },
+        "sourceRefs": {
+          "items": {
+            "$ref": "#/$defs/StableProjectionRef"
+          },
+          "maxItems": 2048,
+          "title": "Sourcerefs",
+          "type": "array"
+        },
+        "redacted": {
+          "title": "Redacted",
+          "type": "boolean"
+        },
+        "rawProjection": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rawprojection"
+        },
+        "unavailableReason": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unavailablereason"
+        }
+      },
+      "required": [
+        "evidenceId",
+        "type",
+        "title",
+        "status",
+        "redacted"
+      ],
+      "title": "EvidenceProjectionItem",
+      "type": "object"
+    },
+    "ProjectionPage": {
+      "additionalProperties": false,
+      "properties": {
+        "pageSize": {
+          "maximum": 200,
+          "minimum": 1,
+          "title": "Pagesize",
+          "type": "integer"
+        },
+        "returned": {
+          "maximum": 200,
+          "minimum": 0,
+          "title": "Returned",
+          "type": "integer"
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nextcursor"
+        },
+        "hasMore": {
+          "title": "Hasmore",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "pageSize",
+        "returned",
+        "hasMore"
+      ],
+      "title": "ProjectionPage",
+      "type": "object"
+    },
+    "StableProjectionRef": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Type",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ref"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "available": {
+          "default": true,
+          "title": "Available",
+          "type": "boolean"
+        },
+        "unavailableReason": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unavailablereason"
+        },
+        "redacted": {
+          "default": false,
+          "title": "Redacted",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "id"
+      ],
+      "title": "StableProjectionRef",
+      "type": "object"
+    },
+    "VersionHistoryProjection": {
+      "additionalProperties": false,
+      "properties": {
+        "graphVersionId": {
+          "format": "uuid",
+          "title": "Graphversionid",
+          "type": "string"
+        },
+        "versionRef": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Versionref",
+          "type": "string"
+        },
+        "versionNumber": {
+          "minimum": 1,
+          "title": "Versionnumber",
+          "type": "integer"
+        },
+        "parentVersionId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parentversionid"
+        },
+        "status": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        },
+        "identity": {
+          "enum": [
+            "observed",
+            "candidate",
+            "canonical"
+          ],
+          "title": "Identity",
+          "type": "string"
+        },
+        "contentHash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Contenthash",
+          "type": "string"
+        },
+        "promotionType": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Promotiontype"
+        },
+        "humanApproval": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Humanapproval"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "title": "Createdat",
+          "type": "string"
+        },
+        "sourceRefs": {
+          "items": {
+            "$ref": "#/$defs/StableProjectionRef"
+          },
+          "maxItems": 1024,
+          "title": "Sourcerefs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "graphVersionId",
+        "versionRef",
+        "versionNumber",
+        "status",
+        "identity",
+        "contentHash",
+        "createdAt"
+      ],
+      "title": "VersionHistoryProjection",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "phase8.ceg-evidence-projection.v1",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "generatedAt": {
+      "format": "date-time",
+      "title": "Generatedat",
+      "type": "string"
+    },
+    "projectId": {
+      "format": "uuid",
+      "title": "Projectid",
+      "type": "string"
+    },
+    "graphId": {
+      "format": "uuid",
+      "title": "Graphid",
+      "type": "string"
+    },
+    "graphVersionId": {
+      "format": "uuid",
+      "title": "Graphversionid",
+      "type": "string"
+    },
+    "pathId": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pathid"
+    },
+    "availability": {
+      "enum": [
+        "available",
+        "partial",
+        "unavailable"
+      ],
+      "title": "Availability",
+      "type": "string"
+    },
+    "unavailableReason": {
+      "anyOf": [
+        {
+          "maxLength": 160,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Unavailablereason"
+    },
+    "capabilities": {
+      "$ref": "#/$defs/CegCapabilityProjection"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/EvidenceProjectionItem"
+      },
+      "maxItems": 200,
+      "title": "Items",
+      "type": "array"
+    },
+    "proposals": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "maxItems": 512,
+      "title": "Proposals",
+      "type": "array"
+    },
+    "promotions": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "maxItems": 512,
+      "title": "Promotions",
+      "type": "array"
+    },
+    "stalenessReviews": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "maxItems": 512,
+      "title": "Stalenessreviews",
+      "type": "array"
+    },
+    "rollbackRefs": {
+      "items": {
+        "$ref": "#/$defs/StableProjectionRef"
+      },
+      "maxItems": 512,
+      "title": "Rollbackrefs",
+      "type": "array"
+    },
+    "versionHistory": {
+      "items": {
+        "$ref": "#/$defs/VersionHistoryProjection"
+      },
+      "maxItems": 2048,
+      "title": "Versionhistory",
+      "type": "array"
+    },
+    "traceability": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Traceability"
+    },
+    "page": {
+      "$ref": "#/$defs/ProjectionPage"
+    },
+    "sourceRefs": {
+      "items": {
+        "$ref": "#/$defs/StableProjectionRef"
+      },
+      "maxItems": 20000,
+      "minItems": 1,
+      "title": "Sourcerefs",
+      "type": "array"
+    },
+    "redaction": {
+      "additionalProperties": true,
+      "title": "Redaction",
+      "type": "object"
+    },
+    "readOnly": {
+      "const": true,
+      "title": "Readonly",
+      "type": "boolean"
+    },
+    "frontendAuthoritative": {
+      "const": false,
+      "title": "Frontendauthoritative",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "projectId",
+    "graphId",
+    "graphVersionId",
+    "availability",
+    "capabilities",
+    "page",
+    "sourceRefs",
+    "redaction",
+    "readOnly",
+    "frontendAuthoritative"
+  ],
+  "title": "EvidenceProjection",
+  "type": "object"
+}

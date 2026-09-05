@@ -1,0 +1,294 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-qa.local/schemas/canonical-execution-graph.schema.json",
+  "title": "Canonical Execution Graph Structure and Version Governance",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "identity", "version", "topology", "projection"],
+  "properties": {
+    "schemaVersion": {"const": "ceg.v1"},
+    "identity": {"$ref": "#/$defs/graphIdentity"},
+    "version": {"$ref": "#/$defs/graphVersion"},
+    "topology": {"$ref": "#/$defs/graphTopology"},
+    "projection": {"$ref": "#/$defs/versionProjection"}
+  },
+  "$defs": {
+    "graphStatus": {
+      "enum": ["draft", "candidate", "under_review", "active", "superseded", "deprecated", "archived"]
+    },
+    "graphScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "tenantId", "workspaceId", "projectId", "environmentId", "scopeId"],
+      "properties": {
+        "type": {"enum": ["project", "environment"]},
+        "tenantId": {"type": "string", "minLength": 1, "maxLength": 128},
+        "workspaceId": {"type": "string", "minLength": 1, "maxLength": 128},
+        "projectId": {"type": "string", "format": "uuid"},
+        "environmentId": {"type": ["string", "null"], "format": "uuid"},
+        "scopeId": {"type": "string", "format": "uuid"}
+      }
+    },
+    "stableRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "ref", "contentHash"],
+      "properties": {
+        "type": {
+          "enum": ["execution", "trace", "replay", "evidence", "artifact", "requirement", "test", "manual", "import", "graph_version", "audit", "code", "api", "data"]
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 500,
+          "pattern": "^[a-z][a-z0-9+.-]*://[^\\s]+$"
+        },
+        "contentHash": {
+          "type": ["string", "null"],
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "graphSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "refs"],
+      "properties": {
+        "level": {"enum": ["observed", "candidate", "canonical"]},
+        "refs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {"$ref": "#/$defs/stableRef"}
+        }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "until", "status", "legalHold"],
+      "properties": {
+        "policy": {"type": "string", "minLength": 1, "maxLength": 80},
+        "until": {"type": ["string", "null"], "format": "date-time"},
+        "status": {"enum": ["active", "archived", "purge_eligible", "legal_hold"]},
+        "legalHold": {"type": "boolean"}
+      }
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["createdBy", "updatedBy", "traceId", "auditRefs", "createdAt", "updatedAt"],
+      "properties": {
+        "createdBy": {"type": ["string", "null"], "format": "uuid"},
+        "updatedBy": {"type": ["string", "null"], "format": "uuid"},
+        "traceId": {"type": ["string", "null"], "format": "uuid"},
+        "auditRefs": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {"$ref": "#/$defs/stableRef"}
+        },
+        "createdAt": {"type": "string", "format": "date-time"},
+        "updatedAt": {"type": "string", "format": "date-time"}
+      }
+    },
+    "graphIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["graphId", "graphRef", "graphKey", "name", "description", "status", "scope", "retention", "lockVersion", "audit", "metadata"],
+      "properties": {
+        "graphId": {"type": "string", "format": "uuid"},
+        "graphRef": {"type": "string", "maxLength": 500, "pattern": "^ceg://[^\\s]+$"},
+        "graphKey": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{2,127}$"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 255},
+        "description": {"type": ["string", "null"], "maxLength": 2000},
+        "status": {"$ref": "#/$defs/graphStatus"},
+        "scope": {"$ref": "#/$defs/graphScope"},
+        "retention": {"$ref": "#/$defs/retention"},
+        "lockVersion": {"type": "integer", "minimum": 1},
+        "audit": {"$ref": "#/$defs/audit"},
+        "metadata": {"type": "object", "maxProperties": 64}
+      }
+    },
+    "graphVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["versionId", "versionRef", "graphId", "version", "parentVersionId", "status", "scope", "source", "schemaVersion", "contentHash", "applicability", "frozen", "frozenAt", "frozenBy", "retention", "lockVersion", "audit", "metadata"],
+      "properties": {
+        "versionId": {"type": "string", "format": "uuid"},
+        "versionRef": {"type": "string", "maxLength": 500, "pattern": "^ceg-version://[^\\s]+$"},
+        "graphId": {"type": "string", "format": "uuid"},
+        "version": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "parentVersionId": {"type": ["string", "null"], "format": "uuid"},
+        "status": {"$ref": "#/$defs/graphStatus"},
+        "scope": {"$ref": "#/$defs/graphScope"},
+        "source": {"$ref": "#/$defs/graphSource"},
+        "schemaVersion": {"const": "ceg.v1"},
+        "contentHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "applicability": {"type": "object", "maxProperties": 64},
+        "frozen": {"type": "boolean"},
+        "frozenAt": {"type": ["string", "null"], "format": "date-time"},
+        "frozenBy": {"type": ["string", "null"], "format": "uuid"},
+        "retention": {"$ref": "#/$defs/retention"},
+        "lockVersion": {"type": "integer", "minimum": 1},
+        "audit": {"$ref": "#/$defs/audit"},
+        "metadata": {"type": "object", "maxProperties": 64}
+      }
+    },
+    "auditOwned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lockVersion", "audit"],
+      "properties": {
+        "lockVersion": {"type": "integer", "minimum": 1},
+        "audit": {"$ref": "#/$defs/audit"}
+      }
+    },
+    "displayMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "description", "group", "tags", "iconKey"],
+      "properties": {
+        "label": {"type": "string", "minLength": 1, "maxLength": 255},
+        "description": {"type": ["string", "null"], "maxLength": 2000},
+        "group": {"type": ["string", "null"], "maxLength": 120},
+        "tags": {"type": "array", "maxItems": 32, "items": {"type": "string", "maxLength": 80}},
+        "iconKey": {"type": ["string", "null"], "maxLength": 80}
+      }
+    },
+    "condition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["predicateKey", "operator", "expected", "valueRef", "parameters"],
+      "properties": {
+        "predicateKey": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]{1,127}$"},
+        "operator": {"enum": ["equals", "not_equals", "exists", "not_exists", "matches_ref", "in_ref"]},
+        "expected": {"type": ["boolean", "integer", "number", "null"]},
+        "valueRef": {"anyOf": [{"$ref": "#/$defs/stableRef"}, {"type": "null"}]},
+        "parameters": {"type": "object", "maxProperties": 32}
+      }
+    },
+    "graphNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeId", "nodeRef", "versionId", "clientKey", "semanticKey", "nodeType", "display", "attributes", "externalRefs", "riskLevel", "source", "confidence", "lockVersion", "audit"],
+      "properties": {
+        "nodeId": {"type": "string", "format": "uuid"},
+        "nodeRef": {"type": "string", "pattern": "^ceg-node://[^\\s]+$", "maxLength": 500},
+        "versionId": {"type": "string", "format": "uuid"},
+        "clientKey": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{1,127}$"},
+        "semanticKey": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{1,255}$"},
+        "nodeType": {"enum": ["requirement", "capability", "page", "component", "element", "action", "assertion", "data", "api", "code", "test", "evidence"]},
+        "display": {"$ref": "#/$defs/displayMetadata"},
+        "attributes": {"type": "object", "maxProperties": 32},
+        "externalRefs": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/stableRef"}},
+        "riskLevel": {"enum": ["low", "medium", "high"]},
+        "source": {"enum": ["observed", "candidate", "imported", "manual", "canonical"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "lockVersion": {"type": "integer", "minimum": 1},
+        "audit": {"$ref": "#/$defs/audit"}
+      }
+    },
+    "graphEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["edgeId", "edgeRef", "versionId", "clientKey", "edgeType", "sourceNodeId", "targetNodeId", "condition", "riskLevel", "reviewStatus", "source", "confidence", "lockVersion", "audit"],
+      "properties": {
+        "edgeId": {"type": "string", "format": "uuid"},
+        "edgeRef": {"type": "string", "pattern": "^ceg-edge://[^\\s]+$", "maxLength": 500},
+        "versionId": {"type": "string", "format": "uuid"},
+        "clientKey": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{1,127}$"},
+        "edgeType": {"enum": ["contains", "precedes", "transitions_to", "depends_on", "implements", "verifies", "produces", "evidenced_by", "changes", "affects"]},
+        "sourceNodeId": {"type": "string", "format": "uuid"},
+        "targetNodeId": {"type": "string", "format": "uuid"},
+        "condition": {"anyOf": [{"$ref": "#/$defs/condition"}, {"type": "null"}]},
+        "riskLevel": {"enum": ["low", "medium", "high"]},
+        "reviewStatus": {"enum": ["not_required", "pending_review", "approved", "rejected"]},
+        "source": {"enum": ["observed", "candidate", "imported", "manual", "canonical"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "lockVersion": {"type": "integer", "minimum": 1},
+        "audit": {"$ref": "#/$defs/audit"}
+      }
+    },
+    "pathStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stepId", "stepRef", "pathId", "versionId", "clientKey", "order", "nodeId", "viaEdgeId", "conditions", "evidenceRefs", "lockVersion", "audit"],
+      "properties": {
+        "stepId": {"type": "string", "format": "uuid"},
+        "stepRef": {"type": "string", "pattern": "^ceg-step://[^\\s]+$", "maxLength": 500},
+        "pathId": {"type": "string", "format": "uuid"},
+        "versionId": {"type": "string", "format": "uuid"},
+        "clientKey": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{1,127}$"},
+        "order": {"type": "integer", "minimum": 1, "maximum": 20000},
+        "nodeId": {"type": "string", "format": "uuid"},
+        "viaEdgeId": {"type": ["string", "null"], "format": "uuid"},
+        "conditions": {"type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/condition"}},
+        "evidenceRefs": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/stableRef"}},
+        "lockVersion": {"type": "integer", "minimum": 1},
+        "audit": {"$ref": "#/$defs/audit"}
+      }
+    },
+    "canonicalPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pathId", "pathRef", "versionId", "clientKey", "pathKey", "name", "description", "entryNodeId", "exitNodeId", "preconditions", "postconditions", "riskLevel", "applicability", "evidenceRefs", "source", "confidence", "steps", "lockVersion", "audit"],
+      "properties": {
+        "pathId": {"type": "string", "format": "uuid"},
+        "pathRef": {"type": "string", "pattern": "^ceg-path://[^\\s]+$", "maxLength": 500},
+        "versionId": {"type": "string", "format": "uuid"},
+        "clientKey": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{1,127}$"},
+        "pathKey": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{1,255}$"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 255},
+        "description": {"type": ["string", "null"], "maxLength": 2000},
+        "entryNodeId": {"type": "string", "format": "uuid"},
+        "exitNodeId": {"type": "string", "format": "uuid"},
+        "preconditions": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/condition"}},
+        "postconditions": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/condition"}},
+        "riskLevel": {"enum": ["low", "medium", "high"]},
+        "applicability": {"type": "object", "maxProperties": 64},
+        "evidenceRefs": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/stableRef"}},
+        "source": {"enum": ["observed", "candidate", "imported", "manual", "canonical"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "steps": {"type": "array", "minItems": 1, "maxItems": 20000, "items": {"$ref": "#/$defs/pathStep"}},
+        "lockVersion": {"type": "integer", "minimum": 1},
+        "audit": {"$ref": "#/$defs/audit"}
+      }
+    },
+    "graphTopology": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodes", "edges", "canonicalPaths"],
+      "properties": {
+        "nodes": {"type": "array", "maxItems": 5000, "items": {"$ref": "#/$defs/graphNode"}},
+        "edges": {"type": "array", "maxItems": 20000, "items": {"$ref": "#/$defs/graphEdge"}},
+        "canonicalPaths": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/canonicalPath"}}
+      }
+    },
+    "versionProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["versionId", "graphId", "version", "status", "source", "editable", "canonical", "frozen", "lockVersion", "contentHash", "topologyHash", "nodeCount", "edgeCount", "pathCount", "stepCount", "versionRef", "writesGate", "writesMemory", "executesActions"],
+      "properties": {
+        "versionId": {"type": "string", "format": "uuid"},
+        "graphId": {"type": "string", "format": "uuid"},
+        "version": {"type": "integer", "minimum": 1},
+        "status": {"$ref": "#/$defs/graphStatus"},
+        "source": {"enum": ["observed", "candidate", "canonical"]},
+        "editable": {"type": "boolean"},
+        "canonical": {"type": "boolean"},
+        "frozen": {"type": "boolean"},
+        "lockVersion": {"type": "integer", "minimum": 1},
+        "contentHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "topologyHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "nodeCount": {"type": "integer", "minimum": 0},
+        "edgeCount": {"type": "integer", "minimum": 0},
+        "pathCount": {"type": "integer", "minimum": 0},
+        "stepCount": {"type": "integer", "minimum": 0},
+        "versionRef": {"type": "string", "pattern": "^ceg-version://[^\\s]+$"},
+        "writesGate": {"const": false},
+        "writesMemory": {"const": false},
+        "executesActions": {"const": false}
+      }
+    }
+  }
+}

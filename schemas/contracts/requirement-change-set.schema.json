@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.requirement-change-set.v1",
+  "title": "Requirement Change Set",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "changeSetId", "changeSetType", "projectId", "environmentId", "sourceSnapshotId", "sourceType", "sourceId", "sourceRevision", "sourceContentHash", "fingerprint", "normalizerVersion", "status", "itemCount", "issueCount", "sensitive", "sourceRefs", "artifactRefs", "replayRefs", "traceId", "issues", "deduplicated", "createdAt", "baseRequirementVersionId", "headRequirementVersionId", "items", "impactAnalysisPerformed"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.requirement-change-set.v1"},
+    "changeSetId": {"type": "string"},
+    "changeSetType": {"const": "requirement"},
+    "projectId": {"type": "string"},
+    "environmentId": {"type": ["string", "null"]},
+    "sourceSnapshotId": {"type": "string"},
+    "sourceType": {"type": "string"},
+    "sourceId": {"type": "string"},
+    "sourceRevision": {"type": "string"},
+    "sourceContentHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "fingerprint": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "normalizerVersion": {"type": "string"},
+    "status": {"enum": ["completed", "partial", "unknown"]},
+    "itemCount": {"type": "integer", "minimum": 0},
+    "issueCount": {"type": "integer", "minimum": 0},
+    "sensitive": {"type": "boolean"},
+    "sourceRefs": {"type": "array", "items": {"type": "object"}},
+    "artifactRefs": {"type": "array", "items": {"type": "object"}},
+    "replayRefs": {"type": "array", "items": {"type": "object"}},
+    "traceId": {"type": "string"},
+    "issues": {"type": "array", "items": {"$ref": "normalization-issue.schema.json"}},
+    "deduplicated": {"type": "boolean"},
+    "createdAt": {"type": "string"},
+    "baseRequirementVersionId": {"type": ["string", "null"]},
+    "headRequirementVersionId": {"type": "string"},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["itemId", "requirementId", "beforeRequirementVersionId", "afterRequirementVersionId", "changeType", "beforeRefs", "afterRefs", "changedFields", "explicitCapabilityRefs", "relatedRequirementIds", "confidence", "evidence"],
+        "properties": {
+          "itemId": {"type": "string"},
+          "requirementId": {"type": "string"},
+          "beforeRequirementVersionId": {"type": ["string", "null"]},
+          "afterRequirementVersionId": {"type": ["string", "null"]},
+          "changeType": {"enum": ["add", "update", "remove", "rename", "split", "merge", "unknown"]},
+          "beforeRefs": {"type": "array", "items": {"type": "object"}},
+          "afterRefs": {"type": "array", "items": {"type": "object"}},
+          "changedFields": {"type": "array", "items": {"type": "string"}},
+          "explicitCapabilityRefs": {"type": "array", "items": {"type": "object"}},
+          "relatedRequirementIds": {"type": "array", "items": {"type": "string"}},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "evidence": {"type": "array", "items": {"type": "object"}}
+        }
+      }
+    },
+    "impactAnalysisPerformed": {"const": false}
+  }
+}

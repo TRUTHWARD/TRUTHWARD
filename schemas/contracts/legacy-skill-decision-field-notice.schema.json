@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.legacy-skill-decision-field-notice.v1",
+  "title": "Ignored Legacy Skill Decision Field Notice", "type": "object", "additionalProperties": false,
+  "required": ["fieldsPresent"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.legacy-skill-decision-field-notice.v1"}, "fieldsPresent": {"type": "array", "minItems": 1},
+    "ignored": {"const": true}, "reasonCode": {"const": "DEPRECATED_SKILL_DECISION_FIELD_IGNORED"}, "skillVersion": {}, "manifestHash": {}
+  }
+}

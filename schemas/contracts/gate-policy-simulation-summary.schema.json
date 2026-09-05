@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.gate-policy-simulation-summary.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["totalCases", "completedCases", "changedCases", "unchangedCases", "falsePassRiskCount", "newBlockCount", "unavailableCases", "failedCases", "decisionTransitions", "complete"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.gate-policy-simulation-summary.v1"},
+    "totalCases": {"type": "integer", "minimum": 0},
+    "completedCases": {"type": "integer", "minimum": 0},
+    "changedCases": {"type": "integer", "minimum": 0},
+    "unchangedCases": {"type": "integer", "minimum": 0},
+    "falsePassRiskCount": {"type": "integer", "minimum": 0},
+    "newBlockCount": {"type": "integer", "minimum": 0},
+    "unavailableCases": {"type": "integer", "minimum": 0},
+    "failedCases": {"type": "integer", "minimum": 0},
+    "decisionTransitions": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "complete": {"type": "boolean"},
+    "authoritative": {"type": "boolean", "const": false}
+  }
+}

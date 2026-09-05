@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.improvement-effectiveness-result.v1",
+  "title": "Improvement Effectiveness Result Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "effectivenessResultId", "proposalId", "status", "beforeMetrics", "afterMetrics", "deltas", "sampleSize", "rollbackRequired", "targetOutcomeRef", "evidenceRefs", "measuredAt"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.improvement-effectiveness-result.v1"},
+    "effectivenessResultId": {"type": "string"},
+    "proposalId": {"type": "string"},
+    "status": {"type": "string", "enum": ["effective", "ineffective", "inconclusive"]},
+    "beforeMetrics": {"type": "object"},
+    "afterMetrics": {"type": "object"},
+    "deltas": {"type": "object"},
+    "sampleSize": {"type": "integer", "minimum": 1},
+    "rollbackRequired": {"type": "boolean"},
+    "targetOutcomeRef": {"type": "object"},
+    "evidenceRefs": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "measuredAt": {"type": "string"}
+  }
+}

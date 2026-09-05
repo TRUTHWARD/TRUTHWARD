@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.graph-learning-policy.v1",
+  "title": "Versioned Graph Learning Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["policyKey", "idempotencyKey"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.graph-learning-policy.v1"},
+    "policyKey": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{2,127}$"},
+    "status": {"type": "string", "enum": ["draft", "active"]},
+    "minIndependentSuccesses": {"type": "integer", "minimum": 2, "maximum": 1000},
+    "minDistinctTimeWindows": {"type": "integer", "minimum": 1, "maximum": 100},
+    "minDistinctRevisions": {"type": "integer", "minimum": 1, "maximum": 100},
+    "minDistinctEnvironments": {"type": "integer", "minimum": 1, "maximum": 100},
+    "minVerificationCoverage": {"type": "number", "minimum": 0.95, "maximum": 1.0},
+    "minConfidence": {"type": "number", "minimum": 0.8, "maximum": 1.0},
+    "minEvidenceRefs": {"type": "integer", "minimum": 1, "maximum": 10000},
+    "minShadowSamples": {"type": "integer", "minimum": 1, "maximum": 10000},
+    "allowedFallbackTypes": {"type": "array", "maxItems": 16, "items": {"type": "string"}},
+    "idempotencyKey": {"type": "string", "minLength": 1, "maxLength": 255}
+  }
+}

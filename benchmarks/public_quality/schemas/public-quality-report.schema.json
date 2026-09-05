@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-qa.local/schemas/tst-p2-032-public-quality-report-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "benchmarkId", "benchmarkVersion", "datasetVersion",
+    "generatedAt", "license", "candidateProducer", "versions", "executionClass",
+    "actualValidation", "truthSummary", "coverage", "confusionMatrix", "metrics",
+    "candidateFindings", "decisions", "replayEvidence", "status", "resultHash"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "tst-p2-032.public-quality-report.v1"},
+    "benchmarkId": {"type": "string"},
+    "benchmarkVersion": {"type": "string"},
+    "datasetVersion": {"type": "string"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "license": {"type": "object"},
+    "candidateProducer": {"type": "object"},
+    "versions": {"type": "object"},
+    "executionClass": {"enum": ["contract_only", "contract_only_with_actual_exclusions", "local_actual"]},
+    "actualValidation": {
+      "type": "object",
+      "required": ["evidenceClass", "requiredSuites", "suites", "completePublicBenchmark", "reason"],
+      "properties": {
+        "evidenceClass": {"type": "string"},
+        "requiredSuites": {"type": "array"},
+        "suites": {"type": "array"},
+        "completePublicBenchmark": {"type": "boolean"},
+        "reason": {"type": "string"}
+      }
+    },
+    "truthSummary": {
+      "type": "object",
+      "required": ["knownDefects", "negativeControls", "truthRef", "truthSha256"]
+    },
+    "coverage": {"type": "object"},
+    "confusionMatrix": {
+      "type": "object",
+      "required": ["truePositive", "falsePositive", "falseNegative", "trueNegative", "truePositiveCases", "falsePositiveCases", "falseNegativeCases", "trueNegativeCases"],
+      "properties": {
+        "truePositive": {"type": "integer", "minimum": 0},
+        "falsePositive": {"type": "integer", "minimum": 0},
+        "falseNegative": {"type": "integer", "minimum": 0},
+        "trueNegative": {"type": "integer", "minimum": 0},
+        "truePositiveCases": {"type": "array"},
+        "falsePositiveCases": {"type": "array"},
+        "falseNegativeCases": {"type": "array"},
+        "trueNegativeCases": {"type": "array"}
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "required": ["precision", "recall", "falsePositiveRate", "evidenceCompleteness", "timeToTriage", "reproducibility"],
+      "properties": {
+        "precision": {"type": "number", "minimum": 0, "maximum": 1},
+        "recall": {"type": "number", "minimum": 0, "maximum": 1},
+        "falsePositiveRate": {"type": "number", "minimum": 0, "maximum": 1},
+        "evidenceCompleteness": {"type": "object"},
+        "timeToTriage": {"type": "object"},
+        "reproducibility": {"type": "object"}
+      }
+    },
+    "candidateFindings": {"type": "array"},
+    "decisions": {"type": "array"},
+    "replayEvidence": {"type": "object"},
+    "status": {"enum": ["passed_contract_only", "passed_local_actual", "failed"]},
+    "resultHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

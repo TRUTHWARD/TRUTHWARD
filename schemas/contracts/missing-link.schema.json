@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.missing-link.v1",
+  "title": "Missing Link Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "code",
+    "fromType",
+    "fromId",
+    "expectedTargetType",
+    "severity",
+    "blocksCoverage"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.missing-link.v1"
+    },
+    "code": {
+      "type": "string"
+    },
+    "fromType": {
+      "type": "string"
+    },
+    "fromId": {
+      "type": "string"
+    },
+    "expectedTargetType": {
+      "type": "string"
+    },
+    "severity": {
+      "type": "string"
+    },
+    "blocksCoverage": {
+      "type": "boolean"
+    }
+  }
+}

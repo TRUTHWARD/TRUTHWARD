@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.gate-policy-rollback-request.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["targetPolicyVersionId", "expectedCurrentBindingId", "expectedCurrentPolicyVersionId", "idempotencyKey", "reason"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.gate-policy-rollback-request.v1"},
+    "targetPolicyVersionId": {"type": "string", "format": "uuid"},
+    "expectedCurrentBindingId": {"type": "string", "format": "uuid"},
+    "expectedCurrentPolicyVersionId": {"type": "string", "format": "uuid"},
+    "idempotencyKey": {"type": "string", "minLength": 1, "maxLength": 255},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 2000}
+  }
+}

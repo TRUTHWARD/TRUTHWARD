@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.gate-policy-validation-issue.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["path", "code", "severity", "messageKey", "parameters"],
+  "properties": {
+    "path": {"type": "string", "minLength": 1}, "code": {"type": "string", "minLength": 1},
+    "severity": {"type": "string", "enum": ["error", "warning"]},
+    "messageKey": {"type": "string", "minLength": 1}, "parameters": {"type": "object"}
+  }
+}

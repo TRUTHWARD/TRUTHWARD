@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "tst-p2-032.replay-evidence.v1",
+  "benchmarkVersion": "31.1.0",
+  "datasetVersion": "public-quality-dataset.v1",
+  "seed": 310032,
+  "canonicalization": "UTF-8 JSON, sorted keys, compact separators; wall-clock diagnostics excluded",
+  "artifacts": [
+    {
+      "name": "expectedFindings",
+      "path": "benchmarks/public_quality/expected-findings.v1.json",
+      "sha256": "sha256:5046589f6f3c31f9729a0ce478ff924a8547378d9bf0be3efc5ab8398290e6df"
+    },
+    {
+      "name": "expectedCoverage",
+      "path": "benchmarks/public_quality/expected-coverage.v1.json",
+      "sha256": "sha256:c6bae89cd7c52a7ad3513da0c394467240f92d25a6c5ce2c019cd670a6bde861"
+    },
+    {
+      "name": "probeCases",
+      "path": "benchmarks/public_quality/probe-cases.v1.json",
+      "sha256": "sha256:8d34f71fabff585a1943c644e10bb9553f2b0e9c705560de840e2d8a6b14d509"
+    },
+    {
+      "name": "modelStub",
+      "path": "benchmarks/public_quality/model-stub.v1.json",
+      "sha256": "sha256:2ee8c8c994cc90d5bd78cbf96b383d7747d681dd3ed1d4ec2003ddd09258de86"
+    },
+    {
+      "name": "toolModelVersions",
+      "path": "benchmarks/public_quality/tool-model-versions.v1.json",
+      "sha256": "sha256:a2fa791f18fbd22e49fbeacc102d952c302720bc4ab85f7d086d9abc6bc23a1c"
+    },
+    {
+      "name": "sampleApp",
+      "path": "examples/public_quality_benchmark/app.py",
+      "sha256": "sha256:d97a01b297ece03be739bf60b1167c1810932076c8fd26d78a61fbce94777efd"
+    },
+    {
+      "name": "sampleNotice",
+      "path": "examples/public_quality_benchmark/NOTICE",
+      "sha256": "sha256:694414237169ba6690d0a0bd9ad187210553f3b851590b7197788fdc7f4e675c"
+    },
+    {
+      "name": "benchmarkEngine",
+      "path": "tools/public_quality/benchmark.py",
+      "sha256": "sha256:01c19d1e97304985f768e75dbe647929c2e7be8e5a129257f6d08324764e55a8"
+    },
+    {
+      "name": "canonicalJson",
+      "path": "tools/public_quality/common.py",
+      "sha256": "sha256:f34489f94f11bcc10bf07fc17d65da8b2227270d03033fd0508c480cf3597d55"
+    }
+  ],
+  "command": ".\\scripts\\run-public-quality-benchmark.ps1 -VerifyReleaseArtifact",
+  "inputSnapshotHash": "sha256:86f9f008f5ff546be501277889686500c473cb0d27c336ebc30acd861a6e43bb"
+}

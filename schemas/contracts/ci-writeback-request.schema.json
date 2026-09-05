@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.ci-writeback-request.v1",
+  "title": "Internal CI Writeback Request", "type": "object", "additionalProperties": false,
+  "required": ["admissionRunId", "idempotencyKey"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.ci-writeback-request.v1"}, "admissionRunId": {"type": "string"},
+    "checkName": {"type": "string", "minLength": 1}, "idempotencyKey": {"type": "string", "minLength": 8}
+  }
+}

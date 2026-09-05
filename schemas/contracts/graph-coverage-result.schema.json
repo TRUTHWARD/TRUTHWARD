@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.graph-coverage-result.v1",
+  "title": "Authoritative Graph Coverage Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "computedAt", "algorithmVersion", "inputFingerprint",
+    "snapshotRef", "snapshotHash", "coverageProofRef", "status", "metrics",
+    "traceabilityProjection", "replayable", "frontendAuthoritative"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "phase8.graph-coverage-result.v1"},
+    "computedAt": {"type": "string"},
+    "algorithmVersion": {"type": "string", "minLength": 1},
+    "inputFingerprint": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "snapshotRef": {"type": "string", "pattern": "^graph-coverage://snapshots/[^\\s]+$"},
+    "snapshotHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "coverageProofRef": {"type": "object"},
+    "status": {"type": "string"},
+    "metrics": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"type": "object"}},
+    "gaps": {"type": "array", "items": {"type": "object"}},
+    "rawFindingRefs": {"type": "array", "items": {"type": "object"}},
+    "findingCandidates": {"type": "array", "items": {"type": "object"}},
+    "normalizedFindingRefs": {"type": "array", "maxItems": 0, "items": {"type": "object"}},
+    "traceabilityProjection": {"type": "object"},
+    "replayable": {"type": "boolean"},
+    "frontendAuthoritative": {"const": false}
+  }
+}

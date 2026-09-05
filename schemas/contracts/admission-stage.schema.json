@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.admission-stage.v1",
+  "title": "PR Admission Lifecycle Stage Projection", "type": "object", "additionalProperties": false,
+  "required": ["sequence", "lifecycleStage", "status"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.admission-stage.v1"}, "sequence": {"minimum": 1, "maximum": 6}, "lifecycleStage": {},
+    "status": {}, "reasonCode": {}, "startedAt": {}, "endedAt": {}, "traceRefs": {},
+    "evidenceRefs": {}, "summary": {}, "nonAuthoritative": {"type": "boolean"}
+  }
+}

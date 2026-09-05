@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.scm-webhook-envelope.v1",
+  "title": "Verified SCM Webhook Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "provider", "deliveryId", "eventType", "action", "installationRef", "repository", "pullRequestNumber", "providerEventAt", "receivedAt", "payloadHash", "payloadSnapshot"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.scm-webhook-envelope.v1"},
+    "provider": {"enum": ["github", "gitlab", "mock-scm"]},
+    "deliveryId": {"type": "string", "minLength": 1, "maxLength": 255},
+    "eventType": {"enum": ["pull_request", "merge_request"]},
+    "action": {"type": "string", "minLength": 1, "maxLength": 80},
+    "installationRef": {"type": "string", "minLength": 1, "maxLength": 500},
+    "repository": {"type": "object"},
+    "pullRequestNumber": {"type": "integer", "minimum": 1},
+    "providerEventAt": {"type": "string"},
+    "receivedAt": {"type": "string"},
+    "payloadHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "payloadSnapshot": {"type": "object"}
+  }
+}

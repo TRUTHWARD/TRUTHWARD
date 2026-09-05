@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.execution-plan.v1",
+  "title": "Execution Plan Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "executionPlanId", "requirementVersionId", "testPlanId", "status", "riskLevel", "approvalRequired", "tasks", "assetRefs", "retryStrategy", "replayRefs", "requirementScope", "metadata"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.execution-plan.v1"},
+    "executionPlanId": {"type": "string"},
+    "requirementVersionId": {"type": "string"},
+    "testPlanId": {"type": "string"},
+    "status": {"type": "string"},
+    "riskLevel": {"type": "string"},
+    "approvalRequired": {"type": "boolean"},
+    "tasks": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "assetRefs": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "retryStrategy": {"type": "object"},
+    "replayRefs": {"type": "array", "items": {"type": "object"}},
+    "requirementScope": {"type": "object"},
+    "metadata": {"type": "object"}
+  }
+}

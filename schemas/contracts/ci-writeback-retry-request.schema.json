@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.ci-writeback-retry-request.v1",
+  "title": "Approval-backed CI Writeback Retry Request", "type": "object", "additionalProperties": false,
+  "required": ["reason", "idempotencyKey"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.ci-writeback-retry-request.v1"},
+    "reason": {"type": "string", "minLength": 3}, "idempotencyKey": {"type": "string", "minLength": 8}
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.gate-policy-rollback-result.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["rollbackRequestId", "status", "projectId", "targetPolicyVersionId", "approvalId", "traceRef", "authoritative"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.gate-policy-rollback-result.v1"},
+    "rollbackRequestId": {"type": "string", "format": "uuid"},
+    "status": {"type": "string", "enum": ["approval_pending", "applied"]},
+    "projectId": {"type": "string", "format": "uuid"},
+    "targetPolicyVersionId": {"type": "string", "format": "uuid"},
+    "approvalId": {"type": "string", "format": "uuid"},
+    "bindingId": {"type": ["string", "null"], "format": "uuid"},
+    "replacedBindingId": {"type": ["string", "null"], "format": "uuid"},
+    "traceRef": {"type": "string"},
+    "authoritative": {"type": "boolean"},
+    "effectiveFrom": {"type": ["string", "null"], "format": "date-time"}
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.correction-validation.v1",
+  "title": "Correction Validation Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "correctionValidationId", "correctionProposalId", "correctionApplicationId", "idempotencyKey", "requestId", "status", "result", "traceRefs", "startedAt", "finishedAt", "metadata"],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "result": {
+            "properties": {
+              "passed": {"const": true}
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "properties": {
+              "evidenceRefs": {"minItems": 1},
+              "replayRefs": {"minItems": 1},
+              "failedReason": {"type": "null"}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {"const": "validation_failed"}
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "properties": {
+              "passed": {"const": false},
+              "failedReason": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.correction-validation.v1"},
+    "correctionValidationId": {"type": "string"},
+    "correctionProposalId": {"type": "string"},
+    "correctionApplicationId": {"type": "string"},
+    "idempotencyKey": {"type": "string"},
+    "requestId": {"type": "string"},
+    "status": {"type": "string", "enum": ["pending", "running", "validated", "validation_failed", "cancelled", "error"]},
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["originalFindingResolved", "newBlockerIntroduced", "assertionsPassed", "coverageRegressed", "riskWorsened", "passed", "failedReason", "evidenceRefs", "replayRefs"],
+      "properties": {
+        "originalFindingResolved": {"type": "boolean"},
+        "newBlockerIntroduced": {"type": "boolean"},
+        "assertionsPassed": {"type": "boolean"},
+        "coverageRegressed": {"type": "boolean"},
+        "riskWorsened": {"type": "boolean"},
+        "passed": {"type": "boolean"},
+        "failedReason": {"type": ["string", "null"]},
+        "evidenceRefs": {"type": "array", "items": {"type": "object"}},
+        "replayRefs": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "traceRefs": {"type": "array", "items": {"type": "string"}},
+    "startedAt": {"type": ["string", "null"]},
+    "finishedAt": {"type": ["string", "null"]},
+    "metadata": {"type": "object"}
+  }
+}

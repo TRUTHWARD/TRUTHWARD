@@ -1,0 +1,183 @@
+{
+  "schemaVersion": "tst-p2-032.expected-findings.v1",
+  "benchmarkId": "agentic-qa-public-quality",
+  "benchmarkVersion": "31.1.0",
+  "license": {
+    "spdx": "Apache-2.0",
+    "scope": "repository-authored sample, probes, oracle, and results",
+    "thirdPartyAssets": false,
+    "noticeRef": "examples/public_quality_benchmark/NOTICE"
+  },
+  "reviewPolicy": {
+    "truthIsPublic": true,
+    "independentReviewRequired": true,
+    "matchingKey": "caseId",
+    "scorerReadsTruthOnlyAfterCandidateGeneration": true
+  },
+  "findings": [
+    {
+      "id": "AQB-FUNC-001",
+      "caseId": "cart-quantity",
+      "domain": "functional",
+      "category": "business_logic",
+      "severity": "high",
+      "title": "Cart total ignores quantity",
+      "oracle": "10.00 × 3 must equal 30.00; the endpoint returns 10.00.",
+      "location": {
+        "path": "examples/public_quality_benchmark/app.py",
+        "line": 21,
+        "symbol": "calculate_cart_total"
+      },
+      "reproduction": {
+        "method": "GET",
+        "path": "/api/cart/total?price=10&quantity=3",
+        "expected": {"total": 30.0},
+        "observed": {"total": 10.0}
+      },
+      "evidenceRequirements": ["rawRef", "location", "reproduction", "traceRef"]
+    },
+    {
+      "id": "AQB-FUNC-002",
+      "caseId": "coupon-case",
+      "domain": "functional",
+      "category": "business_logic",
+      "severity": "medium",
+      "title": "Coupon matching rejects lowercase equivalent",
+      "oracle": "The documented SAVE10 coupon is case-insensitive; save10 on 100.00 must return 90.00.",
+      "location": {
+        "path": "examples/public_quality_benchmark/app.py",
+        "line": 28,
+        "symbol": "apply_coupon"
+      },
+      "reproduction": {
+        "method": "GET",
+        "path": "/api/cart/coupon?subtotal=100&coupon=save10",
+        "expected": {"total": 90.0},
+        "observed": {"total": 100.0}
+      },
+      "evidenceRequirements": ["rawRef", "location", "reproduction", "traceRef"]
+    },
+    {
+      "id": "AQB-PERF-001",
+      "caseId": "search-latency",
+      "domain": "performance",
+      "category": "latency_regression",
+      "severity": "medium",
+      "title": "Search exceeds the deterministic 100 ms budget",
+      "oracle": "The response declares 250 ms of deterministic work against a 100 ms budget.",
+      "location": {
+        "path": "examples/public_quality_benchmark/app.py",
+        "line": 99,
+        "symbol": "SampleHandler.do_GET"
+      },
+      "reproduction": {
+        "method": "GET",
+        "path": "/api/search?q=benchmark",
+        "expected": {"maxDeterministicWorkMs": 100},
+        "observed": {"deterministicWorkMs": 250}
+      },
+      "evidenceRequirements": ["rawRef", "location", "reproduction", "traceRef"]
+    },
+    {
+      "id": "AQB-SEC-001",
+      "caseId": "reflected-xss",
+      "domain": "security",
+      "category": "xss",
+      "severity": "high",
+      "title": "Echo endpoint reflects unescaped HTML",
+      "oracle": "The exact script tag is returned in a text/html response.",
+      "location": {
+        "path": "examples/public_quality_benchmark/app.py",
+        "line": 107,
+        "symbol": "SampleHandler.do_GET"
+      },
+      "reproduction": {
+        "method": "GET",
+        "path": "/api/echo?value=%3Cscript%3Ealert%2831%29%3C%2Fscript%3E",
+        "expected": "HTML-escaped user input",
+        "observed": "<script>alert(31)</script>"
+      },
+      "evidenceRequirements": ["rawRef", "location", "reproduction", "traceRef"]
+    },
+    {
+      "id": "AQB-SEC-002",
+      "caseId": "sql-construction",
+      "domain": "security",
+      "category": "sql_injection",
+      "severity": "critical",
+      "title": "User lookup constructs SQL with an f-string",
+      "oracle": "Untrusted username text is interpolated before connection.execute; the function is source-only and never invoked by HTTP.",
+      "location": {
+        "path": "examples/public_quality_benchmark/app.py",
+        "line": 34,
+        "symbol": "build_user_lookup"
+      },
+      "reproduction": {
+        "method": "SOURCE_REVIEW",
+        "path": "examples/public_quality_benchmark/app.py",
+        "expected": "parameterized SQL",
+        "observed": "f-string SQL passed to execute"
+      },
+      "evidenceRequirements": ["rawRef", "location", "reproduction", "traceRef"]
+    },
+    {
+      "id": "AQB-SEC-003",
+      "caseId": "debug-secret",
+      "domain": "security",
+      "category": "sensitive_data_exposure",
+      "severity": "high",
+      "title": "Debug endpoint exposes a synthetic API key",
+      "oracle": "The public debug response contains the fixed aqb_synthetic_public_canary_31 value.",
+      "location": {
+        "path": "examples/public_quality_benchmark/app.py",
+        "line": 112,
+        "symbol": "SampleHandler.do_GET"
+      },
+      "reproduction": {
+        "method": "GET",
+        "path": "/api/debug",
+        "expected": "No credential-shaped value",
+        "observed": {"apiKey": "aqb_synthetic_public_canary_31"}
+      },
+      "evidenceRequirements": ["rawRef", "location", "reproduction", "traceRef"]
+    },
+    {
+      "id": "AQB-SEC-004",
+      "caseId": "missing-csp",
+      "domain": "security",
+      "category": "security_misconfiguration",
+      "severity": "low",
+      "title": "HTML responses omit Content-Security-Policy",
+      "oracle": "The root HTML response has no Content-Security-Policy header.",
+      "location": {
+        "path": "examples/public_quality_benchmark/app.py",
+        "line": 74,
+        "symbol": "SampleHandler._send_html"
+      },
+      "reproduction": {
+        "method": "GET",
+        "path": "/",
+        "expected": "Content-Security-Policy response header",
+        "observed": "header absent"
+      },
+      "evidenceRequirements": ["rawRef", "location", "reproduction", "traceRef"]
+    }
+  ],
+  "negativeControls": [
+    {
+      "caseId": "health-version",
+      "title": "Public application version in health response",
+      "rationale": "This synthetic sample intentionally publishes its non-sensitive application version; it is not a credential or defect."
+    },
+    {
+      "caseId": "safe-order-query",
+      "title": "Parameterized order lookup",
+      "rationale": "The query uses a placeholder and a separate parameter tuple."
+    },
+    {
+      "caseId": "escaped-profile",
+      "title": "Escaped profile name",
+      "rationale": "The profile endpoint HTML-escapes the supplied name."
+    }
+  ]
+}

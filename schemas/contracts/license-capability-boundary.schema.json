@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-qa.local/contracts/license-capability-boundary.schema.json",
+  "title": "License Capability Boundary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "userId",
+    "edition",
+    "capabilities",
+    "inactiveCapabilities",
+    "authorizationBoundary",
+    "frontendBoundary",
+    "metadata"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.license-capability-boundary.v1"
+    },
+    "userId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "edition": {
+      "type": "string",
+      "enum": ["basic", "pro", "enterprise"]
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "inactiveCapabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "authorizationBoundary": {
+      "type": "string",
+      "const": "backend_service_api"
+    },
+    "frontendBoundary": {
+      "type": "string",
+      "const": "ux_only"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

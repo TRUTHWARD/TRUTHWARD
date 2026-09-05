@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "phase8.enforcement-decision.v1",
+  "title": "Service-owned Enforcement Decision", "type": "object", "additionalProperties": false,
+  "required": ["mode", "authoritative", "nonAuthoritative", "blocksMerge", "policyHash", "branchProtectionConfigured"],
+  "properties": {
+    "schemaVersion": {"const": "phase8.enforcement-decision.v1"}, "mode": {"type": "string"}, "authoritative": {"type": "boolean"},
+    "nonAuthoritative": {"type": "boolean"}, "blocksMerge": {"type": "boolean"}, "gateDecisionRef": {}, "approvalRef": {},
+    "policyHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "branchProtectionConfigured": {"type": "boolean"},
+    "branchProtectionExternallyManaged": {"const": true}, "reasonCodes": {"type": "array"}
+  }
+}

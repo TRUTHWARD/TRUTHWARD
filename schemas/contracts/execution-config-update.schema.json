@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.execution-config-update.v1",
+  "title": "Execution Config Update Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "changeType", "configRef", "beforeConfig", "afterConfig", "rationale", "riskLevel", "evidenceRefs", "metadata"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.execution-config-update.v1"},
+    "changeType": {"type": "string", "const": "execution_config_update"},
+    "configRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1}
+      }
+    },
+    "beforeConfig": {"type": "object"},
+    "afterConfig": {"type": "object"},
+    "rationale": {"type": "string", "minLength": 1},
+    "riskLevel": {"type": "string", "enum": ["low", "medium", "high"]},
+    "evidenceRefs": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "metadata": {"type": "object"}
+  }
+}

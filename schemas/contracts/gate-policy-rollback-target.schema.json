@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.gate-policy-rollback-target.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["policyId", "policyVersionId", "policyVersionHash", "previousBindingId", "lastEnforcedAt", "available"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.gate-policy-rollback-target.v1"},
+    "policyId": {"type": "string", "format": "uuid"},
+    "policyVersionId": {"type": "string", "format": "uuid"},
+    "policyVersionHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "previousBindingId": {"type": "string", "format": "uuid"},
+    "lastEnforcedAt": {"type": "string", "format": "date-time"},
+    "available": {"type": "boolean"},
+    "unavailableReason": {"type": ["string", "null"], "enum": ["current", "archived", "unavailable", "corrupted", null]}
+  }
+}

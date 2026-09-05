@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-qa.local/schemas/tst-p2-032-expected-findings-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "benchmarkId", "benchmarkVersion", "license", "reviewPolicy", "findings", "negativeControls"],
+  "properties": {
+    "schemaVersion": {"const": "tst-p2-032.expected-findings.v1"},
+    "benchmarkId": {"type": "string", "minLength": 1},
+    "benchmarkVersion": {"type": "string", "minLength": 1},
+    "license": {
+      "type": "object",
+      "required": ["spdx", "scope", "thirdPartyAssets", "noticeRef"],
+      "properties": {
+        "spdx": {"const": "Apache-2.0"},
+        "scope": {"type": "string"},
+        "thirdPartyAssets": {"const": false},
+        "noticeRef": {"type": "string"}
+      }
+    },
+    "reviewPolicy": {"type": "object"},
+    "findings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "caseId", "domain", "category", "severity", "title", "oracle", "location", "reproduction", "evidenceRequirements"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^AQB-"},
+          "caseId": {"type": "string", "minLength": 1},
+          "domain": {"enum": ["functional", "performance", "security"]},
+          "category": {"type": "string"},
+          "severity": {"enum": ["critical", "high", "medium", "low", "info"]},
+          "title": {"type": "string"},
+          "oracle": {"type": "string"},
+          "location": {
+            "type": "object",
+            "required": ["path", "line", "symbol"],
+            "properties": {
+              "path": {"type": "string"},
+              "line": {"type": "integer", "minimum": 1},
+              "symbol": {"type": "string"}
+            }
+          },
+          "reproduction": {"type": "object"},
+          "evidenceRequirements": {
+            "type": "array",
+            "items": {"enum": ["rawRef", "location", "reproduction", "traceRef"]},
+            "minItems": 4,
+            "maxItems": 4,
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "negativeControls": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["caseId", "title", "rationale"],
+        "properties": {
+          "caseId": {"type": "string"},
+          "title": {"type": "string"},
+          "rationale": {"type": "string"}
+        }
+      }
+    }
+  }
+}

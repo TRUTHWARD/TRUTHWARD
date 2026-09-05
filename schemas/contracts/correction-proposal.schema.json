@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.correction-proposal.v1",
+  "title": "Correction Proposal Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "correctionProposalId", "proposalType", "proposedChange", "status", "requirementVersionId", "executionId", "findingId", "attributionId", "riskLevel", "requesterRef", "approvalRefs", "evidenceRefs", "traceRefs", "createdAt", "metadata"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.correction-proposal.v1"},
+    "correctionProposalId": {"type": "string"},
+    "proposalType": {
+      "type": "string",
+      "enum": [
+        "locator_update",
+        "assertion_update",
+        "test_case_update",
+        "test_step_update",
+        "requirement_mapping_update",
+        "execution_config_update",
+        "generate_patch_suggestion",
+        "graph_correction"
+      ]
+    },
+    "proposedChange": {"type": "object"},
+    "status": {"type": "string", "enum": ["draft", "pending_approval", "approved", "rejected", "cancelled", "expired"]},
+    "requirementVersionId": {"type": ["string", "null"]},
+    "executionId": {"type": ["string", "null"]},
+    "findingId": {"type": ["string", "null"]},
+    "attributionId": {"type": ["string", "null"]},
+    "riskLevel": {"type": "string", "enum": ["low", "medium", "high"]},
+    "requesterRef": {"type": "object"},
+    "approvalRefs": {"type": "array", "items": {"type": "object"}},
+    "evidenceRefs": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "traceRefs": {"type": "array", "items": {"type": "string"}},
+    "createdAt": {"type": "string"},
+    "metadata": {"type": "object"}
+  }
+}

@@ -1,0 +1,37 @@
+name: truthward-community
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?run community.py configure first}
+      POSTGRES_DB: ${POSTGRES_DB:?run community.py configure first}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run community.py configure first}
+    ports:
+      - "127.0.0.1:${COMMUNITY_DB_PORT:-55432}:5432"
+    volumes:
+      - community_postgres:/var/lib/postgresql/data
+    cpus: 1.0
+    mem_limit: 384m
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?run community.py configure first}
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --maxmemory 64mb --maxmemory-policy noeviction"]
+    ports:
+      - "127.0.0.1:${COMMUNITY_REDIS_PORT:-56379}:6379"
+    cpus: 0.25
+    mem_limit: 128m
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  community_postgres:

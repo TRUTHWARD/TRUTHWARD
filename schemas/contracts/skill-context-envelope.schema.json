@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-qa.local/contracts/skill-context-envelope.schema.json",
+  "title": "Skill Context Envelope",
+  "description": "Frozen Service-authorized context delivered to a managed Skill runtime.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "phase8.skill-context-envelope.v1",
+      "default": "phase8.skill-context-envelope.v1"
+    },
+    "extensionPointId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "skillVersionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "manifestHash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "scopeSnapshot": {
+      "type": "object"
+    },
+    "blocks": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "$ref": "#/$defs/contextBlock"
+      }
+    },
+    "totalBytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "estimatedUnits": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "requiredAvailable": {
+      "type": "boolean"
+    },
+    "limitations": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "string"
+      }
+    },
+    "platformControls": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contextTreatment": {
+          "type": "string",
+          "const": "untrusted_data_not_instructions"
+        },
+        "platformControlsMutable": {
+          "type": "boolean",
+          "const": false
+        },
+        "protectedFields": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "prefixItems": [
+            {"const": "allowedExtensionPoints"},
+            {"const": "approval"},
+            {"const": "authorization"},
+            {"const": "providerRouting"},
+            {"const": "guardrail"}
+          ],
+          "items": false
+        }
+      },
+      "required": [
+        "contextTreatment",
+        "platformControlsMutable",
+        "protectedFields"
+      ]
+    },
+    "envelopeHash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  },
+  "required": [
+    "extensionPointId",
+    "skillVersionId",
+    "manifestHash",
+    "totalBytes",
+    "estimatedUnits",
+    "requiredAvailable",
+    "platformControls",
+    "envelopeHash"
+  ],
+  "$defs": {
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "contentHash": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "required": ["type", "ref"]
+    },
+    "contextBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sourceRef": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "sourceType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "sourceVersion": {
+          "anyOf": [
+            {"type": "string"},
+            {"type": "integer"},
+            {"type": "null"}
+          ]
+        },
+        "revision": {
+          "anyOf": [
+            {"type": "string"},
+            {"type": "integer"},
+            {"type": "null"}
+          ]
+        },
+        "scopeSnapshot": {
+          "type": "object"
+        },
+        "freshness": {
+          "type": "object"
+        },
+        "trustBoundary": {
+          "type": "string",
+          "enum": [
+            "platform_authority",
+            "service_authorized",
+            "service_observation",
+            "external_untrusted"
+          ]
+        },
+        "contentHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "redactionStatus": {
+          "type": "string",
+          "enum": ["redacted", "not_required", "unavailable"]
+        },
+        "redactionPolicyVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "default": "phase8.authorized-context.v1"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "unavailableReason": {
+          "anyOf": [
+            {"type": "string", "maxLength": 500},
+            {"type": "null"}
+          ]
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "$ref": "#/$defs/evidenceRef"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "string"
+          }
+        },
+        "content": {}
+      },
+      "required": [
+        "sourceRef",
+        "sourceType",
+        "trustBoundary",
+        "contentHash",
+        "redactionStatus",
+        "available"
+      ]
+    }
+  }
+}

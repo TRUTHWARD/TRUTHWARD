@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "phase8.locator-update.v1",
+  "title": "Locator Update Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "changeType", "targetRef", "beforeLocator", "afterLocator", "locatorStrategy", "rationale", "riskLevel", "evidenceRefs", "metadata"],
+  "properties": {
+    "schemaVersion": {"type": "string", "const": "phase8.locator-update.v1"},
+    "changeType": {"type": "string", "const": "locator_update"},
+    "targetRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1}
+      }
+    },
+    "beforeLocator": {"type": "object"},
+    "afterLocator": {"type": "object"},
+    "locatorStrategy": {"type": "object"},
+    "rationale": {"type": "string", "minLength": 1},
+    "riskLevel": {"type": "string", "enum": ["low", "medium", "high"]},
+    "evidenceRefs": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "metadata": {"type": "object"}
+  }
+}
