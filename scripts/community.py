@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+NODE_RELEASE_BASELINE_MAJOR = 22
+SUPPORTED_NODE_MINORS = {22: 13, 24: 0}
 
 
 def check_python(*, emit: bool = True) -> str:
@@ -98,6 +100,44 @@ def _command_check(check_id: str, command: list[str], *, required: bool) -> dict
         return _doctor_item(check_id, "unavailable", required=required, detail="version probe failed")
     version = next((line.strip() for line in result.stdout.splitlines() if line.strip()), "available")
     return _doctor_item(check_id, "passed", required=required, detail=version[:120])
+
+
+def _node_check() -> dict[str, Any]:
+    result = _command_check("node", ["node", "--version"], required=True)
+    if result["status"] != "passed":
+        return result
+    match = re.fullmatch(
+        r"v(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)",
+        result["detail"],
+    )
+    if not match:
+        return _doctor_item(
+            "node",
+            "blocked",
+            required=True,
+            detail="Unable to parse Node.js version; Node.js 22.13+ or 24 LTS is required",
+        )
+    major = int(match.group("major"))
+    minor = int(match.group("minor"))
+    minimum_minor = SUPPORTED_NODE_MINORS.get(major)
+    if minimum_minor is None or minor < minimum_minor:
+        return _doctor_item(
+            "node",
+            "blocked",
+            required=True,
+            detail=f"Unsupported {result['detail']}; Node.js 22.13+ or 24 LTS is required",
+        )
+    qualifier = (
+        "release baseline"
+        if major == NODE_RELEASE_BASELINE_MAJOR
+        else f"supported LTS; release baseline is Node.js {NODE_RELEASE_BASELINE_MAJOR}"
+    )
+    return _doctor_item(
+        "node",
+        "passed",
+        required=True,
+        detail=f"{result['detail']} ({qualifier})",
+    )
 
 
 def _migration_inventory() -> dict[str, str]:
@@ -255,7 +295,7 @@ def community_doctor(settings=None) -> dict[str, Any]:
 
     checks.extend(
         (
-            _command_check("node", ["node", "--version"], required=True),
+            _node_check(),
             _command_check("npm", ["npm", "--version"], required=True),
             _command_check("docker-compose", ["docker", "compose", "version"], required=False),
         )

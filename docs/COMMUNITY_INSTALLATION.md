@@ -24,7 +24,7 @@
 `schemas/contracts/` 不受调用位置影响。现有 `.env` 永不自动覆盖。
 
 初始化完成后运行 `python scripts/community.py doctor`。该入口只读检查 `.env`、
-Community profile、必需源码目录、Node/npm、迁移 checksum 和数据库 ledger；Docker
+Community profile、必需源码目录、Node.js 22.13+ 或 Node.js 24 LTS/npm、迁移 checksum 和数据库 ledger；Docker
 Compose 只在使用包内 Compose 时需要，因此 Docker 不可用会显示为 optional
 `unavailable`。`doctor --json` 输出 `truthward.community-doctor.v1`，任一 required
 检查未通过时退出非零。报告不包含 DSN、密码或 Token，也不会创建目录、修改配置、

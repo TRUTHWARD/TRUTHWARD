@@ -1,5 +1,5 @@
 {
-  "contentSha256": "99142af6f0033b90459b22357a2cd175a4635dca31cb661dbf5203df8c446384",
+  "contentSha256": "6f8c3c3240fa1bc7c43e2f00bc2e4d96875b5e3c4895214517041f6e1a48e3aa",
   "evidenceBuild": false,
   "files": [
     {
@@ -24,8 +24,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "5eee68e5629939aea8a8edd237f67b48e1bbaab84343b1d073a2a247188b521d",
-      "size": 26636
+      "sha256": "2378e33349f2f1e3ad06751b899ad54423e62f661205599536832188791d48eb",
+      "size": 26779
     },
     {
       "path": "SECURITY.md",
@@ -1726,8 +1726,8 @@
     },
     {
       "path": "docs/COMMUNITY_INSTALLATION.md",
-      "sha256": "2040625d6fd987b6a26ccad47f029afd76325fb402aa429b0a9f4b211ddc74c9",
-      "size": 10617
+      "sha256": "d6e54d16ab7084093862963ef6275ea9135d555aa1956fed388cf41e2c750c64",
+      "size": 10646
     },
     {
       "path": "docs/COMMUNITY_PROVIDER_VERIFICATION.md",
@@ -2948,9 +2948,9 @@
     },
     {
       "path": "scripts/community.py",
-      "sha256": "70e6514187386f69a3592272dc4293647e6c5789771d7a41274fd76d1d7ca1e1",
-      "size": 13276,
-      "sourceSha256": "af5660af92ff0223685c56498972e9f5ecccb1df2888cc46ecf5a90b56d28a02",
+      "sha256": "b8bf147fad4a17f61846e755bdfd8e4e477f190f0da9e231c14b7b4969f8bd2e",
+      "size": 14524,
+      "sourceSha256": "db466d0b851b70db61c259f5b1621eae8731c43a73eba5eedeaec572e7220fd0",
       "transformation": "inject-apache-2.0-spdx-header"
     },
     {
@@ -3299,15 +3299,15 @@
     },
     {
       "path": "SBOM.spdx.json",
-      "sha256": "671546d3d425ee43146e3dc80fe4c3d6b7a6c0019d9242f03e58b212bfc6a486",
+      "sha256": "1bc91aed054bcd18ad42b048ed1d717b2e9193a7a908f2aea3019a432e8cf1d2",
       "size": 502052
     }
   ],
   "license": "Apache-2.0",
-  "licensePolicySha256": "3b512d1c6d9be252e73f118bb3d11e380753f893d62f09ad7bbfe3f037594cb4",
+  "licensePolicySha256": "f3df213f01e6da5819798ffc61efd475cb93232cf624417b02c9a879f559093e",
   "publicationRequiresExternalEvidence": false,
   "publishable": true,
   "schemaVersion": "truthward.oss-source-provenance.v1",
-  "sourceCommit": "7653bae989735aa18718cf3134be9faea50707c6",
+  "sourceCommit": "30887a3ff4ac3bac5843be519fbad38146babfbb",
   "thirdPartyInventorySha256": "a356ee8f8d6379345145930b929533702aa898ef003fdf67688d316d5dfe2083"
 }

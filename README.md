@@ -66,7 +66,7 @@ This procedure does not upgrade an existing database, and no prebuilt applicatio
 #### 1. Prepare the environment
 
 - Python 3.11–3.14; `backend/pyproject.toml` defines the supported range.
-- Node.js 22 and npm.
+- Node.js 22.13+ or Node.js 24 LTS, plus npm. Release evidence is produced with Node.js 22.
 - Docker Engine and Compose v2 to run PostgreSQL 16 and Redis 7.
 - Network access to dependency registries and container image registries.
 
@@ -311,7 +311,7 @@ flowchart LR
 #### 1. 准备环境
 
 - Python 3.11–3.14（支持范围以 `backend/pyproject.toml` 为准）。
-- Node.js 22 与 npm。
+- Node.js 22.13+ 或 Node.js 24 LTS，以及 npm；发布证据固定使用 Node.js 22 生成。
 - Docker Engine 与 Compose v2；用于启动 PostgreSQL 16、Redis 7。
 - 可访问依赖包与容器镜像源的网络。
 
