@@ -1,5 +1,5 @@
 {
-  "contentSha256": "a6cb4be17d7303c7fff0d244438c975feddb90e12c3a074d417fc8ff3299511b",
+  "contentSha256": "99142af6f0033b90459b22357a2cd175a4635dca31cb661dbf5203df8c446384",
   "evidenceBuild": false,
   "files": [
     {
@@ -24,8 +24,18 @@
     },
     {
       "path": "README.md",
-      "sha256": "cd9ecd329aa2f44050b1796968182c719659da5556fd8b422fd7432cd2ca420e",
-      "size": 24692
+      "sha256": "5eee68e5629939aea8a8edd237f67b48e1bbaab84343b1d073a2a247188b521d",
+      "size": 26636
+    },
+    {
+      "path": "SECURITY.md",
+      "sha256": "2bfed47acab3227df68e2e1dd4288bea677c0f20aab0a0fdb8219ded45810642",
+      "size": 2947
+    },
+    {
+      "path": "SUPPORT.md",
+      "sha256": "bec1612b242756804fd776b8ef88480e9d1892135240461eb4581f6bda1f4812",
+      "size": 1595
     },
     {
       "path": "THIRD_PARTY_LICENSES.json",
@@ -1716,8 +1726,8 @@
     },
     {
       "path": "docs/COMMUNITY_INSTALLATION.md",
-      "sha256": "a434a09ca2bd2f634a6a4bbe152533d3c183e652ee6b8ac34584ac41a50375e1",
-      "size": 9976
+      "sha256": "2040625d6fd987b6a26ccad47f029afd76325fb402aa429b0a9f4b211ddc74c9",
+      "size": 10617
     },
     {
       "path": "docs/COMMUNITY_PROVIDER_VERIFICATION.md",
@@ -1731,13 +1741,13 @@
     },
     {
       "path": "docs/OSS_FUNCTIONAL_LAYERING.md",
-      "sha256": "bfbfee1011ece4f87cee087bef89101f3ffa7f1d7ec9a5b9dbb3d3ead36b8125",
-      "size": 4097
+      "sha256": "cda80d48f6b75a2164b1db9a4d64bf320d72c19365c88d4c834bd686b68e07d8",
+      "size": 4840
     },
     {
       "path": "docs/OSS_USER_GUIDE.md",
-      "sha256": "24145674bead8c22a61a9b6bbb077eec1e008c2b141dee4918cba9dfe7852495",
-      "size": 7912
+      "sha256": "a7de6db92c2bed14c0a8bd27a057322a7379c492397b564de1e9a7e4500677c9",
+      "size": 8797
     },
     {
       "path": "docs/images/community-regression-view.png",
@@ -2938,9 +2948,9 @@
     },
     {
       "path": "scripts/community.py",
-      "sha256": "9bfff714f114a7b530426e1244efc82e4e5e3d0045fe00dc9298a7985621cee9",
-      "size": 4796,
-      "sourceSha256": "f85ef8100094fdc4dfcbbdd43bc05127f4b6238ef5f3761b47b5e2b4c3885d7e",
+      "sha256": "70e6514187386f69a3592272dc4293647e6c5789771d7a41274fd76d1d7ca1e1",
+      "size": 13276,
+      "sourceSha256": "af5660af92ff0223685c56498972e9f5ecccb1df2888cc46ecf5a90b56d28a02",
       "transformation": "inject-apache-2.0-spdx-header"
     },
     {
@@ -3289,15 +3299,15 @@
     },
     {
       "path": "SBOM.spdx.json",
-      "sha256": "9dcb8da0fd9a3eda8174c7218eff27c69bd1b5d38a1091e88c4ae63ff9382f24",
+      "sha256": "671546d3d425ee43146e3dc80fe4c3d6b7a6c0019d9242f03e58b212bfc6a486",
       "size": 502052
     }
   ],
   "license": "Apache-2.0",
-  "licensePolicySha256": "b79cb08abffdf89d9edeadf89d7d68c6959a9a5533da4884012932bc52420685",
+  "licensePolicySha256": "3b512d1c6d9be252e73f118bb3d11e380753f893d62f09ad7bbfe3f037594cb4",
   "publicationRequiresExternalEvidence": false,
   "publishable": true,
   "schemaVersion": "truthward.oss-source-provenance.v1",
-  "sourceCommit": "548980262bdbfa3a3da1f3de5e5babf741c8d0d7",
+  "sourceCommit": "7653bae989735aa18718cf3134be9faea50707c6",
   "thirdPartyInventorySha256": "a356ee8f8d6379345145930b929533702aa898ef003fdf67688d316d5dfe2083"
 }

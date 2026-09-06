@@ -2,7 +2,7 @@
   "SPDXID": "SPDXRef-DOCUMENT",
   "creationInfo": {
     "comment": "Generated from exact Python and npm lockfiles for review only; no dependency payload is bundled.",
-    "created": "2026-09-05T16:53:17Z",
+    "created": "2026-09-06T05:56:10Z",
     "creators": [
       "Tool: truthward-build-oss-sbom/1"
     ]
@@ -25,7 +25,7 @@
       "licenseDeclared": "Apache-2.0",
       "name": "TRUTHWARD OSS approved source export",
       "primaryPackagePurpose": "SOURCE",
-      "versionInfo": "548980262bdbfa3a3da1f3de5e5babf741c8d0d7"
+      "versionInfo": "7653bae989735aa18718cf3134be9faea50707c6"
     },
     {
       "SPDXID": "SPDXRef-Package-npm-39d35dad8affed51",

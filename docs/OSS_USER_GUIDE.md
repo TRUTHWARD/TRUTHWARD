@@ -5,6 +5,11 @@
 Community OSS 是可自托管核心版。实际权限以后端 `/api/v1/auth/me` 返回的
 effective capabilities 和项目成员关系为准；前端是否显示按钮不构成授权。
 
+Community 保留项目、环境、计划、执行、结果和问题跟进组成的基本测试流程，并提供
+执行记录、失败信息、Artifact、Finding、WorkItem、Trace 和审计投影等证据基础。
+完整平台在同一数据链上继续提供受治理的自动归因、Gate、Replay 和发布决策；这些能力
+未进入当前 Community composition 时，本指南不会把它们描述为 Community 已开放功能。
+
 ## 1. 启动
 
 首次安装遵循根目录 [快速开始](../README.md#快速开始)，使用包内
@@ -103,12 +108,17 @@ SCM 配置和纳入 composition 的只读分析，不开放 PR Admission/Enforce
 
 1. 创建测试计划；
 2. 启动受限本地执行，必要时取消；
-3. 查看 Workflow Run、Execution、Finding 和审计投影；
-4. 创建 WorkItem，并执行认领、完成或取消等授权流转；
-5. 有现成数据时查看 candidate path、change set、impact 和 selective replay plan。
+3. 查看 Workflow Run 和 Execution，核对任务状态、失败信息及真实 Artifact；
+4. 查看标准化 Finding 及其已有证据引用，不把原始日志或模拟结果当作业务结论；
+5. 创建 WorkItem，并执行认领、完成或取消等授权流转；
+6. 通过 Trace 和审计投影复核已记录的调用与状态；
+7. 有现成数据时查看 candidate path、change set、impact 和 selective replay plan。
 
 当前 v1 没有开放 Requirement Intake、Test Assets、Gate/PR Admission、完整
-Coverage/Replay/Evidence 页面；不要通过直接 URL 或修改 DOM 绕过 composition。
+Coverage/Replay/Evidence 页面，也不在 Community 工作流中启用自动 Triage/Healing。
+当前失败分析以执行状态、失败信息、Artifact、Finding 和可追溯记录为基础；不要通过
+直接 URL 或修改 DOM 绕过 composition，也不要把完整产品的自动归因能力误写为 OSS
+当前能力。
 
 ## 8. 可见和隐藏模块
 

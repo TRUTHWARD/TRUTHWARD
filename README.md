@@ -8,27 +8,36 @@
 
 ## English
 
-AI software quality verification platform · Self-hosted Community edition
+Self-hosted AI testing platform · Evidence-grounded execution and failure analysis
 
-Bring projects, AI models, controlled Skills, test execution, and traceable results into one workspace.
-Connect configuration and execution to Findings, WorkItems, audit records, and Traces using the records and evidence produced by actual runs.
+Keep the normal testing workflow—projects and environments, test plans, execution, results,
+and issue follow-up—in one workspace. TRUTHWARD uses evidence from actual runs as the
+connecting thread, so failures can progress from recorded context to normalized Findings
+and actionable WorkItems instead of ending as disconnected logs or screenshots.
+
+Community provides the self-hosted foundation of this workflow. The broader platform builds
+on the same records for governed failure attribution, release decisions, replay, and audit.
 
 [Quick start](#quick-start) · [First steps](#first-steps) · [User guide (Chinese)](docs/OSS_USER_GUIDE.md)
 
 ### Why TRUTHWARD
 
-- **Configure multiple AI models**: bind model roles to projects or environments without tying workflows to a single provider.
-- **Control capability calls**: Agents produce structured requests; Services check permissions and manage Skill invocations.
-- **Follow up on results**: inspect executions and Findings, then track issues through WorkItems.
-- **See what happened**: connect Invocations, Executions, Traces, and existing audit details, with missing or unavailable evidence shown explicitly.
+- **Run a complete testing workflow**: organize project and environment scope, create plans, execute tests, inspect results, and follow up on issues.
+- **Preserve evidence at the source**: connect tasks, artifacts, failure context, Invocations, Traces, and existing audit details produced by actual runs.
+- **Turn failures into structured work**: normalize tool output into Findings and carry confirmed issues into WorkItems instead of leaving investigation in raw logs.
+- **Use AI and extensions under control**: bind models by scope and let Services authorize and manage structured Agent and Skill requests.
 
 ```mermaid
 flowchart LR
-    P[Projects and environments] --> C[Configure models and runners]
-    C --> T[Test plans] --> E[Execution] --> R[Results and evidence]
-    R -->|Issues found| F[Findings] --> W[WorkItem follow-up]
+    P[Projects and environments] --> T[Test plans]
+    T --> E[Execution] --> R[Results and evidence]
+    R --> C[Failure context] --> F[Normalized Findings] --> W[WorkItem follow-up]
     E -.-> O[Existing Invocation / Trace / Audit records]
 ```
+
+Execution, evidence, and failure analysis are not separate products: they are successive
+parts of one testing workflow. Models, Skills, runners, and governance controls support
+that workflow; they are not substitutes for it.
 
 ![Regression view after a real functional execution](docs/images/community-regression-view.png)
 
@@ -40,11 +49,11 @@ Isolated acceptance instance: local Skill grouping and Invocation records after 
 | --- | --- |
 | Local identity | First-admin setup, login/logout, revocable tokens, local users, and fixed project roles |
 | Projects and environments | Creation, configuration, membership management, and project scope selection |
+| Tests and issues | Test plans, restricted execution/cancellation, Findings, and WorkItem tracking |
+| Traceability | Workflows, execution records, audit event details, runtime observations, and read-only analysis of existing data |
 | Model bindings | Project/environment configuration with PRIMARY, CHALLENGER, JUDGE, and LOCAL_FALLBACK roles |
 | Controlled Skills | Trusted local JSON registration; explicit enable/disable for regression presentation bindings, business workflow calls, and Invocation observation |
-| Tests and issues | Test plans, restricted execution/cancellation, Findings, and WorkItem tracking |
 | SCM configuration | Scoped GitHub/GitLab bindings and safe configuration projections |
-| Traceability | Workflows, execution records, audit event details, runtime observations, and read-only analysis of existing data |
 
 See the [Community user guide (Chinese)](docs/OSS_USER_GUIDE.md) for workflows and current limitations.
 
@@ -94,6 +103,7 @@ This does not create an application account; there is no shared administrator pa
 ```bash
 docker compose --env-file .env -f compose.community.yml up -d --wait
 python scripts/community.py init-db
+python scripts/community.py doctor
 ```
 
 PostgreSQL defaults to local port `55432` and Redis to `56379`; both bind only to `127.0.0.1`.
@@ -102,6 +112,8 @@ If those ports are occupied, use `configure --database-port 55433 --redis-port 5
 Initialization verifies the bundled SQL checksum manifest and records each successful migration in the database ledger.
 **It refuses to run when existing application tables are found and does not delete data.**
 Do not run `init-db` against an existing deployment or delete a database to resolve initialization or login errors.
+`doctor` performs credential-safe read-only checks of the Community profile, source assets,
+tooling, database connection, and exact migration ledger. It does not repair or migrate data.
 
 #### 5. Start the backend and frontend
 
@@ -215,10 +227,13 @@ Community does not expose approval-based activation, Shadow, or automatic rollba
 - [Trusted local Skill Manifests](community-skills/README.md)
 - [Runnable browser example](examples/community-browser/README.md)
 - [Provider verification](docs/COMMUNITY_PROVIDER_VERIFICATION.md)
+- [Support and issue routing](SUPPORT.md)
+- [Security policy and private vulnerability reporting](SECURITY.md)
 
-Contributions addressing reproducible issues, tests, and documentation are welcome.
-Include the version, redacted error codes, and minimal reproduction steps when reporting an issue.
-Report vulnerability details through a private channel provided by the maintainers; do not publicly post credentials or exploit steps.
+Usage questions and proposals belong in GitHub Discussions; reproducible bugs belong in GitHub Issues.
+Contributions addressing reproducible issues, tests, and documentation are welcome. Include the version,
+redacted error codes, and minimal reproduction steps when reporting an issue. Report vulnerability details
+only through the private process in the security policy; do not publicly post credentials or exploit steps.
 
 Built with FastAPI, SQLAlchemy, PostgreSQL, React, TypeScript, and Vite.
 Build the frontend with `npm --prefix frontend run build:oss`; the backend still requires the complete source directory at runtime.
@@ -241,27 +256,34 @@ TRUTHWARD and 谛序 identify the project. The Apache License 2.0 does not grant
 
 [English](#english) | [简体中文](#简体中文)
 
-谛序 Community · AI 软件质量验证平台 · 可自托管的 Community 版本
+谛序 Community · 以执行证据和失败分析贯穿测试闭环的可自托管 AI 测试平台
 
-将项目、AI 模型、受控 Skill、测试执行和可追溯结果放在同一个工作区。
-从配置与执行，到 Finding、WorkItem、审计与 Trace，关联实际产生的运行记录与证据。
+保留项目与环境、测试计划、执行、结果和问题跟进组成的完整测试流程，并以真实执行产生的
+证据贯穿各环节。失败不会停留在零散日志或截图中，而是带着上下文进入标准化 Finding 和
+可继续处理的 WorkItem。
+
+Community 提供这条流程的可自托管基础；更完整的平台能力继续基于同一批事实记录提供
+受治理的失败归因、发布决策、回放和审计。
 
 [快速开始](#快速开始) · [首次使用](#完成第一次使用) · [使用指南](docs/OSS_USER_GUIDE.md)
 
 ### 为什么使用谛序
 
-- **配置多个 AI 模型**：按项目或环境绑定模型角色，不把业务流程固定到单一 Provider。
-- **把能力调用纳入控制**：Agent 提出结构化请求，由 Service 校验权限并托管 Skill 调用。
-- **保留可处理的结果**：查看执行记录和 Finding，用 WorkItem 跟进问题，而不是只保留一段聊天记录。
-- **看清发生了什么**：关联 Invocation、Execution、Trace 和已有审计详情；缺失或不可用的证据如实显示。
+- **跑通完整测试流程**：管理项目和环境范围，创建计划、执行测试、查看结果并跟进问题。
+- **从执行源头保留证据**：关联任务、产物、失败上下文、Invocation、Trace 和已有审计详情。
+- **把失败转成结构化工作**：将工具输出归一化为 Finding，再把确认的问题带入 WorkItem，而不是停留在原始日志中。
+- **受控使用 AI 与扩展能力**：按范围绑定模型，由 Service 对 Agent 和 Skill 的结构化请求进行授权和托管。
 
 ```mermaid
 flowchart LR
-    P[项目与环境] --> C[配置所需模型与执行器]
-    C --> T[测试计划] --> E[执行] --> R[结果与证据]
-    R -->|发现问题| F[Finding] --> W[WorkItem 跟进]
+    P[项目与环境] --> T[测试计划]
+    T --> E[执行] --> R[结果与证据]
+    R --> C[失败上下文] --> F[标准化 Finding] --> W[WorkItem 跟进]
     E -.-> O[已有 Invocation / Trace / 审计]
 ```
+
+执行、证据和失败分析不是三个割裂的产品，而是同一测试流程中连续发生的环节。模型、Skill、
+执行器和治理能力用于支撑这条流程，不能替代测试流程本身。
 
 ![真实功能执行后的回归展示](docs/images/community-regression-view.png)
 
@@ -273,11 +295,11 @@ flowchart LR
 | --- | --- |
 | 本地身份 | 首次管理员、登录/登出、可撤销 Token、本地用户和固定项目角色 |
 | 项目与环境 | 创建、配置、成员管理与项目范围切换 |
+| 测试与问题 | 测试计划、受限执行/取消、Finding、WorkItem 流转 |
+| 可追溯性 | Workflow、执行记录、审计事件详情和运行观测；已有数据的只读分析 |
 | 多模型绑定 | 项目/环境级配置，PRIMARY、CHALLENGER、JUDGE、LOCAL_FALLBACK 角色 |
 | 受控 Skill | 可信本地 JSON 注册；回归展示 Binding 显式启用/停用、业务调用与 Invocation 观察 |
-| 测试与问题 | 测试计划、受限执行/取消、Finding、WorkItem 流转 |
 | SCM 配置 | GitHub、GitLab 的项目/环境级绑定与安全配置投影 |
-| 可追溯性 | Workflow、执行记录、审计事件详情和运行观测；已有数据的只读分析 |
 
 具体操作和当前限制见 [Community 使用指南](docs/OSS_USER_GUIDE.md)。
 
@@ -325,6 +347,7 @@ npm --prefix frontend ci
 ```bash
 docker compose --env-file .env -f compose.community.yml up -d --wait
 python scripts/community.py init-db
+python scripts/community.py doctor
 ```
 
 默认 PostgreSQL 使用本机 `55432`，Redis 使用 `56379`；均只绑定 `127.0.0.1`。
@@ -332,6 +355,8 @@ python scripts/community.py init-db
 
 初始化先验证包内 SQL 校验清单，再将每个成功迁移记录到数据库账本。**发现已有业务表时会拒绝执行，不删除数据。**
 不要对已有部署使用 `init-db`，也不要通过删库处理初始化或登录错误。
+`doctor` 会对 Community profile、源码资源、工具、数据库连接和精确迁移账本执行凭据安全的
+只读检查；它不会修复或迁移数据。
 
 #### 5. 启动前后端
 
@@ -438,9 +463,12 @@ Community 不提供审批激活、Shadow 或自动回滚入口。
 - [可信本地 Skill Manifest](community-skills/README.md)
 - [可运行的真实浏览器示例](examples/community-browser/README.md#简体中文)
 - [模型验证记录](docs/COMMUNITY_PROVIDER_VERIFICATION.md#简体中文)
+- [支持与问题分流](SUPPORT.md)
+- [安全策略与私密漏洞报告](SECURITY.md)
 
+使用问题和方案建议请进入 GitHub Discussions，可复现的软件缺陷请提交 GitHub Issue。
 欢迎围绕可复现问题、测试和文档提出改进。提交问题时提供版本、脱敏后的错误代码和
-最小复现步骤；安全漏洞细节应通过项目维护者提供的私密渠道报告，不要直接公开凭据或利用步骤。
+最小复现步骤；安全漏洞细节只通过安全策略中的私密渠道报告，不要公开凭据或利用步骤。
 
 技术栈：FastAPI、SQLAlchemy、PostgreSQL、React、TypeScript、Vite。
 前端可使用 `npm --prefix frontend run build:oss` 构建；完整源码目录仍是后端运行要求。

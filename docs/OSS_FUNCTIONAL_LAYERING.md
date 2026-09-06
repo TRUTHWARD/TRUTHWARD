@@ -12,6 +12,17 @@ Status: Community core v1 implemented; Basic remains a separate commercial editi
 保持项目级只读能力；Community OSS 不继承 Basic allowlist，而由独立
 `COMMUNITY_CAPABILITIES`、独立 API composition 和 OSS 前端 composition 约束。
 
+## 产品形态与核心主线
+
+谛序的产品形态是测试平台：项目/环境、测试计划、执行、结果、Finding 和后续处理
+共同组成基础流程。执行证据与失败归因是贯穿这条流程的核心主线和差异化能力，不是
+脱离测试平台单独存在的产品，也不替代计划、执行和结果管理。
+
+Community core v1 开放这条主线的可运行基础，包括受限执行、失败信息、Artifact、
+Finding、WorkItem、Trace 和审计投影。完整平台中的自动 Triage、Gate、受管 Replay
+与发布决策继续受各 edition 的 capability 和 composition 约束；未注册到 Community
+composition 的能力不得因总体产品定位而被表述为 Community 已开放。
+
 ## Community core v1
 
 当前可用闭环为：

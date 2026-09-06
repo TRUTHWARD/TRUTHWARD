@@ -23,6 +23,13 @@
 运行命令应在源码根目录执行。启动器固定后端工作目录，确保 `.env`、Manifest 和
 `schemas/contracts/` 不受调用位置影响。现有 `.env` 永不自动覆盖。
 
+初始化完成后运行 `python scripts/community.py doctor`。该入口只读检查 `.env`、
+Community profile、必需源码目录、Node/npm、迁移 checksum 和数据库 ledger；Docker
+Compose 只在使用包内 Compose 时需要，因此 Docker 不可用会显示为 optional
+`unavailable`。`doctor --json` 输出 `truthward.community-doctor.v1`，任一 required
+检查未通过时退出非零。报告不包含 DSN、密码或 Token，也不会创建目录、修改配置、
+应用迁移或修复数据库。
+
 ## 真实浏览器执行
 
 功能测试的真实 Playwright 路径需要包内 `tools/playwright/semantic_action_runner.mjs`、
@@ -119,6 +126,7 @@ Compose 只管理本地 PostgreSQL/Redis，数据保存在命名卷中。`stop` 
 | 缺少 psycopg | 在激活的 Python 环境重新按锁文件安装后端依赖 |
 | SQLSTATE 或 checksum 错误 | 保留账本与报错标识；确认源码包及数据库状态，不修改历史 SQL 或账本来绕过 |
 | 连接失败 | 检查依赖健康、端口和 `.env`；不要公开完整 DSN 或密码 |
+| doctor 返回 blocked | 按 `blockedChecks` 修复配置、依赖或迁移状态；doctor 不会自动修改实例 |
 | Python 不支持 | 使用 3.11–3.14，不绕过版本检查 |
 | 登录 401 | 使用自己创建的用户名/邮箱；演示 bearer 被拒绝，Token 过期需重新登录 |
 | 多个接口 422 | 核对版本和完整 `schemas/contracts/`，不要关闭响应校验 |
