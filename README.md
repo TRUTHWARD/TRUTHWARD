@@ -63,6 +63,13 @@ These steps target a **fresh, single-instance installation on Linux using Bash**
 The verified environment is Ubuntu 24.04 with Python 3.12.
 This procedure does not upgrade an existing database, and no prebuilt application image is provided.
 
+> **Scope:** this quick start is an evaluation/development setup. On a remote server the
+> processes run on that server, but they still bind only to the server's `127.0.0.1` and
+> are reached through the SSH tunnel in step 5. It does not configure public ingress,
+> TLS, automatic restart, or high availability. See the
+> [installation and operations guide](docs/COMMUNITY_INSTALLATION.md#停止备份与服务器部署边界)
+> before planning a long-running or public deployment.
+
 #### 1. Prepare the environment
 
 - Python 3.11–3.14; `backend/pyproject.toml` defines the supported range.
@@ -70,10 +77,45 @@ This procedure does not upgrade an existing database, and no prebuilt applicatio
 - Docker Engine and Compose v2 to run PostgreSQL 16 and Redis 7.
 - Network access to dependency registries and container image registries.
 
+Verify the commands before creating configuration:
+
+```bash
+python3 --version
+node --version
+npm --version
+docker --version
+docker compose version
+docker info >/dev/null
+```
+
+On Ubuntu 24.04, Docker Engine may be installed without the Compose v2 plugin. If
+`docker compose version` reports that `compose` is unknown, install the distribution
+package and rerun the checks:
+
+```bash
+sudo apt-get update
+sudo apt-get install docker-compose-v2
+```
+
+Package names differ for Docker's upstream repository and other distributions; do not
+silently substitute the legacy `docker-compose` v1 command.
+
 Database initialization runs directly in Python using the PostgreSQL driver installed with the backend dependencies.
 Windows uses the same source package; see the [Windows compatibility notes (Chinese)](docs/COMMUNITY_INSTALLATION.md#windows-兼容说明).
 
-Extract the Community source package and enter the root directory containing this README.
+Obtain the complete Community source from a published source archive or a GitHub checkout:
+
+```bash
+git clone --depth 1 https://github.com/TRUTHWARD/TRUTHWARD.git
+cd TRUTHWARD
+git rev-parse HEAD
+```
+
+The shallow default-branch checkout is convenient for evaluation. For a repeatable
+installation, use a published signed Community tag or source archive, record the commit,
+and verify its published SHA-256 instead of relying on a moving branch.
+
+If you use an archive, extract it and enter the root directory containing this README.
 Keep the full directory, including `schemas/contracts/`, `DB_SCHEMA.sql`, `scripts/migrations/`, and `community-skills/`.
 Do not copy only the backend directory or replace the source runtime directory with a wheel.
 
@@ -140,7 +182,28 @@ Replace `user@your-server` with your server login address, then open the localho
 ssh -N -L 5173:127.0.0.1:5173 -L 8000:127.0.0.1:8000 user@your-server
 ```
 
-#### 6. Stop the local instance
+The browser then connects to local ports that SSH forwards to the remote server's
+loopback ports. The `127.0.0.1` URLs do not mean that the application was installed on
+your workstation. Do not expose the Vite development server, PostgreSQL, or Redis directly.
+
+#### 6. Verify the installation
+
+From the machine running the application, or through the tunnel, check the documented
+read-only endpoints:
+
+```bash
+curl -fsS http://127.0.0.1:8000/api/v1/health
+curl -fsS http://127.0.0.1:8000/api/v1/readiness
+curl -fsS http://127.0.0.1:8000/api/v1/auth/bootstrap-status
+curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/api/v1/auth/me
+```
+
+Health must report `healthy`, bootstrap status must initially report
+`bootstrapRequired=true`, and unauthenticated `/auth/me` must return `401`. Readiness may
+truthfully retain deployment-specific items, but an exact Community source package must
+not report missing maintainer-only CI entrypoints.
+
+#### 7. Stop the local instance
 
 Press Ctrl+C in both application terminals, then stop the dependencies:
 
@@ -308,6 +371,11 @@ flowchart LR
 以下步骤以 **Linux / Bash 下的全新单实例安装**为主，已验证环境为 Ubuntu 24.04 / Python 3.12。
 它不是现有数据库的升级步骤，也不提供预构建应用镜像。
 
+> **适用范围：**这是一条评估/开发用途的快速安装流程。安装在远程服务器时，进程确实
+> 运行在服务器上，但仍只监听服务器自己的 `127.0.0.1`，通过第 5 步的 SSH 隧道访问。
+> 本流程不配置公网入口、TLS、自动重启或高可用。计划长期运行或公网访问前，请先阅读
+> [安装与运行说明](docs/COMMUNITY_INSTALLATION.md#停止备份与服务器部署边界)。
+
 #### 1. 准备环境
 
 - Python 3.11–3.14（支持范围以 `backend/pyproject.toml` 为准）。
@@ -315,10 +383,43 @@ flowchart LR
 - Docker Engine 与 Compose v2；用于启动 PostgreSQL 16、Redis 7。
 - 可访问依赖包与容器镜像源的网络。
 
+生成配置前先确认所有命令可用：
+
+```bash
+python3 --version
+node --version
+npm --version
+docker --version
+docker compose version
+docker info >/dev/null
+```
+
+Ubuntu 24.04 可能只安装了 Docker Engine，没有 Compose v2 插件。如果
+`docker compose version` 提示 `compose` 未知，安装发行版软件包后重新检查：
+
+```bash
+sudo apt-get update
+sudo apt-get install docker-compose-v2
+```
+
+Docker 官方仓库或其他发行版的软件包名称可能不同；不要静默改用旧版
+`docker-compose` v1 命令。
+
 数据库初始化由 Python 直接执行，使用后端依赖中已安装的 PostgreSQL 驱动。
 Windows 使用相同源码包，操作差异见 [Windows 兼容说明](docs/COMMUNITY_INSTALLATION.md#windows-兼容说明)。
 
-解压 Community 源码包，进入包含本 README 的根目录。保留整个目录，尤其是
+从已发布源码归档或 GitHub 获取完整 Community 源码：
+
+```bash
+git clone --depth 1 https://github.com/TRUTHWARD/TRUTHWARD.git
+cd TRUTHWARD
+git rev-parse HEAD
+```
+
+浅克隆默认分支适合快速评估。需要可重复部署时，应选择已发布且签名的 Community tag
+或源码归档，记录 commit 并校验发布的 SHA-256，不能把持续移动的分支当作发布证据。
+
+使用归档时，解压后进入包含本 README 的根目录。保留整个目录，尤其是
 `schemas/contracts/`、`DB_SCHEMA.sql`、`scripts/migrations/` 和 `community-skills/`。
 不要只复制后端目录或用一个 wheel 替代源码运行目录。
 
@@ -383,7 +484,27 @@ API 只启动 Community 路由，`admin-token`、`user-token` 等演示身份不
 ssh -N -L 5173:127.0.0.1:5173 -L 8000:127.0.0.1:8000 user@your-server
 ```
 
-#### 6. 停止本地实例
+此时浏览器连接的是本机端口，SSH 会把流量转发到远程服务器的 loopback 端口。
+URL 中的 `127.0.0.1` 不代表应用安装在个人电脑上。不要直接暴露 Vite 开发服务器、
+PostgreSQL 或 Redis。
+
+#### 6. 验证安装
+
+在运行应用的机器上，或通过隧道，检查文档约定的只读接口：
+
+```bash
+curl -fsS http://127.0.0.1:8000/api/v1/health
+curl -fsS http://127.0.0.1:8000/api/v1/readiness
+curl -fsS http://127.0.0.1:8000/api/v1/auth/bootstrap-status
+curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/api/v1/auth/me
+```
+
+Health 必须为 `healthy`；首次启动的 bootstrap status 必须为
+`bootstrapRequired=true`；未认证 `/auth/me` 必须返回 `401`。Readiness 可以如实保留
+deployment-specific 项，但精确 Community 源码包不得因为维护者专用 CI 入口未随包提供
+而报告 `missing_dependency`。
+
+#### 7. 停止本地实例
 
 分别在前后端终端按 Ctrl+C，再停止依赖：
 

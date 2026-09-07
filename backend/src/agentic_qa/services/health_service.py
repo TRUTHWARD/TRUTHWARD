@@ -452,13 +452,41 @@ class HealthService:
         migration_files = sorted(path.name for path in MIGRATIONS_DIR.glob("*.sql") if NUMBERED_MIGRATION.match(path.name))
         manifest_exists = (MIGRATIONS_DIR / "MANIFEST.sha256").exists()
         ledger = self._schema_migration_ledger_status(len(migration_files))
-        static_entrypoints = [
-            "scripts/run-static-checks.ps1",
-            "tools/static_checks/check_frontend_backend_contract.py",
-            "tools/static_checks/check_migration_integrity.py",
-            "tools/static_checks/check_db_schema_drift.py",
-            "scripts/apply-migrations.ps1",
-        ]
+        settings = get_settings()
+        if settings.deployment_profile == "oss":
+            static_entrypoints = [
+                "scripts/community.py",
+                "scripts/apply_migrations.py",
+                "scripts/migrations/MANIFEST.sha256",
+                "compose.community.yml",
+                "frontend/tsconfig.oss.json",
+            ]
+            entrypoint_title = "Community runtime validation entrypoints"
+            present_summary = (
+                "Community runtime and migration validation entrypoints are present; "
+                "maintainer-only CI entrypoints are not required by the source release."
+            )
+            validation_command = "python scripts/community.py doctor"
+            entrypoint_set = "community-runtime"
+            migration_evidence_refs = ["scripts/apply_migrations.py", "scripts/migrations/MANIFEST.sha256"]
+            migration_validation_command = "python scripts/community.py doctor"
+        else:
+            static_entrypoints = [
+                "scripts/run-static-checks.ps1",
+                "tools/static_checks/check_frontend_backend_contract.py",
+                "tools/static_checks/check_migration_integrity.py",
+                "tools/static_checks/check_db_schema_drift.py",
+                "scripts/apply-migrations.ps1",
+            ]
+            entrypoint_title = "Static check entrypoints"
+            present_summary = (
+                "Static check entrypoints are present; readiness does not execute CI/CD validation "
+                "or assume a fixed workflow/job name."
+            )
+            validation_command = "./scripts/run-static-checks.ps1"
+            entrypoint_set = "maintainer-validation"
+            migration_evidence_refs = ["scripts/apply-migrations.ps1", "scripts/migrations/MANIFEST.sha256"]
+            migration_validation_command = "./scripts/apply-migrations.ps1"
         missing_entrypoints = [relative for relative in static_entrypoints if not (PROJECT_ROOT / relative).exists()]
         return [
             self._item(
@@ -471,28 +499,30 @@ class HealthService:
                     "manifestExists": manifest_exists,
                     "schemaMigrationsTablePresent": ledger["tablePresent"],
                     "appliedMigrationCount": ledger["appliedMigrationCount"],
-                    "autoCreateTables": get_settings().auto_create_tables,
+                    "autoCreateTables": settings.auto_create_tables,
                 },
-                ["scripts/apply-migrations.ps1", "scripts/migrations/MANIFEST.sha256"],
-                "./scripts/apply-migrations.ps1",
+                migration_evidence_refs,
+                migration_validation_command,
             ),
             self._item(
                 "static-check-entrypoints",
-                "Static check entrypoints",
+                entrypoint_title,
                 "missing_dependency" if missing_entrypoints else "deployment_specific_not_validated",
                 (
-                    "Static check entrypoints are present; readiness does not execute CI/CD validation or assume a fixed workflow/job name."
+                    present_summary
                     if not missing_entrypoints
-                    else "Required static check entrypoints are missing."
+                    else f"Required {entrypoint_set} entrypoints are missing."
                 ),
                 {
+                    "deploymentProfile": settings.deployment_profile,
+                    "entrypointSet": entrypoint_set,
                     "entrypoints": static_entrypoints,
                     "missingEntryPoints": missing_entrypoints,
                     "fixedWorkflowJobAssumption": False,
                     "lastRunTrackedByRuntime": False,
                 },
                 static_entrypoints,
-                "./scripts/run-static-checks.ps1",
+                validation_command,
             ),
         ]
 

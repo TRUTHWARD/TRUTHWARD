@@ -1,5 +1,5 @@
 {
-  "contentSha256": "6f8c3c3240fa1bc7c43e2f00bc2e4d96875b5e3c4895214517041f6e1a48e3aa",
+  "contentSha256": "3a6100530325bae8554d4e1b810ea39ad03a70730b2e30bbcd42791a8a6b62a2",
   "evidenceBuild": false,
   "files": [
     {
@@ -24,8 +24,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "2378e33349f2f1e3ad06751b899ad54423e62f661205599536832188791d48eb",
-      "size": 26779
+      "sha256": "722a24e0f210037dafb1a61d7a52d7f612e037fd4c25c50bf87414e3ae949ab0",
+      "size": 31552
     },
     {
       "path": "SECURITY.md",
@@ -1347,9 +1347,9 @@
     },
     {
       "path": "backend/src/agentic_qa/services/health_service.py",
-      "sha256": "b392623ae24232f0f4a29fe92e4f33e15300851e2db5bf2e13b420683a3d5f2e",
-      "size": 32753,
-      "sourceSha256": "e9ce2b97d5aa833926673edbe5ca9325c2c76b5029a46c69aed16e2b1aa20006",
+      "sha256": "31abd9a07b7c1e0957686729a429c72d99b738f1ba886f3cd7def004019f1eb7",
+      "size": 34264,
+      "sourceSha256": "eb71bb85fb3de3e7f1fc0b65ef284b32870f01dbac12504c4caf80c9c5a5b4a8",
       "transformation": "inject-apache-2.0-spdx-header"
     },
     {
@@ -1726,8 +1726,8 @@
     },
     {
       "path": "docs/COMMUNITY_INSTALLATION.md",
-      "sha256": "d6e54d16ab7084093862963ef6275ea9135d555aa1956fed388cf41e2c750c64",
-      "size": 10646
+      "sha256": "50a72ca28f475be2bedad41ca2d0159eeed2d5d96b00621d9ffaca5f3db2a6b2",
+      "size": 14917
     },
     {
       "path": "docs/COMMUNITY_PROVIDER_VERIFICATION.md",
@@ -1978,9 +1978,9 @@
     },
     {
       "path": "frontend/src/lib/presentation.ts",
-      "sha256": "bf646b5b07ee06fb93fba8f637e6c2b1620a5765eba10ba89d0fa844e1674c6f",
-      "size": 16700,
-      "sourceSha256": "442971c9c9d0a8416c36072ee3f37e96d2ca793b70057e4d13fa71d7c6c64035",
+      "sha256": "22c9a2228065b21828aa4f965b641a640152a7b1de751c734cbbbd820ced7be9",
+      "size": 17211,
+      "sourceSha256": "27295dddfb24ac65e32e3bd05f17637b2069fefbafbab99b10988d1997be5c8b",
       "transformation": "inject-apache-2.0-spdx-header"
     },
     {
@@ -3299,15 +3299,15 @@
     },
     {
       "path": "SBOM.spdx.json",
-      "sha256": "1bc91aed054bcd18ad42b048ed1d717b2e9193a7a908f2aea3019a432e8cf1d2",
+      "sha256": "ff132c16cb0e17e1b5ea112daee480ed11cf5987d5d6a838b69c814e5f0bf890",
       "size": 502052
     }
   ],
   "license": "Apache-2.0",
-  "licensePolicySha256": "f3df213f01e6da5819798ffc61efd475cb93232cf624417b02c9a879f559093e",
+  "licensePolicySha256": "776af9becfff1f0f42bcfb38a2269f9279e93925f62d058250dbeb3d6f7c1937",
   "publicationRequiresExternalEvidence": false,
   "publishable": true,
   "schemaVersion": "truthward.oss-source-provenance.v1",
-  "sourceCommit": "30887a3ff4ac3bac5843be519fbad38146babfbb",
+  "sourceCommit": "8348b2cb07ef68c9626b87a59cacea668d2ea533",
   "thirdPartyInventorySha256": "a356ee8f8d6379345145930b929533702aa898ef003fdf67688d316d5dfe2083"
 }

@@ -359,12 +359,20 @@ export function displayRuntimeCategoryTitle(locale: Locale, category: RuntimeRea
 }
 
 export function displayRuntimeItemLabel(locale: Locale, item: RuntimeReadinessItem): string {
+  if (locale === "zh-CN" && item.id === "static-check-entrypoints" && item.details.entrypointSet === "community-runtime") {
+    return "Community 运行验证入口";
+  }
   return locale === "zh-CN" ? zhRuntimeItemLabels[item.id] ?? item.label : item.label;
 }
 
 export function displayRuntimeItemSummary(locale: Locale, item: RuntimeReadinessItem): string {
   if (locale !== "zh-CN") {
     return item.summary;
+  }
+  if (item.id === "static-check-entrypoints" && item.details.entrypointSet === "community-runtime") {
+    return item.status === "missing_dependency"
+      ? "缺少 Community 源码包必需的运行或迁移验证入口。"
+      : "Community 运行与迁移验证入口均存在；源码发行不要求维护者专用 CI 入口。";
   }
   return zhRuntimeSummaries[`${item.id}:${item.status}`] ?? item.summary;
 }

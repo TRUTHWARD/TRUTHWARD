@@ -3,12 +3,53 @@
 本页补充根目录 [README](../README.md) 的全新本地安装流程。
 安装入口只启动 Community，不依赖未随源码包提供的私有启动脚本。
 
+> 远程服务器上的快速安装仍是 loopback-only：命令在服务器执行，API 和开发前端监听
+> 服务器自己的 `127.0.0.1`，使用者通过 SSH 隧道访问。本页不会把开发服务器改成公网
+> 服务，也不把这条流程表述为生产、高可用或开机自启部署。
+
 ## 前置检查
 
 确认 Python、Node.js、npm 与 Docker Compose v2 可用。
 数据库初始化使用后端锁定依赖中的 psycopg 驱动，无需安装 PowerShell 或 PostgreSQL 客户端。Python 支持 3.11–3.14；首次配置读取权威版本范围并检查解释器。
 `backend/requirements.lock` 是带 hash 的锁定依赖，包含开发验证依赖，首次下载可能较大。
 前端使用 `npm ci`；不要为解决安装失败删除锁文件或关闭 hash 校验。
+
+生成配置前运行：
+
+```bash
+python3 --version
+node --version
+npm --version
+docker --version
+docker compose version
+docker info >/dev/null
+```
+
+在 Ubuntu 24.04 中，Docker Engine 与 Compose v2 可能是分离的软件包。如果 Docker
+已经可用，但 `docker compose version` 提示 `compose` 未知，可安装发行版包：
+
+```bash
+sudo apt-get update
+sudo apt-get install docker-compose-v2
+```
+
+使用 Docker 官方仓库或其他 Linux 发行版时应遵循对应仓库的 Compose v2 安装方式；
+不得为绕过检查静默改用旧版 `docker-compose` v1。当前用户还必须能成功运行
+`docker info`；调整 Docker 组成员关系后通常需要重新登录。
+
+## 获取并固定源码
+
+从 GitHub 快速获取当前默认分支：
+
+```bash
+git clone --depth 1 https://github.com/TRUTHWARD/TRUTHWARD.git
+cd TRUTHWARD
+git rev-parse HEAD
+```
+
+默认分支适合评估，不是不可变发布身份。长期或可审计安装应使用已发布且签名的
+Community tag，或下载正式源码归档并校验发布的 SHA-256；记录 commit、归档 hash 和
+安装日期。无论使用 clone 还是归档，都必须保留 README 指定的完整源码目录。
 
 ## 配置与目录
 
@@ -104,7 +145,7 @@ Linux 安装和运行无需调用它。维护者预演编号迁移可用
 `init-db` 不提供版本升级、降级、数据搬迁或跨已提交迁移的整库回滚。旧版本升级需要对应版本说明、
 数据库及制品备份和隔离环境预演；迁移 checksum 不匹配必须停止，不得改账本绕过。
 
-## 停止、备份与公网部署
+## 停止、备份与服务器部署边界
 
 Compose 只管理本地 PostgreSQL/Redis，数据保存在命名卷中。`stop` 不删除卷；
 不要为清理容器删除数据库卷。保留 `.env` 中生成的凭据，已有数据库不会随新配置自动改密码。
@@ -116,6 +157,51 @@ Compose 只管理本地 PostgreSQL/Redis，数据保存在命名卷中。`stop` 
 防火墙、允许来源、运行身份与备份；不要直接暴露数据库、Redis 或开发前端。
 开放访问前应完成首次管理员创建。启动后的只读检查包括
 `/api/v1/health`、`/api/v1/readiness` 和未认证 `/api/v1/auth/me` 返回 401。
+
+远程快速体验的数据路径是：
+
+```text
+本机浏览器 127.0.0.1:5173
+  -> SSH 隧道
+  -> 远程服务器 127.0.0.1:5173
+  -> Vite /api/v1 代理
+  -> 远程服务器 127.0.0.1:8000
+```
+
+因此浏览器中的 loopback 地址不表示应用运行在本机。服务器端 PostgreSQL `55432`、
+Redis `56379`、API `8000` 和开发前端 `5173` 都应继续只监听 loopback。
+
+README 的 `serve` 与 Vite 命令是前台进程，包内 Compose 也没有承诺应用层的开机自启。
+服务器重启或进程退出后需要人工重新启动。不要把 `nohup`、`screen` 或直接暴露 Vite
+当作生产托管方案。
+
+长期运行或公网部署不属于快速安装的完成状态。在开放访问前，部署方至少需要另行评审并验证：
+
+- 以专用非 root 身份运行后端，并用受管进程服务实现失败重启、开机启动和最小权限；
+- 使用 `npm --prefix frontend run build:oss` 生成静态前端，由 HTTPS 反向代理提供；
+- 只把必要的 HTTPS 入口加入防火墙，数据库、Redis、Vite 和后端源端口继续保持私有；
+- 配置可信域名、TLS 证书、允许来源、安全响应头、请求大小和超时；
+- 完成首次管理员创建、凭据轮换、日志脱敏、容量限制、监控和告警；
+- 加密备份数据库、`.env`、artifact/replay 目录和精确源码版本，并实际验证恢复；
+- 记录容器镜像的实际 digest。包内 Compose 使用 PostgreSQL 16 / Redis 7 的大版本 tag，
+  方便快速体验，但不能单独作为逐位可重复的生产制品证明。
+
+项目不提供可直接复制即安全的通用 Nginx、systemd 或云防火墙配置；这些配置依赖域名、
+证书、主机用户、目录和组织安全策略。部署方必须在隔离环境验证后再应用，且不得因此
+宣称外部 Provider、扫描器、SCM 写入或整体平台已经通过验收。
+
+快速安装完成后可执行：
+
+```bash
+curl -fsS http://127.0.0.1:8000/api/v1/health
+curl -fsS http://127.0.0.1:8000/api/v1/readiness
+curl -fsS http://127.0.0.1:8000/api/v1/auth/bootstrap-status
+curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/api/v1/auth/me
+```
+
+预期 health 为 `healthy`，首次 bootstrap status 为 `bootstrapRequired=true`，未认证
+`/auth/me` 为 `401`。Readiness 的 deployment-specific 项可以继续保持未验证，但公开
+Community 源码包不应因为维护者专用 CI 静态入口未导出而报告 `missing_dependency`。
 
 ## 故障排查
 
@@ -132,6 +218,8 @@ Compose 只管理本地 PostgreSQL/Redis，数据保存在命名卷中。`stop` 
 | 多个接口 422 | 核对版本和完整 `schemas/contracts/`，不要关闭响应校验 |
 | Provider/执行器不可用 | 配置实际依赖后再运行；安装成功不代表外部能力已验证 |
 | 审计“未记录” | 展开现有事件详情；不能恢复历史未持久化字段 |
+| `docker: unknown command: docker compose` | 安装 Compose v2 插件并重新运行前置检查；不要改用旧版 v1 |
+| readiness 报维护者静态入口缺失 | 确认使用完整、匹配版本的 Community 源码包；公开包不要求私有 CI 入口 |
 
 ## 验证范围
 
