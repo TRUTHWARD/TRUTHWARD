@@ -68,7 +68,7 @@ export function AuditLogsPage({
 
   useEffect(() => {
     let cancelled = false;
-    if (!canReadAuditLogs) {
+    if (!canManageAuditRetention) {
       setRetentionPolicy(null);
       return;
     }
@@ -86,7 +86,7 @@ export function AuditLogsPage({
     return () => {
       cancelled = true;
     };
-  }, [canReadAuditLogs]);
+  }, [canManageAuditRetention]);
 
   const submitRetentionAction = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
