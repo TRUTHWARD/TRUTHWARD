@@ -160,6 +160,21 @@
       "sourceIsolationStatus": "data_only_manifest_catalog_and_project_binding_isolated",
       "targetOperations": ["develop Skill from public contracts", "register trusted local Skill", "bind low-risk local Skill", "disable local binding", "observe invocation"],
       "enterpriseExtensions": ["private registry", "dataset evaluation", "Shadow", "approval-backed activation", "automatic rollback", "controlled autonomy"],
+      "features": [
+        {"id": "skill.manifest.trusted_local_registration", "ossIncluded": true, "availability": "community_and_full", "sourcePaths": ["backend/src/agentic_qa/services/community_skill_catalog_service.py", "backend/src/agentic_qa/services/community_skill_policy.py", "community-skills/**", "frontend/src/pages/SkillRuntimePage.tsx"]},
+        {"id": "skill.version.catalog", "ossIncluded": true, "availability": "community_and_full", "sourcePaths": ["backend/src/agentic_qa/api/routers/skills.py", "backend/src/agentic_qa/services/skill_service.py", "frontend/src/lib/api.ts", "frontend/src/pages/SkillRuntimePage.tsx"]},
+        {"id": "skill.runtime_adapter.catalog", "ossIncluded": true, "availability": "edition_filtered", "sourcePaths": ["backend/src/agentic_qa/services/skill_runtime.py", "backend/src/agentic_qa/services/skill_service.py", "frontend/src/pages/SkillRuntimePage.tsx"]},
+        {"id": "skill.binding.scoped_draft", "ossIncluded": true, "availability": "community_and_full", "sourcePaths": ["backend/src/agentic_qa/api/routers/skills.py", "backend/src/agentic_qa/services/skill_service.py", "frontend/src/pages/SkillRuntimePage.tsx"]},
+        {"id": "skill.binding.manual_lifecycle", "ossIncluded": true, "availability": "community_policy_limited", "sourcePaths": ["backend/src/agentic_qa/services/community_skill_policy.py", "backend/src/agentic_qa/services/skill_service.py", "frontend/src/pages/SkillRuntimePage.tsx"]},
+        {"id": "skill.invocation.observation", "ossIncluded": true, "availability": "community_and_full", "projection": "safe_structural_summaries_resolution_and_evidence_refs", "sourcePaths": ["backend/src/agentic_qa/api/routers/skills.py", "backend/src/agentic_qa/services/skill_service.py", "frontend/src/components/SafeJsonViewer.tsx", "frontend/src/lib/api.ts", "frontend/src/pages/SkillInvocationsPage.tsx", "frontend/src/store/platform.ts"]},
+        {"id": "skill.invocation.privileged_snapshots", "ossIncluded": false, "availability": "full_only_capability_gated", "requiredCapability": "capability_bindings.admin", "sourcePaths": ["backend/src/agentic_qa/api/routers/skills.py", "backend/src/agentic_qa/services/skill_service.py", "frontend/src/App.tsx", "frontend/src/pages/SkillInvocationsPage.tsx"]},
+        {"id": "skill.version.managed_manifest_draft", "ossIncluded": false, "availability": "full_only", "sourcePaths": ["backend/src/agentic_qa/api/routers/skills.py", "backend/src/agentic_qa/services/skill_service.py", "frontend/src/pages/SkillGovernancePanel.tsx"]},
+        {"id": "skill.binding.candidate_version", "ossIncluded": false, "availability": "full_only", "sourcePaths": ["backend/src/agentic_qa/api/routers/skills.py", "backend/src/agentic_qa/services/skill_service.py", "frontend/src/pages/SkillGovernancePanel.tsx"]},
+        {"id": "skill.activation.governed_preparation", "ossIncluded": false, "availability": "full_only", "sourcePaths": ["backend/src/agentic_qa/services/skill_activation_governance.py", "backend/src/agentic_qa/runtime/qa_harness/evaluation.py", "backend/src/agentic_qa/services/skill_service.py", "frontend/src/pages/SkillGovernancePanel.tsx"]},
+        {"id": "skill.activation.approval_backed", "ossIncluded": false, "availability": "full_only", "sourcePaths": ["backend/src/agentic_qa/services/approval_service.py", "backend/src/agentic_qa/services/skill_service.py", "frontend/src/pages/SkillGovernancePanel.tsx"]},
+        {"id": "skill.binding.governed_rollback", "ossIncluded": false, "availability": "full_only", "sourcePaths": ["backend/src/agentic_qa/services/skill_service.py", "frontend/src/pages/SkillGovernancePanel.tsx"]},
+        {"id": "skill.direct_execution", "ossIncluded": false, "availability": "prohibited", "sourcePaths": ["backend/src/agentic_qa/api/routers/skills.py", "tests/integration/test_phase8_skills.py"]}
+      ],
       "sections": [
         {"id": "skill-invocations", "currentExposure": "visible_read_only", "targetExposure": "visible"},
         {"id": "capability-bindings", "currentExposure": "visible", "targetExposure": "visible"}
@@ -172,6 +187,10 @@
       "sourceIsolationStatus": "frontend_and_query_dependencies_isolated_scope_and_redaction_pending",
       "targetOperations": ["inspect redacted Agent run metadata", "inspect scoped queue state", "inspect worker readiness", "diagnose failures"],
       "enterpriseExtensions": ["multi-node operations", "central alert routing", "cross-project operational aggregation"],
+      "features": [
+        {"id": "observability.ui.safe_detail", "ossIncluded": true, "availability": "community_and_full", "projection": "trace_counts_redacted_metadata_structured_logs_and_guardrail_evidence", "sourcePaths": ["backend/src/agentic_qa/services/observability_service.py", "frontend/src/components/SafeJsonViewer.tsx", "frontend/src/pages/ObservabilityPage.tsx"]},
+        {"id": "observability.ui.raw_model_agent_payload", "ossIncluded": false, "availability": "not_exposed_by_observability_ui", "sourcePaths": ["frontend/src/pages/ObservabilityPage.tsx"]}
+      ],
       "sections": [
         {"id": "observability", "currentExposure": "visible_read_only", "targetExposure": "role_gated"},
         {"id": "agent-runs", "currentExposure": "hidden", "targetExposure": "role_gated"},

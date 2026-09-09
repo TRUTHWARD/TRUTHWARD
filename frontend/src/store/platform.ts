@@ -149,10 +149,12 @@ export type TraceItem = {
   id: string;
   executionId: string | null;
   rootSpanName: string | null;
+  metadata?: Record<string, unknown>;
   spanCount: number;
   modelInvocationCount: number;
   agentRunCount: number;
   skillInvocationCount: number;
+  auditLogCount?: number;
   guardrailEventCount: number;
   createdAt: string;
 };
@@ -190,6 +192,7 @@ export type SkillItem = {
   extensionPoints: string[];
   compatibility: Record<string, unknown>;
   runtime: Record<string, unknown>;
+  governanceStatus?: string;
 };
 
 export type SkillInvocationItem = {
@@ -198,13 +201,18 @@ export type SkillInvocationItem = {
   version: string;
   manifestHash: string;
   status: string;
+  storageStatus?: string;
   idempotencyKey: string | null;
   traceId: string | null;
   executionId: string | null;
+  agentRunId?: string | null;
   extensionPointId: string | null;
   bindingId: string | null;
   sourceWorkflow: string | null;
   resolutionSnapshot: Record<string, unknown>;
+  inputSummary?: Record<string, unknown>;
+  outputSummary?: Record<string, unknown>;
+  policySummary?: Record<string, unknown>;
   inputSnapshot?: Record<string, unknown>;
   outputSnapshot?: Record<string, unknown>;
   policySnapshot?: Record<string, unknown>;
@@ -214,6 +222,7 @@ export type SkillInvocationItem = {
   toolCallRefs: Array<Record<string, unknown>>;
   connectorCallRefs: Array<Record<string, unknown>>;
   createdAt: string;
+  updatedAt?: string;
 };
 
 export type CapabilityBindingItem = {
@@ -234,6 +243,16 @@ export type CapabilityBindingItem = {
   status: string;
   priority: number;
   bindingConfig: Record<string, unknown>;
+  activationReadiness?: {
+    candidate: boolean;
+    skillVersionGovernanceStatus: string;
+    contractValidation: string;
+    datasetEvaluation: string;
+    shadowComparison: string;
+    evidenceReady: boolean;
+    canRequestActivation: boolean;
+    directExecutionAllowed: false;
+  };
   pendingChange: Record<string, unknown>;
   approvalRefs: Array<Record<string, unknown>>;
   guardrailEventRefs: Array<Record<string, unknown>>;

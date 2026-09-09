@@ -57,11 +57,15 @@ from agentic_qa.runtime.qa_harness.contracts import BudgetSnapshot
 from agentic_qa.runtime.qa_harness.stop_reasons import HarnessRunState
 from agentic_qa.runtime.qa_harness.trajectory_events import TrajectoryRecorder
 from agentic_qa.schemas.skills import (
+    CandidateCapabilityBindingRequest,
     CapabilityBindingRequest,
     CapabilityBindingUpdateRequest,
     CommunityBindingLifecycleRequest,
     ConnectorBindingRequest,
     ConnectorBindingUpdateRequest,
+    ManagedSkillManifestDraftRequest,
+    SkillActivationPreparationRequest,
+    SkillBindingRollbackRequest,
     SkillInvocationRequest,
 )
 from agentic_qa.schemas.contracts import validate_contract
@@ -135,6 +139,24 @@ BINDING_SCOPE_SPECIFICITY = {
     "domain": 20,
     "global": 10,
 }
+
+# Stable product/release feature ids. ``ossIncluded`` is release metadata, not
+# an authorization grant; route composition and capability checks remain the
+# runtime boundary.
+SKILL_PRODUCT_FEATURES: tuple[dict[str, object], ...] = (
+    {"id": "skill.manifest.trusted_local_registration", "ossIncluded": True, "availability": "community_and_full", "requiredCapability": "community_skills.manage", "executionSemantics": "data_only_manifest_existing_adapter"},
+    {"id": "skill.version.catalog", "ossIncluded": True, "availability": "community_and_full", "requiredCapability": "skills.catalog.read", "executionSemantics": "read_only"},
+    {"id": "skill.runtime_adapter.catalog", "ossIncluded": True, "availability": "edition_filtered", "requiredCapability": "skills.catalog.read", "executionSemantics": "read_only_registered_adapters"},
+    {"id": "skill.binding.scoped_draft", "ossIncluded": True, "availability": "community_and_full", "requiredCapability": "capability_bindings.write", "executionSemantics": "non_executable_until_enabled"},
+    {"id": "skill.binding.manual_lifecycle", "ossIncluded": True, "availability": "community_policy_limited", "requiredCapability": "community_skills.manage", "executionSemantics": "explicit_enable_disable"},
+    {"id": "skill.invocation.observation", "ossIncluded": True, "availability": "community_and_full", "requiredCapability": "skill_invocations.read", "executionSemantics": "read_only_safe_projection"},
+    {"id": "skill.version.managed_manifest_draft", "ossIncluded": False, "availability": "full_only", "requiredCapability": "custom_skills.manage", "executionSemantics": "data_only_manifest_existing_adapter"},
+    {"id": "skill.binding.candidate_version", "ossIncluded": False, "availability": "full_only", "requiredCapability": "custom_skills.manage", "executionSemantics": "exact_draft_version_non_executable"},
+    {"id": "skill.activation.governed_preparation", "ossIncluded": False, "availability": "full_only", "requiredCapability": "capability_bindings.admin", "executionSemantics": "validation_evaluation_non_authoritative_shadow"},
+    {"id": "skill.activation.approval_backed", "ossIncluded": False, "availability": "full_only", "requiredCapability": "capability_bindings.admin", "executionSemantics": "approval_then_revalidation"},
+    {"id": "skill.binding.governed_rollback", "ossIncluded": False, "availability": "full_only", "requiredCapability": "capability_bindings.admin", "executionSemantics": "new_binding_preserve_history"},
+    {"id": "skill.direct_execution", "ossIncluded": False, "availability": "prohibited", "requiredCapability": None, "executionSemantics": "service_owned_business_workflow_only"},
+)
 
 # The existing database check constraint predates the reliability result
 # vocabulary. Keep its storage values migration-free while exposing the
@@ -382,21 +404,147 @@ class SkillService:
         self._active_execution_policies: dict[UUID, SkillInvocationExecutionPolicy] = {}
         self._execution_outcomes: dict[UUID, dict[str, object]] = {}
 
-    def list_skills(self, page: int, page_size: int) -> dict[str, object]:
+    def list_skills(
+        self,
+        page: int,
+        page_size: int,
+        *,
+        include_draft_only: bool = False,
+    ) -> dict[str, object]:
         self.ensure_builtin_skills()
         statement = select(Skill).order_by(Skill.skill_id.asc())
         rows, total = paginate_query(self.db, statement, page, page_size)
-        latest_versions = {skill.id: self._latest_version(skill.id) for skill in rows}
+        latest_versions = {
+            skill.id: (
+                self._latest_version(skill.id)
+                or (self._latest_any_version(skill.id) if include_draft_only else None)
+            )
+            for skill in rows
+        }
         items = [
             self.serialize_skill(skill, latest_versions.get(skill.id))
             for skill in rows
         ]
         return paginate_result(items, total, page, page_size)
 
-    def get_skill(self, skill_id: str) -> dict[str, object]:
+    def get_skill(
+        self,
+        skill_id: str,
+        *,
+        include_draft_only: bool = False,
+    ) -> dict[str, object]:
         self.ensure_builtin_skills()
         skill = self._require_skill(skill_id)
-        return self.serialize_skill(skill, self._latest_version(skill.id))
+        version = self._latest_version(skill.id)
+        if version is None and include_draft_only:
+            version = self._latest_any_version(skill.id)
+        return self.serialize_skill(skill, version)
+
+    def product_features(self, edition: str) -> dict[str, object]:
+        edition_features = (
+            tuple(item for item in SKILL_PRODUCT_FEATURES if bool(item["ossIncluded"]))
+            if edition == "community"
+            else SKILL_PRODUCT_FEATURES
+        )
+        features = [
+            {
+                **item,
+                "availableInCurrentEdition": (
+                    item["availability"] != "prohibited"
+                    and (edition != "community" or bool(item["ossIncluded"]))
+                ),
+            }
+            for item in edition_features
+        ]
+        return {
+            "schemaVersion": "truthward.skill-product-features.v1",
+            "edition": edition,
+            "markerSemantics": "release_classification_not_authorization",
+            "features": features,
+        }
+
+    def list_runtime_adapters(self, edition: str) -> dict[str, object]:
+        adapters = self.runtime_registry.list_adapters()
+        if edition == "community":
+            adapters = [
+                item
+                for item in adapters
+                if item.get("adapterId") == COMMUNITY_REGRESSION_ADAPTER
+            ]
+        return {
+            "schemaVersion": "truthward.skill-runtime-adapter-catalog.v1",
+            "edition": edition,
+            "items": [
+                {
+                    **item,
+                    "registered": True,
+                    "manifestSelectable": True,
+                    "codeUploadAllowed": False,
+                    "registrationMechanism": "service_deployment",
+                }
+                for item in adapters
+            ],
+            "directExecutionAllowed": False,
+        }
+
+    def list_skill_versions(
+        self,
+        skill_id: str,
+        page: int,
+        page_size: int,
+        *,
+        include_non_active: bool = True,
+    ) -> dict[str, object]:
+        self.ensure_builtin_skills()
+        skill = self._require_skill(skill_id)
+        statement = (
+            select(SkillVersion)
+            .where(SkillVersion.skill_ref_id == skill.id)
+            .order_by(SkillVersion.created_at.desc(), SkillVersion.version.desc())
+        )
+        if not include_non_active:
+            statement = statement.where(SkillVersion.governance_status == "active")
+        rows, total = paginate_query(self.db, statement, page, page_size)
+        items: list[dict[str, object]] = []
+        for version in rows:
+            previous = self.db.scalar(
+                select(SkillVersion)
+                .where(
+                    SkillVersion.skill_ref_id == skill.id,
+                    SkillVersion.created_at < version.created_at,
+                )
+                .order_by(SkillVersion.created_at.desc())
+            )
+            items.append(
+                self.serialize_skill_version(
+                    skill,
+                    version,
+                    comparison_version=previous,
+                )
+            )
+        return paginate_result(items, total, page, page_size)
+
+    def get_skill_version(self, skill_version_id: UUID) -> dict[str, object]:
+        self.ensure_builtin_skills()
+        version = self.db.get(SkillVersion, skill_version_id)
+        if version is None:
+            raise ValueError("skill version not found")
+        skill = self.db.get(Skill, version.skill_ref_id)
+        if skill is None:
+            raise ValueError("skill not found")
+        previous = self.db.scalar(
+            select(SkillVersion)
+            .where(
+                SkillVersion.skill_ref_id == skill.id,
+                SkillVersion.created_at < version.created_at,
+            )
+            .order_by(SkillVersion.created_at.desc())
+        )
+        return self.serialize_skill_version(
+            skill,
+            version,
+            comparison_version=previous,
+        )
 
     def register_trusted_local_manifest(
         self,
@@ -535,6 +683,119 @@ class SkillService:
         return {
             **self.serialize_skill(skill, version),
             "skillVersionId": str(version.id),
+            "deduplicated": False,
+            "auditRefs": [{"type": "audit_log", "id": str(audit.id)}],
+        }
+
+    def create_managed_manifest_draft(
+        self,
+        payload: ManagedSkillManifestDraftRequest,
+        context: ServiceContext,
+    ) -> dict[str, object]:
+        """Create a data-only draft referencing an already deployed Adapter.
+
+        This is a supply/control-plane entry point, not a code execution entry
+        point.  Python, JavaScript, commands, binaries, URLs and callable
+        implementations are rejected recursively.
+        """
+
+        self._require_governance_capability(context, "custom_skills.manage")
+        manifest = self._validate_managed_manifest_supply(payload.manifest)
+        skill_id = str(manifest["skillId"])
+        existing_skill = self.db.scalar(
+            select(Skill).where(Skill.skill_id == skill_id)
+        )
+        if payload.baseSkillVersionId is not None:
+            if existing_skill is None:
+                raise ValueError("SKILL_MANIFEST_DRAFT_BASE_SKILL_NOT_FOUND")
+            return self.create_manifest_proposal(
+                base_skill_version_id=payload.baseSkillVersionId,
+                expected_manifest_hash=str(payload.expectedManifestHash),
+                manifest=manifest,
+                context=context,
+            )
+        if existing_skill is not None:
+            snapshot = self._manifest_snapshot(manifest)
+            existing_version = self.db.scalar(
+                select(SkillVersion)
+                .where(
+                    SkillVersion.skill_ref_id == existing_skill.id,
+                    SkillVersion.version == str(manifest["version"]),
+                )
+                .order_by(SkillVersion.created_at.desc())
+            )
+            if (
+                existing_version is not None
+                and existing_version.manifest_hash == self._manifest_hash(snapshot)
+            ):
+                return {
+                    **self.serialize_skill_version(existing_skill, existing_version),
+                    "activatesSkill": False,
+                    "deduplicated": True,
+                    "auditRefs": [],
+                }
+            raise ValueError("SKILL_MANIFEST_DRAFT_BASE_VERSION_REQUIRED")
+
+        snapshot = self._manifest_snapshot(manifest)
+        manifest_hash = self._manifest_hash(snapshot)
+        skill = Skill(
+            id=uuid4(),
+            skill_id=skill_id,
+            display_name=str(manifest["displayName"])[:255],
+            status="active",
+        )
+        version = SkillVersion(
+            id=uuid4(),
+            skill_ref_id=skill.id,
+            version=str(manifest["version"]),
+            manifest_hash=manifest_hash,
+            manifest_snapshot=snapshot,
+            capabilities=dict(manifest["capabilities"]),
+            input_schema=dict(manifest["inputSchema"]),
+            output_schema=dict(manifest["outputSchema"]),
+            allowed_tools=[str(item) for item in manifest["allowedTools"]],
+            allowed_connectors=[
+                str(item) for item in manifest["allowedConnectors"]
+            ],
+            risk_profile=dict(manifest["riskProfile"]),
+            approval_policy=dict(manifest["approvalPolicy"]),
+            data_access_policy=dict(manifest["dataAccessPolicy"]),
+            replay_policy=dict(manifest["replayPolicy"]),
+            extension_points=[str(item) for item in manifest["extensionPoints"]],
+            compatibility=dict(manifest["compatibility"]),
+            governance_status="draft",
+        )
+        self.db.add(skill)
+        self.db.add(version)
+        self.db.flush()
+        ensure_trace(
+            self.db,
+            execution_id=None,
+            root_span_name="skill.manifest-draft",
+            trace_id=context.trace_id,
+        )
+        audit = write_audit_log(
+            self.db,
+            str(context.user.id),
+            "skill.manifest_draft.create",
+            "skill_version",
+            str(version.id),
+            context.request_id,
+            context.trace_id,
+            details={
+                "skillId": skill.skill_id,
+                "skillVersionId": str(version.id),
+                "manifestHash": version.manifest_hash,
+                "governanceStatus": "draft",
+                "runtimeAdapter": version.compatibility.get("runtimeAdapter"),
+                "codeLoaded": False,
+                "activatesSkill": False,
+            },
+        )
+        self.db.commit()
+        return {
+            **self.serialize_skill_version(skill, version),
+            "activatesSkill": False,
             "deduplicated": False,
             "auditRefs": [{"type": "audit_log", "id": str(audit.id)}],
         }
@@ -1194,7 +1455,16 @@ class SkillService:
     ) -> dict[str, object]:
         self.ensure_builtin_skills()
         nodes: list[dict[str, object]] = []
-        for node in WORKFLOW_EXTENSION_POINTS:
+        edition_nodes = (
+            tuple(
+                node
+                for node in WORKFLOW_EXTENSION_POINTS
+                if node["extensionPointId"] == COMMUNITY_REGRESSION_EXTENSION
+            )
+            if edition == "community"
+            else WORKFLOW_EXTENSION_POINTS
+        )
+        for node in edition_nodes:
             extension_point_id = str(node["extensionPointId"])
             bindable = bool(node["bindable"])
             current_binding_summary = None
@@ -1250,7 +1520,293 @@ class SkillService:
         if status:
             statement = statement.where(CapabilityBinding.status == status)
         rows, total = paginate_query(self.db, statement, page, page_size)
-        return paginate_result([self.serialize_capability_binding(row) for row in rows], total, page, page_size)
+        edition = context.user.edition if context is not None else None
+        return paginate_result(
+            [self.serialize_capability_binding(row, edition=edition) for row in rows],
+            total,
+            page,
+            page_size,
+        )
+
+    def create_candidate_capability_binding(
+        self,
+        payload: CandidateCapabilityBindingRequest,
+        context: ServiceContext,
+    ) -> dict[str, object]:
+        """Bind one exact draft/active version without making it executable."""
+
+        self._require_governance_capability(context, "custom_skills.manage")
+        self._require_governance_capability(context, "capability_bindings.write")
+        self._validate_scope_type(payload.scopeType)
+        self._validate_user_binding_config(payload.bindingConfig)
+        version = self.db.get(SkillVersion, payload.skillVersionId)
+        if version is None or version.governance_status not in {"draft", "active"}:
+            raise ValueError("SKILL_CANDIDATE_VERSION_UNAVAILABLE")
+        if version.manifest_hash != payload.expectedManifestHash:
+            raise ValueError("SKILL_CANDIDATE_MANIFEST_CHANGED")
+        if manifest_snapshot_hash(version.manifest_snapshot) != version.manifest_hash:
+            raise ValueError("SKILL_CANDIDATE_MANIFEST_HASH_CONFLICT")
+        skill = self.db.get(Skill, version.skill_ref_id)
+        if skill is None or skill.status in {"archived", "deprecated"}:
+            raise ValueError("SKILL_CANDIDATE_TARGET_UNAVAILABLE")
+        self._validate_binding_compatibility(payload.extensionPointId, version)
+        existing_candidates = self.db.scalars(
+            select(CapabilityBinding).where(
+                CapabilityBinding.extension_point_id == payload.extensionPointId,
+                CapabilityBinding.skill_version_id == version.id,
+                CapabilityBinding.scope_type == payload.scopeType,
+                CapabilityBinding.scope_id == payload.scopeId,
+                CapabilityBinding.project_id == payload.projectId,
+                CapabilityBinding.environment == payload.environment,
+                CapabilityBinding.stage == payload.stage,
+                CapabilityBinding.domain == payload.domain,
+                CapabilityBinding.status == "draft",
+                CapabilityBinding.priority == payload.priority,
+            )
+        )
+        for existing in existing_candidates:
+            user_config = {
+                key: value
+                for key, value in dict(existing.binding_config or {}).items()
+                if key != "candidate"
+            }
+            if user_config == dict(payload.bindingConfig):
+                self._authorize_binding_scope(existing, context, {})
+                return {
+                    **self.serialize_capability_binding(existing),
+                    "deduplicated": True,
+                }
+        binding = CapabilityBinding(
+            id=uuid4(),
+            extension_point_id=payload.extensionPointId,
+            skill_version_id=version.id,
+            scope_type=payload.scopeType,
+            scope_id=payload.scopeId,
+            project_id=payload.projectId,
+            environment=payload.environment,
+            stage=payload.stage,
+            domain=payload.domain,
+            status="draft",
+            priority=payload.priority,
+            binding_config=dict(payload.bindingConfig),
+            created_by=context.user.id,
+            updated_by=context.user.id,
+        )
+        self.db.add(binding)
+        self.db.flush()
+        effective_scope = self._authorize_binding_scope(binding, context, {})
+        proposed = self._binding_snapshot(binding)
+        self._record_capability_binding_lifecycle_refs(
+            binding=binding,
+            operation="candidate_create",
+            proposed=proposed,
+            current=None,
+            risk={
+                "highRisk": False,
+                "requiresApproval": False,
+                "riskLevel": str(version.risk_profile.get("level") or "high"),
+                "reasons": ["candidate_binding_non_executable"],
+            },
+            decision=GuardrailDecisionType.ALLOW,
+            context=context,
+            audit_action="capability_binding.candidate_create",
+        )
+        config = dict(binding.binding_config or {})
+        config["candidate"] = {
+            "schemaVersion": "phase8.skill-binding-candidate.v1",
+            "skillVersionId": str(version.id),
+            "manifestHash": version.manifest_hash,
+            "scope": effective_scope,
+            "productionApplied": False,
+        }
+        binding.binding_config = config
+        self.db.commit()
+        self.db.refresh(binding)
+        return {
+            **self.serialize_capability_binding(binding),
+            "deduplicated": False,
+        }
+
+    def prepare_candidate_binding_activation(
+        self,
+        binding_id: UUID,
+        payload: SkillActivationPreparationRequest,
+        context: ServiceContext,
+    ) -> dict[str, object]:
+        """Run the controlled activation evidence chain from frozen Invocations.
+
+        The caller supplies only immutable invocation identities.  Requests and
+        safe outputs are loaded by the Service; this endpoint cannot be used as
+        an arbitrary Skill execution or public Shadow API.
+        """
+
+        self._require_governance_capability(context, "capability_bindings.admin")
+        self._require_governance_capability(context, "capability_bindings.write")
+        binding = self._require_capability_binding(binding_id)
+        if binding.status not in {"draft", "disabled"}:
+            raise ValueError("SKILL_ACTIVATION_CANDIDATE_BINDING_REQUIRED")
+        version = self._require_bound_skill_version(binding)
+        contract = self.extension_point_contracts.require_bindable(
+            binding.extension_point_id
+        )
+        if bool(
+            contract.execution_constraints.get("mutation")
+            or contract.execution_constraints.get("externalWrite")
+        ):
+            raise ValueError("SKILL_ACTIVATION_PREPARATION_MUTATION_FORBIDDEN")
+        effective_scope = self._authorize_binding_scope(
+            binding,
+            context,
+            dict(payload.scope),
+        )
+        cases: list[dict[str, object]] = []
+        capabilities: dict[str, dict[str, object]] = {}
+        source_refs: list[dict[str, object]] = []
+        for invocation_id in payload.sourceInvocationIds:
+            # Scope authorization is performed before reading the raw snapshots.
+            self.get_invocation(
+                invocation_id,
+                include_snapshots=False,
+                context=context,
+            )
+            invocation = self.db.get(SkillInvocation, invocation_id)
+            if invocation is None or invocation.extension_point_id != binding.extension_point_id:
+                raise ValueError("SKILL_ACTIVATION_SOURCE_INVOCATION_INCOMPATIBLE")
+            if invocation.source_workflow in {
+                "skill-version-evaluation",
+                "skill-binding-shadow-authoritative",
+                "skill-binding-shadow-candidate",
+            }:
+                raise ValueError("SKILL_ACTIVATION_SOURCE_INVOCATION_GOVERNANCE_DERIVED")
+            if self._effective_invocation_status(invocation) not in {
+                "completed",
+                "degraded",
+            }:
+                raise ValueError("SKILL_ACTIVATION_SOURCE_INVOCATION_NOT_COMPLETED")
+            source_scope = invocation.resolution_snapshot.get("scope")
+            source_scope = source_scope if isinstance(source_scope, dict) else {}
+            for scope_key in ("projectId", "environmentId"):
+                expected = effective_scope.get(scope_key)
+                actual = source_scope.get(scope_key)
+                if (expected is not None or actual is not None) and str(actual) != str(expected):
+                    raise ValueError("SKILL_ACTIVATION_SOURCE_SCOPE_MISMATCH")
+            request_snapshot = dict(invocation.input_snapshot or {})
+            request_snapshot.pop("authorizedContextEnvelope", None)
+            request_snapshot.pop("authorizedContextSummary", None)
+            if not request_snapshot or "rejectedInput" in request_snapshot:
+                raise ValueError("SKILL_ACTIVATION_SOURCE_INPUT_UNAVAILABLE")
+            if contains_unsafe_snapshot_material(request_snapshot):
+                raise ValueError("SKILL_ACTIVATION_SOURCE_INPUT_SECRET_SCAN_BLOCKED")
+            output_snapshot = dict(invocation.output_snapshot or {})
+            executor = self._frozen_invocation_executor(output_snapshot)
+            case_id = f"invocation-{invocation.id}"
+            cases.append(
+                {
+                    "caseId": case_id,
+                    "request": request_snapshot,
+                    "frozenInputRef": {
+                        "ref": f"skill-invocation://{invocation.id}",
+                        "refType": "skill_invocation",
+                        "contentHash": canonical_content_hash(request_snapshot),
+                        "trustBoundary": "service_authorized",
+                        "redactionStatus": "redacted",
+                    },
+                }
+            )
+            capabilities[case_id] = {"execute": executor}
+            source_refs.append(
+                {
+                    "type": "skill_invocation",
+                    "id": str(invocation.id),
+                    "contentHash": canonical_content_hash(
+                        {
+                            "request": request_snapshot,
+                            "output": output_snapshot,
+                        }
+                    ),
+                }
+            )
+
+        validation = self.validate_skill_version_activation(
+            binding_id=binding.id,
+            context=context,
+            scope=effective_scope,
+        )
+        if not bool(validation.get("passed")):
+            return {
+                "schemaVersion": "phase8.skill-activation-preparation.v1",
+                "status": "failed",
+                "activationEligible": False,
+                "bindingId": str(binding.id),
+                "skillVersionId": str(version.id),
+                "sourceInvocationRefs": source_refs,
+                "validation": validation,
+                "evaluation": None,
+                "shadow": None,
+                "productionApplied": False,
+            }
+        evaluation = self.run_skill_version_evaluation(
+            binding_id=binding.id,
+            dataset_id=payload.datasetId,
+            dataset_version=payload.datasetVersion,
+            cases=cases,
+            context=context,
+            scope=effective_scope,
+            capabilities_by_case=capabilities,
+            measurement_class="deterministic",
+        )
+        if not bool(evaluation.get("activationEligible")):
+            return {
+                "schemaVersion": "phase8.skill-activation-preparation.v1",
+                "status": "failed",
+                "activationEligible": False,
+                "bindingId": str(binding.id),
+                "skillVersionId": str(version.id),
+                "sourceInvocationRefs": source_refs,
+                "validation": validation,
+                "evaluation": evaluation,
+                "shadow": None,
+                "productionApplied": False,
+            }
+        shadow_execution = self.run_candidate_binding_shadow(
+            binding_id=binding.id,
+            cases=cases,
+            context=context,
+            scope=effective_scope,
+            authoritative_capabilities_by_case=capabilities,
+            shadow_capabilities_by_case=capabilities,
+        )
+        shadow = dict(shadow_execution.get("shadow") or {})
+        eligible = shadow.get("status") == "completed" and bool(
+            shadow.get("activationEligible")
+        )
+        return {
+            "schemaVersion": "phase8.skill-activation-preparation.v1",
+            "status": "completed" if eligible else "failed",
+            "activationEligible": eligible,
+            "bindingId": str(binding.id),
+            "skillVersionId": str(version.id),
+            "sourceInvocationRefs": source_refs,
+            "validation": validation,
+            "evaluation": evaluation,
+            "shadow": shadow,
+            "productionApplied": False,
+        }
+
+    def rollback_capability_binding(
+        self,
+        binding_id: UUID,
+        payload: SkillBindingRollbackRequest,
+        context: ServiceContext,
+    ) -> dict[str, object]:
+        return self.request_binding_rollback(
+            binding_id=binding_id,
+            stable_skill_version_id=payload.stableSkillVersionId,
+            reason_code=payload.reasonCode,
+            context=context,
+            scope=dict(payload.scope),
+            automatic=False,
+        )
 
     def create_capability_binding(
         self,
@@ -1311,7 +1867,9 @@ class SkillService:
             self.db.commit()
             self.db.refresh(binding)
             return {
-                **self.serialize_capability_binding(binding),
+                **self.serialize_capability_binding(
+                    binding, edition=context.user.edition
+                ),
                 "approvalRequired": True,
                 "approvalEnvelope": approval_result["approvalEnvelope"],
             }
@@ -1328,7 +1886,9 @@ class SkillService:
         )
         self.db.commit()
         self.db.refresh(binding)
-        return self.serialize_capability_binding(binding)
+        return self.serialize_capability_binding(
+            binding, edition=context.user.edition
+        )
 
     def update_capability_binding(
         self,
@@ -1405,7 +1965,10 @@ class SkillService:
         if receipt.get("idempotencyKey") == payload.idempotencyKey:
             if receipt.get("requestHash") != request_hash:
                 raise IdempotencyConflictError("COMMUNITY_SKILL_IDEMPOTENCY_CONFLICT")
-            return {**self.serialize_capability_binding(binding), "deduplicated": True}
+            return {
+                **self.serialize_capability_binding(binding, edition="community"),
+                "deduplicated": True,
+            }
         if payload.expectedStateHash != self._binding_state_hash(binding):
             raise IdempotencyConflictError("SKILL_BINDING_CONCURRENT_MODIFICATION")
         if binding.status not in {"draft", "active", "disabled"}:
@@ -1462,7 +2025,10 @@ class SkillService:
             audit_action=f"community_skill.binding.{payload.action}",
         )
         self.db.commit()
-        return self.serialize_capability_binding(binding)
+        return {
+            **self.serialize_capability_binding(binding, edition="community"),
+            "deduplicated": False,
+        }
 
     def _validate_community_enablement_target(
         self, binding: CapabilityBinding, version: SkillVersion,
@@ -3384,6 +3950,81 @@ class SkillService:
             "governanceStatus": version.governance_status,
         }
 
+    def serialize_skill_version(
+        self,
+        skill: Skill,
+        version: SkillVersion,
+        *,
+        comparison_version: SkillVersion | None = None,
+    ) -> dict[str, object]:
+        provenance = self.db.scalar(
+            select(AuditLog)
+            .where(
+                AuditLog.resource_type == "skill_version",
+                AuditLog.resource_id == str(version.id),
+            )
+            .order_by(AuditLog.created_at.asc())
+        )
+        active_bindings = list(
+            self.db.scalars(
+                select(CapabilityBinding).where(
+                    CapabilityBinding.skill_version_id == version.id,
+                    CapabilityBinding.status == "active",
+                )
+            )
+        )
+        runtime = self._runtime_projection(version)
+        return {
+            "schemaVersion": "truthward.skill-version-projection.v1",
+            "id": str(version.id),
+            "skillId": skill.skill_id,
+            "displayName": skill.display_name,
+            "skillStatus": skill.status,
+            "version": version.version,
+            "manifestHash": version.manifest_hash,
+            "manifestSnapshot": redact_sensitive_data(version.manifest_snapshot),
+            "governanceStatus": version.governance_status,
+            "runtime": runtime,
+            "extensionPoints": list(version.extension_points or []),
+            "riskProfile": redact_sensitive_data(version.risk_profile),
+            "approvalPolicy": redact_sensitive_data(version.approval_policy),
+            "activeBindingCount": len(active_bindings),
+            "candidateBindable": (
+                version.governance_status in {"draft", "active"}
+                and bool(runtime.get("registered"))
+            ),
+            "provenance": {
+                "sourceType": (
+                    "trusted_local_manifest"
+                    if provenance is not None
+                    and provenance.action == "community_skill.manifest.register"
+                    else "managed_manifest_draft"
+                    if provenance is not None
+                    and provenance.action
+                    in {
+                        "skill.manifest_draft.create",
+                        "skill.manifest_proposal.create",
+                    }
+                    else "builtin_or_migration"
+                ),
+                "auditRef": (
+                    f"audit-log://{provenance.id}" if provenance is not None else None
+                ),
+                "createdBy": (
+                    str(provenance.actor_id)
+                    if provenance is not None and provenance.actor_id
+                    else None
+                ),
+                "codeLoaded": False,
+            },
+            "changesFromPrevious": self._manifest_field_diff(
+                comparison_version.manifest_snapshot if comparison_version else None,
+                version.manifest_snapshot,
+            ),
+            "createdAt": version.created_at.isoformat(),
+            "updatedAt": version.updated_at.isoformat(),
+        }
+
     def serialize_invocation(self, invocation: SkillInvocation, *, include_snapshots: bool = False) -> dict[str, object]:
         version = self.db.get(SkillVersion, invocation.skill_version_id)
         skill = self.db.get(Skill, version.skill_ref_id) if version else None
@@ -3405,6 +4046,9 @@ class SkillService:
             "bindingId": str(invocation.binding_id) if invocation.binding_id else None,
             "sourceWorkflow": invocation.source_workflow,
             "resolutionSnapshot": redact_sensitive_data(invocation.resolution_snapshot),
+            "inputSummary": self._invocation_input_summary(invocation.input_snapshot),
+            "outputSummary": self._invocation_output_summary(invocation.output_snapshot),
+            "policySummary": self._invocation_policy_summary(invocation.policy_snapshot),
             "connectorBindingSnapshot": safe_connector_snapshot,
             "approvalRefs": redact_sensitive_data(invocation.approval_refs),
             "artifactRefs": redact_sensitive_data(invocation.artifact_refs),
@@ -3424,6 +4068,102 @@ class SkillService:
                 }
             )
         return payload
+
+    @staticmethod
+    def _invocation_input_summary(snapshot: object) -> dict[str, object]:
+        data = snapshot if isinstance(snapshot, dict) else {}
+        payload = data.get("payload")
+        payload = payload if isinstance(payload, dict) else {}
+        context = data.get("authorizedContextEnvelope")
+        if not isinstance(context, dict):
+            context = data.get("authorizedContextSummary")
+        context = context if isinstance(context, dict) else {}
+        context_refs = context.get("contextRefs")
+        if not isinstance(context_refs, list):
+            blocks = context.get("blocks")
+            context_refs = blocks if isinstance(blocks, list) else []
+        rejected_input = data.get("rejectedInput")
+        rejected_input = rejected_input if isinstance(rejected_input, dict) else {}
+        summary = {
+            "schemaVersion": "truthward.skill-invocation-input-summary.v1",
+            "operation": data.get("operation") if isinstance(data.get("operation"), str) else None,
+            "inputFields": sorted(
+                str(key)
+                for key in data
+                if key not in {"authorizedContextEnvelope", "authorizedContextSummary"}
+            ),
+            "payloadFields": sorted(str(key) for key in payload),
+            "payloadFieldCount": len(payload),
+            "contextRefCount": len(context_refs),
+            "requiredContextAvailable": context.get("requiredAvailable"),
+            "rejected": bool(rejected_input),
+            "rejectionReasonCode": rejected_input.get("reasonCode"),
+        }
+        return redact_sensitive_data(summary)
+
+    @staticmethod
+    def _invocation_output_summary(snapshot: object) -> dict[str, object]:
+        data = snapshot if isinstance(snapshot, dict) else {}
+        result = data.get("result")
+        result = result if isinstance(result, dict) else {}
+        metadata = data.get("metadata")
+        metadata = metadata if isinstance(metadata, dict) else {}
+        evidence = data.get("evidence")
+        evidence = evidence if isinstance(evidence, list) else []
+        artifact_refs = data.get("artifactRefs")
+        artifact_refs = artifact_refs if isinstance(artifact_refs, list) else []
+        limitations = data.get("limitations")
+        if not isinstance(limitations, list):
+            metadata_limitations = metadata.get("limitations")
+            limitations = metadata_limitations if isinstance(metadata_limitations, list) else []
+        confidence = data.get("confidence")
+        summary = {
+            "schemaVersion": "truthward.skill-invocation-output-summary.v1",
+            "resultFields": sorted(str(key) for key in result),
+            "resultFieldCount": len(result),
+            "confidence": confidence if isinstance(confidence, (int, float)) else None,
+            "evidenceCount": len(evidence),
+            "artifactRefCount": len(artifact_refs),
+            "limitationCount": len(limitations),
+            "status": metadata.get("status"),
+            "reasonCode": metadata.get("reasonCode"),
+            "attemptCount": metadata.get("attemptCount"),
+            "fallbackUsed": bool(metadata.get("fallbackUsed", False)),
+        }
+        return redact_sensitive_data(summary)
+
+    @staticmethod
+    def _invocation_policy_summary(snapshot: object) -> dict[str, object]:
+        data = snapshot if isinstance(snapshot, dict) else {}
+        execution_policy = data.get("skillInvocationExecutionPolicy")
+        execution_policy = execution_policy if isinstance(execution_policy, dict) else {}
+        approval = execution_policy.get("approval")
+        approval = approval if isinstance(approval, dict) else {}
+        fallback = execution_policy.get("fallbackPolicy")
+        fallback = fallback if isinstance(fallback, dict) else {}
+        budget = execution_policy.get("budget")
+        budget = budget if isinstance(budget, dict) else {}
+        summary = {
+            "schemaVersion": "truthward.skill-invocation-policy-summary.v1",
+            "workflow": data.get("workflow"),
+            "stage": data.get("stage"),
+            "recommendationOnly": data.get("recommendationOnly"),
+            "serviceOwnsExecution": data.get("serviceOwnsExecution"),
+            "executionPolicyVersion": execution_policy.get("schemaVersion"),
+            "timeoutSeconds": execution_policy.get("timeoutSeconds"),
+            "maxAttempts": execution_policy.get("maxAttempts"),
+            "riskClassification": execution_policy.get("riskClassification"),
+            "mutation": execution_policy.get("mutation"),
+            "idempotent": execution_policy.get("idempotent"),
+            "externalWrite": execution_policy.get("externalWrite"),
+            "fallbackAllowed": fallback.get("allowed"),
+            "approvalRequired": approval.get("required"),
+            "approvalSatisfied": approval.get("satisfied"),
+            "maxModelCalls": budget.get("maxModelCalls"),
+            "maxToolCalls": budget.get("maxToolCalls"),
+            "maxSkillCalls": budget.get("maxSkillCalls"),
+        }
+        return redact_sensitive_data(summary)
 
     def serialize_connector_binding(self, binding: SkillConnectorBinding) -> dict[str, object]:
         project_id = self._connector_scope_value(binding.scope, "projectId", "project_id")
@@ -4048,10 +4788,15 @@ class SkillService:
         if contains_unsafe_snapshot_material(payload):
             raise ValueError("SKILL_SHADOW_SECRET_SCAN_BLOCKED")
 
-    def serialize_capability_binding(self, binding: CapabilityBinding) -> dict[str, object]:
+    def serialize_capability_binding(
+        self,
+        binding: CapabilityBinding,
+        *,
+        edition: str | None = None,
+    ) -> dict[str, object]:
         version = self.db.get(SkillVersion, binding.skill_version_id)
         skill = self.db.get(Skill, version.skill_ref_id) if version else None
-        return {
+        projection = {
             "schemaVersion": "phase8.capability-binding.v1",
             "stateHash": self._binding_state_hash(binding),
             "communityLifecycle": self._community_lifecycle_projection(binding, version),
@@ -4070,6 +4815,10 @@ class SkillService:
             "status": binding.status,
             "priority": binding.priority,
             "bindingConfig": binding.binding_config,
+            "activationReadiness": self._binding_activation_readiness(
+                binding,
+                version,
+            ),
             "pendingChange": binding.pending_change,
             "approvalRefs": binding.approval_refs,
             "guardrailEventRefs": binding.guardrail_event_refs,
@@ -4082,6 +4831,18 @@ class SkillService:
             "createdAt": binding.created_at.isoformat(),
             "updatedAt": binding.updated_at.isoformat(),
         }
+        if edition == "community":
+            projection.pop("activationReadiness", None)
+            projection.update(
+                {
+                    "bindingConfig": {},
+                    "pendingChange": {},
+                    "approvalRefs": [],
+                    "approvalRequired": False,
+                    "approvalEnvelope": None,
+                }
+            )
+        return projection
 
     def _community_lifecycle_projection(self, binding: CapabilityBinding, version: SkillVersion | None) -> dict[str, object]:
         reason = None
@@ -4097,6 +4858,46 @@ class SkillService:
             "canEnable": reason is None and binding.status in {"draft", "disabled"},
             "canDisable": binding.status in {"draft", "active"},
             "unavailableReason": reason,
+        }
+
+    @staticmethod
+    def _binding_activation_readiness(
+        binding: CapabilityBinding,
+        version: SkillVersion | None,
+    ) -> dict[str, object]:
+        config = binding.binding_config if isinstance(binding.binding_config, dict) else {}
+        governance = config.get("activationGovernance")
+        governance = governance if isinstance(governance, dict) else {}
+
+        def status_for(kind: str) -> str:
+            entry = governance.get(kind)
+            return str(entry.get("status") or "missing") if isinstance(entry, dict) else "missing"
+
+        validation_status = status_for("contractValidation")
+        evaluation_status = status_for("datasetEvaluation")
+        shadow_status = status_for("shadowComparison")
+        evidence_ready = (
+            validation_status == "passed"
+            and evaluation_status == "completed"
+            and shadow_status == "completed"
+        )
+        return {
+            "schemaVersion": "phase8.skill-activation-readiness.v1",
+            "candidate": binding.status in {"draft", "disabled"},
+            "skillVersionGovernanceStatus": (
+                version.governance_status if version is not None else "unavailable"
+            ),
+            "contractValidation": validation_status,
+            "datasetEvaluation": evaluation_status,
+            "shadowComparison": shadow_status,
+            "evidenceReady": evidence_ready,
+            "canRequestActivation": (
+                evidence_ready
+                and binding.status in {"draft", "disabled"}
+                and version is not None
+                and version.governance_status in {"draft", "active"}
+            ),
+            "directExecutionAllowed": False,
         }
 
     def execute_approved_capability_binding_lifecycle(
@@ -5557,6 +6358,184 @@ class SkillService:
             )
             .order_by(SkillVersion.created_at.desc())
         )
+
+    def _latest_any_version(self, skill_ref_id: UUID) -> SkillVersion | None:
+        return self.db.scalar(
+            select(SkillVersion)
+            .where(SkillVersion.skill_ref_id == skill_ref_id)
+            .order_by(SkillVersion.created_at.desc())
+        )
+
+    def _validate_managed_manifest_supply(
+        self,
+        raw_manifest: dict[str, Any],
+    ) -> dict[str, object]:
+        required = {
+            "skillId",
+            "displayName",
+            "version",
+            "capabilities",
+            "inputSchema",
+            "outputSchema",
+            "allowedTools",
+            "allowedConnectors",
+            "riskProfile",
+            "approvalPolicy",
+            "dataAccessPolicy",
+            "replayPolicy",
+            "extensionPoints",
+            "compatibility",
+        }
+        if required - set(raw_manifest):
+            raise ValueError("SKILL_MANIFEST_DRAFT_INCOMPLETE")
+        forbidden_keys = {
+            "args",
+            "binary",
+            "callable",
+            "code",
+            "command",
+            "downloadurl",
+            "entrypoint",
+            "executable",
+            "module",
+            "remoteurl",
+            "repositoryurl",
+            "script",
+            "sourcecode",
+            "sourceurl",
+        }
+
+        def contains_executable_supply(value: object) -> bool:
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    normalized = re.sub(r"[^a-z0-9]", "", str(key).lower())
+                    if normalized in forbidden_keys or contains_executable_supply(item):
+                        return True
+            elif isinstance(value, list):
+                return any(contains_executable_supply(item) for item in value)
+            return False
+
+        if contains_executable_supply(raw_manifest):
+            raise ValueError("SKILL_MANIFEST_EXECUTABLE_SUPPLY_FORBIDDEN")
+        if contains_unsafe_snapshot_material(raw_manifest):
+            raise ValueError("SKILL_MANIFEST_SECRET_SCAN_BLOCKED")
+        skill_id = str(raw_manifest.get("skillId") or "")
+        if re.fullmatch(r"[a-z0-9][a-z0-9-]{2,127}", skill_id) is None:
+            raise ValueError("SKILL_MANIFEST_ID_INVALID")
+        display_name = str(raw_manifest.get("displayName") or "").strip()
+        if not display_name or len(display_name) > 255:
+            raise ValueError("SKILL_MANIFEST_DISPLAY_NAME_INVALID")
+        version_name = str(raw_manifest.get("version") or "")
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}", version_name) is None:
+            raise ValueError("SKILL_MANIFEST_VERSION_INVALID")
+
+        manifest: dict[str, object] = dict(raw_manifest)
+        for field_name in (
+            "capabilities",
+            "inputSchema",
+            "outputSchema",
+            "riskProfile",
+            "approvalPolicy",
+            "dataAccessPolicy",
+            "replayPolicy",
+            "compatibility",
+        ):
+            if not isinstance(manifest.get(field_name), dict):
+                raise ValueError(f"SKILL_MANIFEST_{field_name.upper()}_INVALID")
+        for field_name in ("allowedTools", "allowedConnectors", "extensionPoints"):
+            values = manifest.get(field_name)
+            if not isinstance(values, list) or any(
+                not isinstance(item, str) or not item.strip() for item in values
+            ):
+                raise ValueError(f"SKILL_MANIFEST_{field_name.upper()}_INVALID")
+            if len(set(values)) != len(values):
+                raise ValueError(f"SKILL_MANIFEST_{field_name.upper()}_DUPLICATE")
+        extension_points = list(manifest["extensionPoints"])
+        if not extension_points:
+            raise ValueError("SKILL_MANIFEST_EXTENSION_POINT_REQUIRED")
+        risk_level = str(dict(manifest["riskProfile"]).get("level") or "").lower()
+        if risk_level not in {"low", "medium", "high"}:
+            raise ValueError("SKILL_MANIFEST_RISK_PROFILE_INVALID")
+        compatibility = dict(manifest["compatibility"])
+        adapter_id = str(compatibility.get("runtimeAdapter") or "")
+        result_kind = str(compatibility.get("runtimeResultKind") or "")
+        for extension_point in extension_points:
+            extension_point_id = str(extension_point)
+            self.extension_point_contracts.validate_version_contract(
+                extension_point_id,
+                input_schema=manifest["inputSchema"],
+                output_schema=manifest["outputSchema"],
+                compatibility=compatibility,
+            )
+            self.runtime_registry.validate(
+                adapter_id=adapter_id,
+                result_kind=result_kind,
+                extension_point_id=extension_point_id,
+            )
+        return manifest
+
+    @staticmethod
+    def _frozen_invocation_executor(
+        output_snapshot: dict[str, object],
+    ) -> Callable[[SkillRuntimeContext, dict[str, object]], object]:
+        safe_output = redact_sensitive_data(output_snapshot)
+        if not isinstance(safe_output, dict) or contains_unsafe_snapshot_material(safe_output):
+            raise ValueError("SKILL_ACTIVATION_SOURCE_OUTPUT_SECRET_SCAN_BLOCKED")
+
+        def execute(
+            runtime_context: SkillRuntimeContext,
+            _request: dict[str, object],
+        ) -> object:
+            payload = dict(safe_output)
+            if runtime_context.runtime_result_kind == "agent_result":
+                result = payload.get("result")
+                metadata = payload.get("metadata")
+                metadata = dict(metadata) if isinstance(metadata, dict) else {}
+                limitations = metadata.pop("limitations", [])
+                evidence = payload.get("evidence")
+                return AgentResult(
+                    result=dict(result) if isinstance(result, dict) else {"value": result},
+                    confidence=float(payload.get("confidence") or 0.0),
+                    evidence=list(evidence) if isinstance(evidence, list) else [],
+                    limitations=(
+                        [str(item) for item in limitations]
+                        if isinstance(limitations, list)
+                        else []
+                    ),
+                    metadata=metadata,
+                )
+            if runtime_context.runtime_result_kind == "skill_result":
+                return payload
+            raise ValueError(
+                "SKILL_ACTIVATION_SOURCE_RESULT_KIND_NOT_REPLAYABLE"
+            )
+
+        return execute
+
+    @staticmethod
+    def _manifest_field_diff(
+        previous: dict[str, Any] | None,
+        current: dict[str, Any],
+    ) -> dict[str, object]:
+        if previous is None:
+            return {
+                "baseManifestHash": None,
+                "changedFields": sorted(current),
+                "addedFields": sorted(current),
+                "removedFields": [],
+            }
+        previous_keys = set(previous)
+        current_keys = set(current)
+        return {
+            "baseManifestHash": manifest_snapshot_hash(previous),
+            "changedFields": sorted(
+                key
+                for key in previous_keys | current_keys
+                if previous.get(key) != current.get(key)
+            ),
+            "addedFields": sorted(current_keys - previous_keys),
+            "removedFields": sorted(previous_keys - current_keys),
+        }
 
     def _manifest_snapshot(self, manifest: dict[str, object]) -> dict[str, object]:
         return {

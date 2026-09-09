@@ -41,10 +41,12 @@ bootstrap 本地管理员 / 登录
 - 可撤销数据库 Token、本地用户与固定 Community 角色；
 - project/environment 作用域授权，以及项目和成员管理；
 - 项目/环境多模型配置与 PRIMARY、CHALLENGER、JUDGE、LOCAL_FALLBACK 绑定；
-- 受信任本地目录中的低风险 data-only Skill Manifest 注册、Binding 与 Invocation 观测；
+- 受信任本地目录中的低风险 data-only Skill Manifest 注册、Binding 与 Invocation 观测；Community
+  Invocation 观测包含服务端脱敏的输入/输出/策略结构摘要、解析来源与证据引用，不包含高权限快照；
 - GitHub、GitLab、Mock SCM 的项目范围 Binding 和 Safe Projection；
 - 测试计划、受限执行、Finding/Workflow 投影和 WorkItem 流转；
-- candidate path、change set、impact、selective replay plan、audit 和 observability 等已纳入 composition 的只读投影。
+- candidate path、change set、impact、selective replay plan、audit 和 observability 等已纳入 composition 的只读投影；
+  observability UI 可下钻 Trace 计数、脱敏元数据、结构化日志上下文与护栏证据，不展示原始模型或 Agent payload。
 
 Requirement Intake、Test Assets、Gate/PR Admission、完整 Coverage/Replay/Evidence、
 Agent/Queue、Correction/Knowledge/Lesson/Improvement 当前没有进入 Community v1；

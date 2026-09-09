@@ -21,6 +21,7 @@
     "status",
     "priority",
     "bindingConfig",
+    "activationReadiness",
     "pendingChange",
     "approvalRefs",
     "guardrailEventRefs",
@@ -116,6 +117,35 @@
     },
     "bindingConfig": {
       "type": "object"
+    },
+    "activationReadiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "candidate",
+        "skillVersionGovernanceStatus",
+        "contractValidation",
+        "datasetEvaluation",
+        "shadowComparison",
+        "evidenceReady",
+        "canRequestActivation",
+        "directExecutionAllowed"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "phase8.skill-activation-readiness.v1"
+        },
+        "candidate": {"type": "boolean"},
+        "skillVersionGovernanceStatus": {"type": "string"},
+        "contractValidation": {"type": "string"},
+        "datasetEvaluation": {"type": "string"},
+        "shadowComparison": {"type": "string"},
+        "evidenceReady": {"type": "boolean"},
+        "canRequestActivation": {"type": "boolean"},
+        "directExecutionAllowed": {"const": false}
+      }
     },
     "pendingChange": {
       "type": "object"

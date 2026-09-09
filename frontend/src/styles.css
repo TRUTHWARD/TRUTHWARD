@@ -1542,6 +1542,72 @@ button.timeline-item {
   overflow-wrap: anywhere;
 }
 
+.observability-page,
+.observability-page > .section-card,
+.observability-page > .section-card > *,
+.observability-page .page-columns > *,
+.observability-page .detail-grid > *,
+.observability-page .detail-stack > *,
+.observability-page .safe-json-viewer,
+.observability-page details {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.observability-page > .section-card {
+  width: 100%;
+  overflow: hidden;
+}
+
+.observability-trace-layout {
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.observability-trace-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+
+.observability-trace-item > div:first-child,
+.observability-trace-item > div:first-child strong {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.observability-trace-item .metric-cluster {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  justify-content: start;
+  width: 100%;
+  gap: 4px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.observability-trace-item .metric-cluster > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.observability-trace-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.observability-quality-signal {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.observability-quality-signal > details {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
 .summary-pill--warn {
   background: var(--warn-soft);
 }
@@ -2125,6 +2191,7 @@ button.timeline-item {
   .form-grid,
   .definition-list,
   .guardrail-summary-grid,
+  .observability-trace-stats,
   .observability-metric-grid,
   .comparison-grid,
   .policy-matrix,

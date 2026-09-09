@@ -53,6 +53,7 @@ export const LessonsCenterPage = UnavailableEnterprisePage;
 export const ModelsPage = CommunityModelsPage;
 export const ProjectSettingsPage = CommunityProjectSettingsPage;
 export const ReplayRepositoryPage = UnavailableEnterprisePage;
+export const SkillGovernancePanel = UnavailableEnterprisePage;
 
 function unavailableEnterpriseOperation(operation: string): Promise<never> {
   return Promise.reject(new Error(`Enterprise operation is unavailable in the OSS profile: ${operation}`));

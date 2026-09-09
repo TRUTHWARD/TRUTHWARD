@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import { SafeJsonViewer } from "../components/SafeJsonViewer";
 import { SectionCard } from "../components/SectionCard";
 import { Locale, t } from "../i18n";
 import { displayStatus } from "../lib/presentation";
@@ -24,6 +25,11 @@ export function SkillInvocationsPage({
   const [selectedInvocationId, setSelectedInvocationId] = useState<string | null>(skillInvocations[0]?.id ?? null);
   const selectedInvocation =
     skillInvocations.find((invocation) => invocation.id === selectedInvocationId) ?? skillInvocations[0] ?? null;
+  useEffect(() => {
+    if (skillInvocations.length > 0 && !skillInvocations.some((invocation) => invocation.id === selectedInvocationId)) {
+      setSelectedInvocationId(skillInvocations[0].id);
+    }
+  }, [selectedInvocationId, skillInvocations]);
   const linkedGuardrails = selectedInvocation
     ? guardrailEvents.filter((event) => event.skillInvocationId === selectedInvocation.id)
     : [];
@@ -94,37 +100,110 @@ export function SkillInvocationsPage({
                   <strong>{displayStatus(locale, selectedInvocation.status)}</strong>
                   <p className="technical-value">{selectedInvocation.extensionPointId ?? t(locale, "none")}</p>
                 </div>
-                <span className="status-pill">{selectedInvocation.version}</span>
+                <div className="metric-cluster">
+                  <span className="status-pill">{selectedInvocation.version}</span>
+                  {selectedInvocation.storageStatus ? (
+                    <span>{t(locale, "storageStatus")}: {displayStatus(locale, selectedInvocation.storageStatus)}</span>
+                  ) : null}
+                </div>
               </div>
 
               <div className="detail-grid">
                 <ReadonlyRef emptyLabel={t(locale, "none")} label={t(locale, "execution")} value={selectedInvocation.executionId} />
                 <ReadonlyRef emptyLabel={t(locale, "none")} label={t(locale, "trace")} value={selectedInvocation.traceId} />
+                <ReadonlyRef emptyLabel={t(locale, "none")} label={t(locale, "agentRun")} value={selectedInvocation.agentRunId ?? null} />
                 <ReadonlyRef emptyLabel={t(locale, "none")} label={t(locale, "binding")} value={selectedInvocation.bindingId} />
+              </div>
+
+              <div className="detail-grid">
+                <ReadonlyRef emptyLabel={t(locale, "none")} label={t(locale, "invocationId")} value={selectedInvocation.id} />
                 <ReadonlyRef emptyLabel={t(locale, "none")} label={t(locale, "manifest")} value={selectedInvocation.manifestHash} />
+                <ReadonlyRef emptyLabel={t(locale, "none")} label={t(locale, "sourceWorkflow")} value={selectedInvocation.sourceWorkflow} />
+                <ReadonlyRef emptyLabel={t(locale, "none")} label={t(locale, "createdAt")} value={formatTimestamp(selectedInvocation.createdAt, locale)} />
               </div>
 
               <div className="detail-grid">
                 <ReadonlyCount label={t(locale, "artifactRefs")} value={selectedInvocation.artifactRefs.length} />
                 <ReadonlyCount label={t(locale, "toolRefs")} value={selectedInvocation.toolCallRefs.length} />
+                <ReadonlyCount label={t(locale, "connectorRefs")} value={selectedInvocation.connectorCallRefs.length} />
                 <ReadonlyCount label={t(locale, "approvalRefs")} value={selectedInvocation.approvalRefs.length} />
                 <ReadonlyCount label={t(locale, "guardrailRefs")} value={linkedGuardrails.length} />
               </div>
 
+              <div>
+                <h3>{t(locale, "safeObservationSummary")}</h3>
+                <p className="empty-copy">{t(locale, "safeObservationSummaryNotice")}</p>
+                <div className="detail-grid">
+                  <ObservationSnapshot locale={locale} title={t(locale, "inputSummary")} value={selectedInvocation.inputSummary ?? {}} />
+                  <ObservationSnapshot locale={locale} title={t(locale, "outputSummary")} value={selectedInvocation.outputSummary ?? {}} />
+                  <ObservationSnapshot locale={locale} title={t(locale, "policySummary")} value={selectedInvocation.policySummary ?? {}} />
+                </div>
+              </div>
+
               <div className="detail-grid">
-                <LinkedRecords emptyLabel={t(locale, "none")} title={t(locale, "guardrailRefs")} items={linkedGuardrails.map((event) => `${event.ruleId}: ${event.decision}`)} />
+                <ObservationSnapshot locale={locale} title={t(locale, "resolutionSnapshot")} value={selectedInvocation.resolutionSnapshot} />
+                <ObservationSnapshot locale={locale} title={t(locale, "connectorBindingSnapshot")} value={selectedInvocation.connectorBindingSnapshot} />
+              </div>
+
+              <ObservationSnapshot
+                locale={locale}
+                title={t(locale, "linkedEvidenceAndCalls")}
+                value={{
+                  artifactRefs: selectedInvocation.artifactRefs,
+                  toolCallRefs: selectedInvocation.toolCallRefs,
+                  connectorCallRefs: selectedInvocation.connectorCallRefs,
+                  approvalRefs: selectedInvocation.approvalRefs,
+                }}
+              />
+
+              <div className="detail-grid">
+                <LinkedRecords
+                  emptyLabel={t(locale, "none")}
+                  title={t(locale, "guardrailRefs")}
+                  items={linkedGuardrails.map((event) => `${event.ruleId}: ${event.decision} · ${event.reason}`)}
+                />
                 <LinkedRecords
                   emptyLabel={t(locale, "none")}
                   title={t(locale, "approvalRefs")}
                   items={linkedApprovals.map((approval) => `${approval.summary}: ${displayStatus(locale, approval.status)}`)}
                 />
               </div>
+
+              {selectedInvocation.inputSnapshot || selectedInvocation.outputSnapshot || selectedInvocation.policySnapshot ? (
+                <div>
+                  <h3>{t(locale, "privilegedSnapshots")}</h3>
+                  <p className="empty-copy">{t(locale, "privilegedSnapshotsNotice")}</p>
+                  <div className="detail-grid">
+                    {selectedInvocation.inputSnapshot ? <ObservationSnapshot locale={locale} title={t(locale, "input")} value={selectedInvocation.inputSnapshot} /> : null}
+                    {selectedInvocation.outputSnapshot ? <ObservationSnapshot locale={locale} title={t(locale, "output")} value={selectedInvocation.outputSnapshot} /> : null}
+                    {selectedInvocation.policySnapshot ? <ObservationSnapshot locale={locale} title={t(locale, "policy")} value={selectedInvocation.policySnapshot} /> : null}
+                  </div>
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <strong>{t(locale, "privilegedSnapshotsNotExposed")}</strong>
+                  <p>{t(locale, "privilegedSnapshotsNotExposedNotice")}</p>
+                </div>
+              )}
             </div>
           ) : (
             <p className="empty-copy">{t(locale, "noSkillInvocations")}</p>
           )}
         </SectionCard>
       </div>
+    </div>
+  );
+}
+
+function ObservationSnapshot({ locale, title, value }: { locale: Locale; title: string; value: Record<string, unknown> }) {
+  return (
+    <div>
+      <h3>{title}</h3>
+      {Object.keys(value).length > 0 ? (
+        <SafeJsonViewer locale={locale} value={value} limits={{ maxCharacters: 12000, maxNodes: 240 }} />
+      ) : (
+        <p className="empty-copy">{t(locale, "none")}</p>
+      )}
     </div>
   );
 }
@@ -163,4 +242,9 @@ function LinkedRecords({ emptyLabel, title, items }: { emptyLabel: string; title
       </div>
     </div>
   );
+}
+
+function formatTimestamp(value: string, locale: Locale) {
+  const timestamp = new Date(value);
+  return Number.isNaN(timestamp.getTime()) ? value : timestamp.toLocaleString(locale);
 }

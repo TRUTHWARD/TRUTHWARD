@@ -31,7 +31,11 @@ Binding 先创建为 draft。后端以 capability、ScopeAuthorization、Manifes
 使用受权 `POST /executions/{id}/regression-plan` 生成非权威回归展示，不创建执行或
 测试任务。Service 通过 `SkillService.invoke_extension()` 调用，冻结版本/hash/profile，
 校验权威内容未变，返回分组结果及 Invocation ref。不开放直接 Skill 执行接口。
-启用、停用复用 Guardrail、Trace、Audit；Invocation 保留 input/output/resolution。
+启用、停用复用 Guardrail、Trace、Audit；Invocation 保留 input/output/policy/resolution。
+Community 的调用列表和详情默认不返回原始 input/output/policy 快照，而是由后端生成
+不含业务值的 `inputSummary`、`outputSummary`、`policySummary`，展示操作名、字段名、
+结果/证据计数、重试/回退状态和受控策略上限。前端仅下钻这些服务端脱敏摘要、解析快照、
+安全 Connector Binding 投影与引用；高权限快照仍受既有 capability 控制。
 这些证据不升级 Overall Audit Exposure Closure。
 
 Invocation 列表在计数/分页前按授权项目过滤，详情从持久化 Execution→TestPlan 或
@@ -82,3 +86,16 @@ Community 业务路径，2/2 次持久化 ModelInvocation 均为 live completed�
 `reports/community-runtime-20260905/validation-summary.json`。
 
 实施状态以 IMPLEMENTATION_STATUS.md 为锚点；最终文档提交仍需完整 P0 与精确发布证据。
+
+## 与完整版产品闭环的边界
+
+Community 现在只读取 `ossIncluded=true` 的稳定 Skill feature 标记、固定回归扩展点、按 edition
+过滤的受管 Adapter 目录和 active Skill Version 历史，便于选择精确已注册版本创建项目/环境草稿 Binding。发布标记为
+`ossIncluded=true` 的仍只有可信本地目录注册、版本/Adapter 只读目录、受限草稿 Binding、
+显式启停与 Invocation 观测。
+
+浏览器 Manifest 文件导入、任意 draft Skill Version 候选绑定、固定数据集 Evaluation、Shadow、
+Approval 激活与治理回滚属于完整版，未进入 `COMMUNITY_OSS_ROUTERS`。Community 的固定回归
+展示例外继续只用 `community-presentation-enable.v1`，不得伪造这些治理阶段。任何 edition 都
+没有面向普通用户的直接 Skill 执行入口。机器可读边界见
+`release/oss/feature_layers.json`。完整版产品流程文档不属于当前已批准 OSS 导出路径。

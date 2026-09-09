@@ -309,6 +309,20 @@ class CommunityBindingLifecycleContract(BaseModel):
     unavailableReason: str | None
 
 
+class SkillActivationReadinessContract(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schemaVersion: Literal["phase8.skill-activation-readiness.v1"]
+    candidate: bool
+    skillVersionGovernanceStatus: str
+    contractValidation: str
+    datasetEvaluation: str
+    shadowComparison: str
+    evidenceReady: bool
+    canRequestActivation: bool
+    directExecutionAllowed: Literal[False]
+
+
 class CapabilityBindingContract(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -333,6 +347,7 @@ class CapabilityBindingContract(BaseModel):
     status: Literal["draft", "active", "disabled", "deprecated", "archived"]
     priority: int = Field(ge=0)
     bindingConfig: dict[str, Any]
+    activationReadiness: SkillActivationReadinessContract
     pendingChange: dict[str, Any]
     approvalRefs: list[dict[str, Any]]
     guardrailEventRefs: list[dict[str, Any]]

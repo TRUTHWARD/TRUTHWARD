@@ -129,6 +129,7 @@ import {
   ModelsPage,
   ProjectSettingsPage,
   ReplayRepositoryPage,
+  SkillGovernancePanel,
   enterpriseApi,
 } from "@truthward/enterprise-pages";
 import { AgentRunsPage } from "./pages/AgentRunsPage";
@@ -315,7 +316,6 @@ function pathForSection(sectionId: AppSection) {
 }
 
 function navigationGroupForSection(sectionId: AppSection) {
-  if (IS_OSS_PROFILE && sectionId === "capability-bindings") return "replay-audit";
   return navigationGroups.find((group) => group.sectionIds.includes(sectionId))?.id ?? "workspace";
 }
 
@@ -425,7 +425,12 @@ async function loadSkillsForUser(user: CurrentUser) {
 }
 
 async function loadSkillInvocationsForUser(user: CurrentUser, filters: { executionId?: string; skillId?: string; pageSize?: number } = {}) {
-  return hasUserCapability(user, "skill_invocations.read") ? fetchSkillInvocations(filters) : { items: [], total: 0 };
+  return hasUserCapability(user, "skill_invocations.read")
+    ? fetchSkillInvocations({
+        ...filters,
+        includeSnapshots: hasUserCapability(user, "capability_bindings.admin"),
+      })
+    : { items: [], total: 0 };
 }
 
 async function loadWorkflowCapabilityGraphForUser(user: CurrentUser) {
@@ -646,14 +651,7 @@ function App() {
 
   const hasCapability = (capability: string) => currentUser?.capabilities.includes(capability) ?? false;
   const visibleNavigationGroups = useMemo(
-    () => (IS_OSS_PROFILE
-      ? navigationGroups.map((group) => {
-          if (group.id === "replay-audit") {
-            return { ...group, sectionIds: [...group.sectionIds, "capability-bindings" as const] };
-          }
-          return group;
-        })
-      : navigationGroups)
+    () => navigationGroups
       .map((group) => ({
         ...group,
         sectionIds: group.sectionIds.filter((sectionId) =>
@@ -2152,6 +2150,18 @@ function App() {
             capabilityBindings={capabilityBindings}
             currentUser={currentUser}
             guardrailEvents={guardrailEvents}
+            governancePanel={(
+              <SkillGovernancePanel
+                capabilityBindings={capabilityBindings}
+                currentUser={currentUser}
+                environments={environments}
+                locale={locale}
+                onRefresh={async () => { await Promise.all([refreshSkills(), refreshCapabilityBindings(), refreshWorkflowCollections()]); }}
+                projects={projects}
+                skillInvocations={skillInvocations}
+                skills={skills}
+              />
+            )}
             locale={locale}
             onCreateBinding={handleCreateCapabilityBinding}
             onRefreshSkills={async () => { await Promise.all([refreshSkills(), refreshCapabilityBindings(), refreshWorkflowCollections()]); }}

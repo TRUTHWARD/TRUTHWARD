@@ -5,7 +5,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from agentic_qa.api.deps import any_capability_dependency, capability_dependency, get_current_user, get_db, get_parent_span_id, get_request_id, get_trace_id
 from agentic_qa.api.responses import success_response
-from agentic_qa.schemas.skills import CapabilityBindingRequest, CapabilityBindingUpdateRequest, CommunityBindingLifecycleRequest, ConnectorBindingRequest, ConnectorBindingUpdateRequest, SkillInvocationRequest
+from agentic_qa.schemas.skills import (
+    CandidateCapabilityBindingRequest,
+    CapabilityBindingRequest,
+    CapabilityBindingUpdateRequest,
+    CommunityBindingLifecycleRequest,
+    ConnectorBindingRequest,
+    ConnectorBindingUpdateRequest,
+    ManagedSkillManifestDraftRequest,
+    SkillActivationPreparationRequest,
+    SkillBindingRollbackRequest,
+    SkillInvocationRequest,
+)
 from agentic_qa.services.common import IdempotencyConflictError, ServiceContext
 from agentic_qa.services.community_skill_catalog_service import CommunitySkillCatalogService
 from agentic_qa.services.scope_service import ScopeAuthorizationError, ScopeAuthorizationService
@@ -79,7 +90,91 @@ def list_skills(
     user=Depends(capability_dependency("skills.catalog.read")),
 ) -> dict[str, object]:
     service = SkillService(db)
-    data = service.list_skills(page, page_size)
+    data = service.list_skills(
+        page,
+        page_size,
+        include_draft_only=user.edition == "enterprise",
+    )
+    return success_response(request, data)
+
+
+@router.get("/skill-product-features")
+def get_skill_product_features(
+    request: Request,
+    db=Depends(get_db),
+    user=Depends(capability_dependency("skills.catalog.read")),
+) -> dict[str, object]:
+    return success_response(request, SkillService(db).product_features(user.edition))
+
+
+@router.get("/skill-runtime-adapters")
+def list_skill_runtime_adapters(
+    request: Request,
+    db=Depends(get_db),
+    user=Depends(capability_dependency("skills.catalog.read")),
+) -> dict[str, object]:
+    return success_response(request, SkillService(db).list_runtime_adapters(user.edition))
+
+
+@router.post("/skills/manifest-drafts")
+def create_managed_skill_manifest_draft(
+    request: Request,
+    payload: ManagedSkillManifestDraftRequest,
+    db=Depends(get_db),
+    user=Depends(capability_dependency("custom_skills.manage")),
+) -> dict[str, object]:
+    try:
+        data = SkillService(db).create_managed_manifest_draft(
+            payload,
+            ServiceContext(
+                user=user,
+                request_id=get_request_id(request),
+                trace_id=get_trace_id(request),
+            ),
+        )
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return success_response(request, data, "created")
+
+
+@router.get("/skills/{skill_id}/versions")
+def list_skill_versions(
+    request: Request,
+    skill_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, alias="page_size", ge=1, le=100),
+    db=Depends(get_db),
+    user=Depends(capability_dependency("skills.catalog.read")),
+) -> dict[str, object]:
+    try:
+        data = SkillService(db).list_skill_versions(
+            skill_id,
+            page,
+            page_size,
+            include_non_active=user.edition != "community",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return success_response(request, data)
+
+
+@router.get("/skill-versions/{skill_version_id}")
+def get_skill_version(
+    request: Request,
+    skill_version_id: UUID,
+    db=Depends(get_db),
+    user=Depends(capability_dependency("skills.catalog.read")),
+) -> dict[str, object]:
+    try:
+        data = SkillService(db).get_skill_version(skill_version_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if user.edition == "community" and data.get("governanceStatus") != "active":
+        raise HTTPException(status_code=404, detail="skill version not found")
     return success_response(request, data)
 
 
@@ -87,7 +182,10 @@ def list_skills(
 def get_skill(request: Request, skill_id: str, db=Depends(get_db), user=Depends(capability_dependency("skills.catalog.read"))) -> dict[str, object]:
     service = SkillService(db)
     try:
-        data = service.get_skill(skill_id)
+        data = service.get_skill(
+            skill_id,
+            include_draft_only=user.edition == "enterprise",
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return success_response(request, data)
@@ -254,8 +352,106 @@ def create_capability_binding(
             ServiceContext(user=user, request_id=get_request_id(request), trace_id=get_trace_id(request), parent_span_id=get_parent_span_id(request)),
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        reason = str(exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "errorCode": reason.split(":", 1)[0],
+                "message": "capability binding request was rejected",
+            },
+        ) from exc
     return success_response(request, data, "created")
+
+
+@router.post("/capability-bindings/candidates")
+def create_candidate_capability_binding(
+    request: Request,
+    payload: CandidateCapabilityBindingRequest,
+    db=Depends(get_db),
+    user=Depends(capability_dependency("custom_skills.manage")),
+) -> dict[str, object]:
+    try:
+        data = SkillService(db).create_candidate_capability_binding(
+            payload,
+            ServiceContext(
+                user=user,
+                request_id=get_request_id(request),
+                trace_id=get_trace_id(request),
+                parent_span_id=get_parent_span_id(request),
+            ),
+        )
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ScopeAuthorizationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail="scope access denied") from exc
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return success_response(request, data, "created")
+
+
+@router.post("/capability-bindings/{binding_id}/activation-preparation")
+def prepare_candidate_binding_activation(
+    request: Request,
+    binding_id: UUID,
+    payload: SkillActivationPreparationRequest,
+    db=Depends(get_db),
+    user=Depends(capability_dependency("capability_bindings.admin")),
+) -> dict[str, object]:
+    try:
+        data = SkillService(db).prepare_candidate_binding_activation(
+            binding_id,
+            payload,
+            ServiceContext(
+                user=user,
+                request_id=get_request_id(request),
+                trace_id=get_trace_id(request),
+                parent_span_id=get_parent_span_id(request),
+            ),
+        )
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ScopeAuthorizationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail="scope access denied") from exc
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return success_response(request, data)
+
+
+@router.post("/capability-bindings/{binding_id}/rollback")
+def rollback_capability_binding(
+    request: Request,
+    binding_id: UUID,
+    payload: SkillBindingRollbackRequest,
+    db=Depends(get_db),
+    user=Depends(capability_dependency("capability_bindings.admin")),
+) -> dict[str, object]:
+    try:
+        data = SkillService(db).rollback_capability_binding(
+            binding_id,
+            payload,
+            ServiceContext(
+                user=user,
+                request_id=get_request_id(request),
+                trace_id=get_trace_id(request),
+                parent_span_id=get_parent_span_id(request),
+            ),
+        )
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ScopeAuthorizationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail="scope access denied") from exc
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return success_response(request, data)
 
 
 @router.patch("/capability-bindings/{binding_id}")

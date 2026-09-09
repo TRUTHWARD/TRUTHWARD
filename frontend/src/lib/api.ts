@@ -3005,6 +3005,80 @@ export async function fetchSkills() {
   }>("/skills?page_size=50");
 }
 
+export type SkillProductFeature = {
+  id: string;
+  ossIncluded: boolean;
+  availability: string;
+  requiredCapability: string | null;
+  executionSemantics: string;
+  availableInCurrentEdition: boolean;
+};
+
+export type SkillRuntimeAdapter = {
+  adapterId: string;
+  resultKind: string;
+  extensionPoints: string[] | null;
+  registered: boolean;
+  manifestSelectable: boolean;
+  codeUploadAllowed: false;
+  registrationMechanism: string;
+};
+
+export type SkillVersionItem = {
+  id: string;
+  skillId: string;
+  displayName: string;
+  skillStatus: string;
+  version: string;
+  manifestHash: string;
+  manifestSnapshot: Record<string, unknown>;
+  governanceStatus: string;
+  runtime: Record<string, unknown>;
+  extensionPoints: string[];
+  riskProfile: Record<string, unknown>;
+  approvalPolicy: Record<string, unknown>;
+  activeBindingCount: number;
+  candidateBindable: boolean;
+  provenance: {
+    sourceType: string;
+    auditRef: string | null;
+    createdBy: string | null;
+    codeLoaded: false;
+  };
+  changesFromPrevious: {
+    baseManifestHash: string | null;
+    changedFields: string[];
+    addedFields: string[];
+    removedFields: string[];
+  };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function fetchSkillProductFeatures() {
+  return request<{
+    schemaVersion: string;
+    edition: string;
+    markerSemantics: string;
+    features: SkillProductFeature[];
+  }>("/skill-product-features");
+}
+
+export async function fetchSkillRuntimeAdapters() {
+  return request<{
+    schemaVersion: string;
+    edition: string;
+    items: SkillRuntimeAdapter[];
+    directExecutionAllowed: false;
+  }>("/skill-runtime-adapters");
+}
+
+export async function fetchSkillVersions(skillId: string) {
+  return request<{ items: SkillVersionItem[]; total: number }>(
+    `/skills/${encodeURIComponent(skillId)}/versions?page_size=100`,
+  );
+}
+
 export type CommunityLocalSkillManifest = {
   fileName: string;
   valid: boolean;
@@ -3034,7 +3108,12 @@ export async function registerCommunityLocalSkillManifest(fileName: string) {
   );
 }
 
-export async function fetchSkillInvocations(filters: { executionId?: string; skillId?: string; pageSize?: number } = {}) {
+export async function fetchSkillInvocations(filters: {
+  executionId?: string;
+  skillId?: string;
+  pageSize?: number;
+  includeSnapshots?: boolean;
+} = {}) {
   return request<{
     items: Array<{
       id: string;
@@ -3042,13 +3121,18 @@ export async function fetchSkillInvocations(filters: { executionId?: string; ski
       version: string;
       manifestHash: string;
       status: string;
+      storageStatus?: string;
       idempotencyKey: string | null;
       traceId: string | null;
       executionId: string | null;
+      agentRunId?: string | null;
       extensionPointId: string | null;
       bindingId: string | null;
       sourceWorkflow: string | null;
       resolutionSnapshot: Record<string, unknown>;
+      inputSummary?: Record<string, unknown>;
+      outputSummary?: Record<string, unknown>;
+      policySummary?: Record<string, unknown>;
       inputSnapshot?: Record<string, unknown>;
       outputSnapshot?: Record<string, unknown>;
       policySnapshot?: Record<string, unknown>;
@@ -3058,6 +3142,7 @@ export async function fetchSkillInvocations(filters: { executionId?: string; ski
       toolCallRefs: Array<Record<string, unknown>>;
       connectorCallRefs: Array<Record<string, unknown>>;
       createdAt: string;
+      updatedAt?: string;
     }>;
     total: number;
   }>(
@@ -3065,6 +3150,7 @@ export async function fetchSkillInvocations(filters: { executionId?: string; ski
       page_size: filters.pageSize ?? 24,
       executionId: filters.executionId,
       skillId: filters.skillId,
+      includeSnapshots: filters.includeSnapshots ? "true" : undefined,
     }),
   );
 }
@@ -3103,6 +3189,16 @@ export type CapabilityBindingItem = {
   status: string;
   priority: number;
   bindingConfig: Record<string, unknown>;
+  activationReadiness?: {
+    candidate: boolean;
+    skillVersionGovernanceStatus: string;
+    contractValidation: string;
+    datasetEvaluation: string;
+    shadowComparison: string;
+    evidenceReady: boolean;
+    canRequestActivation: boolean;
+    directExecutionAllowed: false;
+  };
   pendingChange: Record<string, unknown>;
   approvalRefs: Array<Record<string, unknown>>;
   guardrailEventRefs: Array<Record<string, unknown>>;
@@ -3222,10 +3318,12 @@ export async function fetchTraces() {
       id: string;
       executionId: string | null;
       rootSpanName: string | null;
+      metadata: Record<string, unknown>;
       spanCount: number;
       modelInvocationCount: number;
       agentRunCount: number;
       skillInvocationCount: number;
+      auditLogCount: number;
       guardrailEventCount: number;
       createdAt: string;
     }>;

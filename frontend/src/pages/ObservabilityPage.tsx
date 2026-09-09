@@ -1,4 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+import { useEffect, useState } from "react";
+
+import { SafeJsonViewer } from "../components/SafeJsonViewer";
 import { SectionCard } from "../components/SectionCard";
 import { Locale, t } from "../i18n";
 import type { ObservabilityMetric, QualityDashboard, StructuredLogItem, StructuredLogProjection } from "../lib/api";
@@ -8,9 +11,12 @@ type TraceItem = {
   id: string;
   executionId: string | null;
   rootSpanName: string | null;
+  metadata?: Record<string, unknown>;
   spanCount: number;
   modelInvocationCount: number;
   agentRunCount: number;
+  skillInvocationCount: number;
+  auditLogCount?: number;
   guardrailEventCount: number;
   createdAt: string;
 };
@@ -108,25 +114,90 @@ export function ObservabilityPage({
     warn: t(locale, "decisionWarn"),
     block: t(locale, "decisionBlock"),
   } satisfies Record<(typeof decisions)[number], string>;
+  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(traces[0]?.id ?? null);
+  const [selectedLogId, setSelectedLogId] = useState<string | null>(structuredLogs[0]?.id ?? null);
+  const [selectedGuardrailId, setSelectedGuardrailId] = useState<string | null>(guardrailEvents[0]?.id ?? null);
+  const selectedTrace = traces.find((trace) => trace.id === selectedTraceId) ?? traces[0] ?? null;
+  const selectedLog = structuredLogs.find((log) => log.id === selectedLogId) ?? structuredLogs[0] ?? null;
+  const selectedGuardrail =
+    guardrailEvents.find((event) => event.id === selectedGuardrailId) ?? guardrailEvents[0] ?? null;
+  const relatedLogs = selectedTrace ? structuredLogs.filter((log) => log.traceId === selectedTrace.id) : [];
+
+  useEffect(() => {
+    if (traces.length > 0 && !traces.some((trace) => trace.id === selectedTraceId)) {
+      setSelectedTraceId(traces[0].id);
+    }
+  }, [selectedTraceId, traces]);
+  useEffect(() => {
+    if (structuredLogs.length > 0 && !structuredLogs.some((log) => log.id === selectedLogId)) {
+      setSelectedLogId(structuredLogs[0].id);
+    }
+  }, [selectedLogId, structuredLogs]);
+  useEffect(() => {
+    if (guardrailEvents.length > 0 && !guardrailEvents.some((event) => event.id === selectedGuardrailId)) {
+      setSelectedGuardrailId(guardrailEvents[0].id);
+    }
+  }, [guardrailEvents, selectedGuardrailId]);
 
   return (
-    <div className="page-shell" data-route="/observability">
+    <div className="page-shell observability-page" data-route="/observability">
     <SectionCard title={t(locale, "observability")}>
-      <div className="stack-list">
-        {traces.slice(0, 4).map((trace) => (
-          <div className="stack-row stack-row--dense" key={trace.id}>
-            <div>
-              <strong>{trace.rootSpanName ?? t(locale, "trace")}</strong>
-              <p>{trace.executionId ? `${t(locale, "executionPrefix")} ${trace.executionId.slice(0, 8)}` : t(locale, "planLevel")}</p>
-            </div>
-            <div className="metric-cluster">
-              <span>{trace.spanCount} {t(locale, "spans")}</span>
-              <span>{trace.modelInvocationCount} {t(locale, "models")}</span>
-              <span>{trace.agentRunCount} {t(locale, "agent")}</span>
-              <span>{trace.guardrailEventCount} {t(locale, "guardrails")}</span>
-            </div>
+      <div className="page-columns observability-trace-layout">
+        <div>
+          <h3>{t(locale, "traceRecords")}</h3>
+          <div className="stack-list">
+            {traces.slice(0, 8).map((trace) => (
+              <button
+                aria-pressed={selectedTrace?.id === trace.id}
+                className={`stack-row stack-row--dense stack-row--button observability-trace-item ${selectedTrace?.id === trace.id ? "stack-row--selected" : ""}`}
+                key={trace.id}
+                onClick={() => setSelectedTraceId(trace.id)}
+                type="button"
+              >
+                <div>
+                  <strong>{trace.rootSpanName ?? t(locale, "trace")}</strong>
+                  <p>{trace.executionId ? `${t(locale, "executionPrefix")} ${trace.executionId.slice(0, 8)}` : t(locale, "planLevel")}</p>
+                </div>
+                <div className="metric-cluster">
+                  <span>{trace.spanCount} {t(locale, "spans")}</span>
+                  <span>{trace.skillInvocationCount} {t(locale, "skillInvocation")}</span>
+                  <span>{trace.guardrailEventCount} {t(locale, "guardrails")}</span>
+                </div>
+              </button>
+            ))}
+            {traces.length === 0 ? <p className="empty-copy">{t(locale, "noTraceRecords")}</p> : null}
           </div>
-        ))}
+        </div>
+
+        <div>
+          <h3>{t(locale, "traceDetails")}</h3>
+          {selectedTrace ? (
+            <div className="detail-stack observability-trace-detail">
+              <div className="detail-grid">
+                <DetailValue label={t(locale, "traceId")} value={selectedTrace.id} />
+                <DetailValue label={t(locale, "execution")} value={selectedTrace.executionId} locale={locale} />
+                <DetailValue label={t(locale, "createdAt")} value={formatTimestamp(selectedTrace.createdAt, locale)} />
+                <DetailValue label={t(locale, "relatedLogs")} value={String(relatedLogs.length)} />
+              </div>
+              <div className="stats-grid stats-grid--compact observability-trace-stats">
+                <MetricTile label={t(locale, "spans")} value={String(selectedTrace.spanCount)} />
+                <MetricTile label={t(locale, "models")} value={String(selectedTrace.modelInvocationCount)} />
+                <MetricTile label={t(locale, "agent")} value={String(selectedTrace.agentRunCount)} />
+                <MetricTile label={t(locale, "skillInvocation")} value={String(selectedTrace.skillInvocationCount)} />
+                <MetricTile label={t(locale, "guardrails")} value={String(selectedTrace.guardrailEventCount)} />
+                <MetricTile label={t(locale, "auditSourceAudit")} value={String(selectedTrace.auditLogCount ?? 0)} />
+              </div>
+              {selectedTrace.metadata && Object.keys(selectedTrace.metadata).length > 0 ? (
+                <div>
+                  <h3>{t(locale, "recordedMetadata")}</h3>
+                  <SafeJsonViewer locale={locale} value={selectedTrace.metadata} />
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <p className="empty-copy">{t(locale, "noTraceRecords")}</p>
+          )}
+        </div>
       </div>
 
       {replay ? (
@@ -174,6 +245,12 @@ export function ObservabilityPage({
                 <span>{displayMetricLabel(locale, metric.name)}</span>
                 <strong>{formatMetricValue(metric, locale)}</strong>
                 <small>{displayStatus(locale, metric.status)}</small>
+                {Object.keys(metric.metadata).length > 0 ? (
+                  <details>
+                    <summary>{t(locale, "viewDetails")}</summary>
+                    <SafeJsonViewer locale={locale} value={metric.metadata} limits={{ maxCharacters: 6000, maxNodes: 120 }} />
+                  </details>
+                ) : null}
               </div>
             ))}
             {metrics.length === 0 ? <p className="empty-copy">{t(locale, "noMetricsForExecution")}</p> : null}
@@ -212,14 +289,46 @@ export function ObservabilityPage({
               </div>
               <div className="timeline-list">
                 {structuredLogs.slice(0, 8).map((log) => (
-                  <div className={`timeline-item timeline-item--${log.source}`} key={log.id}>
+                  <button
+                    aria-pressed={selectedLog?.id === log.id}
+                    className={`timeline-item timeline-item--${log.source} ${selectedLog?.id === log.id ? "stack-row--selected" : ""}`}
+                    key={log.id}
+                    onClick={() => setSelectedLogId(log.id)}
+                    type="button"
+                  >
                     <strong>{log.message}</strong>
                     <span>{displayLogLevel(locale, log.level)}</span>
                     <span>{log.component}</span>
-                  </div>
+                  </button>
                 ))}
                 {structuredLogs.length === 0 ? <p className="empty-copy">{t(locale, "emptyReadOnlyResult")}</p> : null}
               </div>
+              {selectedLog ? (
+                <div className="detail-stack">
+                  <h3>{t(locale, "selectedLogDetails")}</h3>
+                  <div className="detail-grid">
+                    <DetailValue label={t(locale, "timestamp")} value={formatTimestamp(selectedLog.timestamp, locale)} />
+                    <DetailValue label={t(locale, "source")} value={selectedLog.source} />
+                    <DetailValue label={t(locale, "level")} value={displayLogLevel(locale, selectedLog.level)} />
+                    <DetailValue label={t(locale, "component")} value={selectedLog.component} />
+                    <DetailValue label={t(locale, "service")} value={selectedLog.service} />
+                    <DetailValue label={t(locale, "traceId")} value={selectedLog.traceId} locale={locale} />
+                    <DetailValue label={t(locale, "spanId")} value={selectedLog.spanId} locale={locale} />
+                    <DetailValue label={t(locale, "execution")} value={selectedLog.executionId} locale={locale} />
+                    <DetailValue label={t(locale, "requestId")} value={selectedLog.requestId} locale={locale} />
+                    <DetailValue label={t(locale, "auditResourceType")} value={selectedLog.resourceType ?? null} locale={locale} />
+                    <DetailValue label={t(locale, "auditResourceId")} value={selectedLog.resourceId ?? null} locale={locale} />
+                  </div>
+                  <div>
+                    <h3>{t(locale, "recordedMetadata")}</h3>
+                    {Object.keys(selectedLog.metadata).length > 0 ? (
+                      <SafeJsonViewer locale={locale} value={selectedLog.metadata} limits={{ maxCharacters: 12000, maxNodes: 240 }} />
+                    ) : (
+                      <p className="empty-copy">{t(locale, "auditNoDetails")}</p>
+                    )}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -229,16 +338,32 @@ export function ObservabilityPage({
         <h3>{t(locale, "qualitySignals")}</h3>
         <div className="stack-list">
           {(qualityDashboard?.qualitySignals ?? []).slice(0, 6).map((signal) => (
-            <div className="stack-row stack-row--dense" key={`${String(signal.signal)}-${String(signal.severity)}`}>
+            <div className="stack-row stack-row--dense observability-quality-signal" key={`${String(signal.signal)}-${String(signal.severity)}`}>
               <div>
                 <strong>{displaySignalLabel(locale, signal.signal ?? t(locale, "signal"))}</strong>
                 <p>{displayStatus(locale, signal.severity ?? "info")}</p>
               </div>
               <span>{formatUnknown(signal.value, locale)}</span>
+              <details>
+                <summary>{t(locale, "viewDetails")}</summary>
+                <SafeJsonViewer locale={locale} value={signal} limits={{ maxCharacters: 6000, maxNodes: 120 }} />
+              </details>
             </div>
           ))}
           {(qualityDashboard?.qualitySignals ?? []).length === 0 ? <p className="empty-copy">{t(locale, "noQualitySignals")}</p> : null}
         </div>
+        {qualityDashboard ? (
+          <div className="detail-grid">
+            <JsonProjection locale={locale} title={t(locale, "executionQuality")} value={qualityDashboard.executionQuality} />
+            <JsonProjection locale={locale} title={t(locale, "skillQuality")} value={qualityDashboard.skillQuality} />
+            <JsonProjection locale={locale} title={t(locale, "modelQuality")} value={qualityDashboard.modelQuality} />
+            <JsonProjection
+              locale={locale}
+              title={t(locale, "costAndFailureSummary")}
+              value={{ costSummary: qualityDashboard.costSummary, failureReasons: qualityDashboard.failureReasons }}
+            />
+          </div>
+        ) : null}
       </div>
 
       <div className="guardrail-panel">
@@ -262,13 +387,35 @@ export function ObservabilityPage({
             <h3>{t(locale, "recentGuardrails")}</h3>
             <div className="timeline-list">
               {guardrailEvents.slice(0, 6).map((event) => (
-                <div className="timeline-item timeline-item--guardrail" key={event.id}>
+                <button
+                  aria-pressed={selectedGuardrail?.id === event.id}
+                  className={`timeline-item timeline-item--guardrail ${selectedGuardrail?.id === event.id ? "stack-row--selected" : ""}`}
+                  key={event.id}
+                  onClick={() => setSelectedGuardrailId(event.id)}
+                  type="button"
+                >
                   <strong>{event.ruleId}</strong>
                   <span>{displayStatus(locale, event.decision)}</span>
                   <span>{event.resourceType}</span>
-                </div>
+                </button>
               ))}
             </div>
+            {selectedGuardrail ? (
+              <div className="detail-stack">
+                <h3>{t(locale, "guardrailDetails")}</h3>
+                <div className="detail-grid">
+                  <DetailValue label={t(locale, "reason")} value={selectedGuardrail.reason} />
+                  <DetailValue label={t(locale, "traceId")} value={selectedGuardrail.traceId} locale={locale} />
+                  <DetailValue label={t(locale, "execution")} value={selectedGuardrail.executionId} locale={locale} />
+                  <DetailValue label={t(locale, "auditResourceId")} value={selectedGuardrail.resourceId} />
+                  <DetailValue label={t(locale, "createdAt")} value={formatTimestamp(selectedGuardrail.createdAt, locale)} />
+                </div>
+                <div>
+                  <strong>{t(locale, "evidenceRefs")}</strong>
+                  <SafeJsonViewer locale={locale} value={selectedGuardrail.evidence} limits={{ maxCharacters: 6000, maxNodes: 120 }} />
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="guardrail-column">
@@ -309,6 +456,31 @@ function MetricTile({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function DetailValue({ label, value, locale }: { label: string; value: string | null; locale?: Locale }) {
+  return (
+    <div className="stack-row stack-row--dense">
+      <div>
+        <strong>{label}</strong>
+        <p className="technical-value">{value ?? (locale ? t(locale, "none") : "—")}</p>
+      </div>
+    </div>
+  );
+}
+
+function JsonProjection({ locale, title, value }: { locale: Locale; title: string; value: unknown }) {
+  return (
+    <div>
+      <h3>{title}</h3>
+      <SafeJsonViewer locale={locale} value={value} limits={{ maxCharacters: 12000, maxNodes: 240 }} />
+    </div>
+  );
+}
+
+function formatTimestamp(value: string, locale: Locale) {
+  const timestamp = new Date(value);
+  return Number.isNaN(timestamp.getTime()) ? value : timestamp.toLocaleString(locale);
 }
 
 function formatMetricValue(metric: ObservabilityMetric, locale: Locale) {

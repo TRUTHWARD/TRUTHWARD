@@ -1508,7 +1508,7 @@ class ObservabilityService:
             "id": str(trace.id),
             "executionId": str(trace.execution_id) if trace.execution_id else None,
             "rootSpanName": trace.root_span_name,
-            "metadata": trace.trace_metadata,
+            "metadata": redact_sensitive_data(trace.trace_metadata),
             "createdAt": trace.created_at.isoformat(),
             "spanCount": counts["spanCount"],
             "modelInvocationCount": counts["modelInvocationCount"],

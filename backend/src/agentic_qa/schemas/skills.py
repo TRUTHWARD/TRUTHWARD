@@ -119,6 +119,27 @@ class SkillCatalogItem(SkillManifestResponse):
     status: str = "active"
 
 
+class ManagedSkillManifestDraftRequest(BaseModel):
+    """Data-only manifest intake for the managed Skill governance lifecycle."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    manifest: dict[str, Any]
+    baseSkillVersionId: UUID | None = None
+    expectedManifestHash: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[0-9a-f]{64}$",
+    )
+
+    @model_validator(mode="after")
+    def verify_base_pair(self) -> "ManagedSkillManifestDraftRequest":
+        if (self.baseSkillVersionId is None) != (self.expectedManifestHash is None):
+            raise ValueError(
+                "baseSkillVersionId and expectedManifestHash must be provided together"
+            )
+        return self
+
+
 class SkillInvocationRequest(BaseModel):
     skillId: str
     version: str | None = None
@@ -216,6 +237,53 @@ class CapabilityBindingRequest(BaseModel):
     bindingConfig: dict[str, Any] = Field(default_factory=dict)
 
 
+class CandidateCapabilityBindingRequest(BaseModel):
+    """Exact-version draft Binding; it is never active on creation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    extensionPointId: str = Field(min_length=1, max_length=160)
+    skillVersionId: UUID
+    expectedManifestHash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    scopeType: str = "global"
+    scopeId: str | None = None
+    projectId: str | None = None
+    environment: str | None = None
+    stage: str | None = None
+    domain: str | None = None
+    priority: int = 0
+    bindingConfig: dict[str, Any] = Field(default_factory=dict)
+
+
+class SkillActivationPreparationRequest(BaseModel):
+    """Frozen prior invocations used by the governed validation/evaluation/Shadow chain."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sourceInvocationIds: list[UUID] = Field(min_length=1, max_length=50)
+    datasetId: str = Field(min_length=1, max_length=160)
+    datasetVersion: str = Field(min_length=1, max_length=80)
+    scope: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def verify_unique_invocations(self) -> "SkillActivationPreparationRequest":
+        if len(set(self.sourceInvocationIds)) != len(self.sourceInvocationIds):
+            raise ValueError("sourceInvocationIds must be unique")
+        return self
+
+
+class SkillBindingRollbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stableSkillVersionId: UUID
+    reasonCode: str = Field(
+        min_length=3,
+        max_length=160,
+        pattern=r"^[A-Z0-9][A-Z0-9_.-]*$",
+    )
+    scope: dict[str, Any] = Field(default_factory=dict)
+
+
 class CapabilityBindingUpdateRequest(BaseModel):
     skillId: str | None = None
     version: str | None = None
@@ -250,6 +318,7 @@ class CapabilityBindingResponse(BaseModel):
     status: str
     priority: int
     bindingConfig: dict[str, Any] = Field(default_factory=dict)
+    activationReadiness: dict[str, Any] = Field(default_factory=dict)
     pendingChange: dict[str, Any] = Field(default_factory=dict)
     approvalRefs: list[dict[str, Any]] = Field(default_factory=list)
     guardrailEventRefs: list[dict[str, Any]] = Field(default_factory=list)
