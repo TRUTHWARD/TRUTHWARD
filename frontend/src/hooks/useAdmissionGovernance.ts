@@ -11,6 +11,7 @@ import {
   type AdmissionRunProjection,
   type AdmissionTimelineProjection,
 } from "../lib/api";
+import { readRouteSelection } from "../lib/routeSelection";
 
 
 export type AdmissionGovernanceState = "loading" | "ready" | "empty" | "unavailable" | "restricted" | "error";
@@ -45,7 +46,13 @@ export function useAdmissionGovernance(projectId: string | null, canRead: boolea
     void fetchAdmissionRuns(projectId).then((response) => {
       if (!active) return;
       setItems(response.items);
-      setSelectedId((current) => current && response.items.some((item) => item.admissionRunId === current) ? current : response.items[0]?.admissionRunId ?? null);
+      const routeSelection = readRouteSelection("admissionRunId") ?? readRouteSelection("runId");
+      setSelectedId((current) => {
+        const preferred = current ?? routeSelection;
+        return preferred && response.items.some((item) => item.admissionRunId === preferred)
+          ? preferred
+          : response.items[0]?.admissionRunId ?? null;
+      });
       setState(response.items.length ? "ready" : "empty");
     }).catch((error) => {
       if (!active) return;

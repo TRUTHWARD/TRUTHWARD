@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { useState } from "react";
 
+import { EvidenceReferenceList } from "../components/EvidenceReferenceList";
 import { SectionCard } from "../components/SectionCard";
 import { Locale, t } from "../i18n";
 import type { ObservabilityMetric, QualityDashboard, StructuredLogItem } from "../lib/api";
@@ -387,15 +388,15 @@ export function GateDashboardPage({
                 {replay?.visualGroundingAttempts.length ? (
                   <div className="detail-grid">
                     {replay.visualGroundingAttempts.slice(0, 2).map((attempt) => (
-                      <div className="stack-row stack-row--dense" key={`${attempt.id}-evidence`}>
-                        <div>
-                          <strong>{displayStatus(locale, attempt.verificationStatus ?? attempt.status)}</strong>
-                          <p>
-                            {attempt.artifactRefs.length} {t(locale, "artifacts")} | {t(locale, "click")}{" "}
-                            {attempt.coordinateClickAllowed ? t(locale, "allowed") : t(locale, "blocked")}
-                          </p>
+                      <div className="detail-stack" key={`${attempt.id}-evidence`}>
+                        <div className="stack-row stack-row--dense">
+                          <div>
+                            <strong>{displayStatus(locale, attempt.verificationStatus ?? attempt.status)}</strong>
+                            <p>{t(locale, "click")} {attempt.coordinateClickAllowed ? t(locale, "allowed") : t(locale, "blocked")}</p>
+                          </div>
+                          <span>{displayStatus(locale, attempt.redactionStatus)}</span>
                         </div>
-                        <span>{displayStatus(locale, attempt.redactionStatus)}</span>
+                        <EvidenceReferenceList emptyLabel={t(locale, "none")} locale={locale} maxVisible={2} refs={attempt.artifactRefs} />
                       </div>
                     ))}
                   </div>

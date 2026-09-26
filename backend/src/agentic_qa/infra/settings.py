@@ -33,12 +33,64 @@ class Settings(BaseSettings):
         alias="DATABASE_POOL_TIMEOUT_SECONDS",
     )
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
-    queue_mode: str = Field(default="inline", alias="QUEUE_MODE")
+    queue_mode: Literal["inline", "celery"] = Field(default="inline", alias="QUEUE_MODE")
     celery_queue_name: str = Field(default="celery", alias="CELERY_QUEUE_NAME")
+    celery_queue_routing_enabled: bool = Field(
+        default=False,
+        alias="CELERY_QUEUE_ROUTING_ENABLED",
+    )
+    celery_control_queue_name: str = Field(
+        default="control",
+        alias="CELERY_CONTROL_QUEUE_NAME",
+    )
+    celery_execution_queue_name: str = Field(
+        default="execution",
+        alias="CELERY_EXECUTION_QUEUE_NAME",
+    )
+    celery_analysis_queue_name: str = Field(
+        default="analysis",
+        alias="CELERY_ANALYSIS_QUEUE_NAME",
+    )
+    celery_maintenance_queue_name: str = Field(
+        default="maintenance",
+        alias="CELERY_MAINTENANCE_QUEUE_NAME",
+    )
+    execution_task_fanout_enabled: bool = Field(
+        default=False,
+        alias="EXECUTION_TASK_FANOUT_ENABLED",
+    )
+    retention_maintenance_enabled: bool = Field(
+        default=False,
+        alias="RETENTION_MAINTENANCE_ENABLED",
+    )
+    retention_scan_interval_seconds: int = Field(
+        default=3600,
+        ge=60,
+        le=7 * 24 * 3600,
+        alias="RETENTION_SCAN_INTERVAL_SECONDS",
+    )
+    retention_scan_batch_size: int = Field(
+        default=500,
+        ge=1,
+        le=10_000,
+        alias="RETENTION_SCAN_BATCH_SIZE",
+    )
     celery_visibility_timeout_seconds: int = Field(
         default=3600,
         ge=1,
         alias="CELERY_VISIBILITY_TIMEOUT_SECONDS",
+    )
+    database_connection_budget: int = Field(
+        default=100,
+        ge=1,
+        le=10_000,
+        alias="DATABASE_CONNECTION_BUDGET",
+    )
+    database_process_budget: int = Field(
+        default=1,
+        ge=1,
+        le=1_000,
+        alias="DATABASE_PROCESS_BUDGET",
     )
     object_storage_bucket: str = Field(
         default="agentic-qa-artifacts",
@@ -193,6 +245,16 @@ class Settings(BaseSettings):
         le=10_000,
         alias="SKILL_INVOCATION_BINDING_CONCURRENCY_LIMIT",
     )
+    skill_invocation_coordination_mode: Literal["local", "redis"] = Field(
+        default="local",
+        alias="SKILL_INVOCATION_COORDINATION_MODE",
+    )
+    skill_invocation_quota_lease_grace_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=3600,
+        alias="SKILL_INVOCATION_QUOTA_LEASE_GRACE_SECONDS",
+    )
     skill_invocation_circuit_failure_threshold: int = Field(
         default=3,
         ge=1,
@@ -208,10 +270,27 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def database_pool_capacity_is_bounded(self) -> "Settings":
-        if self.database_pool_size + self.database_max_overflow > 256:
+        per_process = self.database_pool_size + self.database_max_overflow
+        if per_process > 256:
             raise ValueError(
                 "DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW must not exceed 256"
             )
+        required = per_process * self.database_process_budget
+        if required > self.database_connection_budget:
+            raise ValueError(
+                "database pool topology requires "
+                f"{required} connections but DATABASE_CONNECTION_BUDGET is "
+                f"{self.database_connection_budget}"
+            )
+        queue_names = {
+            self.celery_queue_name,
+            self.celery_control_queue_name,
+            self.celery_execution_queue_name,
+            self.celery_analysis_queue_name,
+            self.celery_maintenance_queue_name,
+        }
+        if any(not item.strip() for item in queue_names):
+            raise ValueError("Celery queue names must not be blank")
         return self
 
 

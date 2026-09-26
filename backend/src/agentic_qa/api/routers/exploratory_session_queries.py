@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from agentic_qa.api.deps import (
     capability_dependency,
@@ -13,6 +13,7 @@ from agentic_qa.api.deps import (
 from agentic_qa.api.responses import success_response
 from agentic_qa.services.common import ServiceContext
 from agentic_qa.services.exploratory_session_query_service import ExploratorySessionQueryService
+from agentic_qa.services.exploratory_session_service import ExploratorySessionService
 from agentic_qa.services.scope_service import ScopeAuthorizationError
 
 
@@ -85,6 +86,51 @@ def get_exploratory_report(
     except ValueError as exc:
         raise _http_error(exc) from exc
     return success_response(request, data)
+
+
+@router.get("/exploratory-sessions/{session_id}/traceability")
+def get_exploratory_traceability(
+    request: Request,
+    session_id: UUID,
+    db=Depends(get_db),
+    user=Depends(capability_dependency("exploratory_sessions.read")),
+) -> dict[str, object]:
+    try:
+        data = ExploratorySessionQueryService(db).get_traceability(
+            session_id,
+            _context(request, user),
+        )
+    except ValueError as exc:
+        raise _http_error(exc) from exc
+    return success_response(request, data)
+
+
+@router.get("/exploratory-sessions/{session_id}/evidence/{evidence_id}/content")
+def get_exploratory_evidence_content(
+    request: Request,
+    session_id: UUID,
+    evidence_id: UUID,
+    db=Depends(get_db),
+    user=Depends(capability_dependency("exploratory_sessions.read")),
+) -> Response:
+    try:
+        content, mime_type, filename = ExploratorySessionService(db).read_evidence_image(
+            session_id,
+            evidence_id,
+            _context(request, user),
+        )
+    except ValueError as exc:
+        raise _http_error(exc) from exc
+    return Response(
+        content=content,
+        media_type=mime_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 def _http_error(exc: ValueError) -> HTTPException:

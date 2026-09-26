@@ -26,6 +26,7 @@ const zhStatusLabels: Record<string, string> = {
   environment: "环境",
   failed: "失败",
   fail: "失败",
+  fallback: "回退",
   generated: "已生成",
   granted: "已授权",
   governed: "受治理",
@@ -46,6 +47,10 @@ const zhStatusLabels: Record<string, string> = {
   pending: "待处理",
   planned: "已规划",
   project: "项目",
+  requirement: "需求",
+  capability: "能力",
+  path: "路径",
+  test: "测试",
   queued: "排队中",
   read_only: "只读",
   recommended: "建议执行",
@@ -145,7 +150,20 @@ const zhActionLabels: Record<string, string> = {
 const zhReasonCodeLabels: Record<string, string> = {
   approval_required: "需要审批",
   available_from_main_flow: "可从主流程进入",
+  conservative_fallback: "保守回退",
   execution_service_recommendation: "执行服务建议",
+  dependency_propagation: "依赖传播",
+  direct_impact: "直接影响",
+  full_regression_recommended: "建议执行完整回归",
+  high_risk_neighborhood: "高风险邻域",
+  historical_failure: "历史失败",
+  impact_graph_stale: "影响分析使用的执行图已过期",
+  open_finding: "存在未关闭问题",
+  requirement_change: "需求发生变更",
+  selective_replay_budget_insufficient: "选择性回放预算不足",
+  selective_replay_graph_stale: "选择性回放使用的执行图已过期",
+  selective_replay_test_task_unmapped: "测试尚未映射到执行任务",
+  smoke_baseline: "冒烟基线",
   completed: "已完成",
   no_execution: "尚无执行",
   no_plan: "尚无计划",
@@ -351,7 +369,52 @@ export function displayWorkflowActionLabel(locale: Locale, actionId: string, fal
 }
 
 export function displayReasonCode(locale: Locale, reasonCode: string): string {
-  return locale === "zh-CN" ? zhReasonCodeLabels[normalizeKey(reasonCode)] ?? reasonCode : humanizeStatus(reasonCode);
+  return locale === "zh-CN" ? zhReasonCodeLabels[normalizeKey(reasonCode)] ?? humanizeStatus(reasonCode) : humanizeStatus(reasonCode);
+}
+
+const requirementMatchReasonLabels: Record<string, [string, string]> = {
+  EXPLICIT_CONTROLLED_ID: ["Explicit requirement reference", "显式需求编号匹配"],
+  EXPLICIT_ID_NOT_FOUND: ["Explicit requirement reference not found", "未找到显式需求编号"],
+  PROJECT_MAPPING_MATCH: ["Project mapping matched", "项目映射匹配"],
+  VERIFIED_CEG_TRACEABILITY: ["Verified graph traceability", "已验证的执行图需求追溯"],
+  PROJECT_RULE_MATCH: ["Project rule candidate", "项目规则候选匹配"],
+  HISTORICAL_OVERLAP: ["Historical overlap candidate", "历史重合候选匹配"],
+  AI_SUGGESTION: ["AI suggestion candidate", "AI 建议候选"],
+};
+
+const requirementMatchLayerLabels: Record<string, [string, string]> = {
+  explicit: ["Explicit reference", "显式引用"],
+  mapping: ["Project mapping", "项目映射"],
+  traceability: ["Verified traceability", "已验证追溯"],
+  rule_history: ["Rule or history", "规则或历史记录"],
+  ai: ["AI suggestion", "AI 建议"],
+};
+
+const requirementMatchReasonExplanations: Record<string, [string, string]> = {
+  EXPLICIT_CONTROLLED_ID: ["The PR explicitly referenced this requirement ID.", "PR 显式引用了此需求编号。"],
+  EXPLICIT_ID_NOT_FOUND: ["The explicit ID was not found in the project's readable requirement library.", "项目可读需求库中未找到该显式编号。"],
+  PROJECT_MAPPING_MATCH: ["A project-scoped mapping matched this PR context.", "项目范围内配置的映射与此 PR 上下文匹配。"],
+  VERIFIED_CEG_TRACEABILITY: ["Verified execution-graph traceability linked a changed code path to this requirement.", "已验证的执行图追溯将变更代码路径关联到此需求。"],
+  PROJECT_RULE_MATCH: ["A project rule matched this PR; this result remains a candidate for review.", "项目规则与此 PR 匹配；该结果仍是需要复核的候选。"],
+  HISTORICAL_OVERLAP: ["A prior PR shared paths or labels with this one; this result remains a candidate for review.", "历史 PR 与此 PR 存在路径或标签重合；该结果仍是需要复核的候选。"],
+  AI_SUGGESTION: ["The model suggested this requirement; the suggestion is never auto-confirmed.", "模型给出了此需求建议；该建议不会自动确认为匹配。"],
+};
+
+export function requirementMatchReasonPresentation(
+  locale: Locale,
+  reason: { code: string; layer: string },
+) {
+  const code = reason.code.trim().toUpperCase();
+  const localized = requirementMatchReasonLabels[code];
+  const explanation = requirementMatchReasonExplanations[code];
+  const layer = requirementMatchLayerLabels[reason.layer];
+  return {
+    label: localized ? localized[locale === "zh-CN" ? 1 : 0] : displayReasonCode(locale, reason.code),
+    explanation: explanation
+      ? explanation[locale === "zh-CN" ? 1 : 0]
+      : locale === "zh-CN" ? "此原因码暂无说明，请查看技术详情。" : "No explanation is available for this reason code.",
+    layer: layer ? layer[locale === "zh-CN" ? 1 : 0] : displayStatus(locale, reason.layer),
+  };
 }
 
 export function displayRuntimeCategoryTitle(locale: Locale, category: RuntimeReadinessCategory): string {
@@ -437,6 +500,7 @@ function normalizeKey(value: string) {
 }
 
 function humanizeStatus(value: string) {
-  const spaced = value.replace(/[_-]+/g, " ").trim();
+  const normalized = value === value.toUpperCase() ? value.toLowerCase() : value;
+  const spaced = normalized.replace(/[_-]+/g, " ").trim();
   return spaced.length > 0 ? `${spaced[0].toUpperCase()}${spaced.slice(1)}` : value;
 }

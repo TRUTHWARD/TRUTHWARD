@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 
 import { ApiRequestError, fetchPrContext, fetchPrContexts, type PrContextDetail, type PrContextSummary } from "../lib/api";
+import { readRouteSelection } from "../lib/routeSelection";
 
 
 export type PrContextViewState = "loading" | "ready" | "empty" | "unavailable" | "restricted" | "error";
@@ -29,7 +30,10 @@ export function usePrContexts(projectId: string | null, canRead: boolean) {
     void fetchPrContexts(projectId).then((response) => {
       if (!active) return;
       setItems(response.items);
-      setSelectedId(response.items[0]?.contextId ?? null);
+      const routeSelection = readRouteSelection("prContextId");
+      setSelectedId(routeSelection && response.items.some((item) => item.contextId === routeSelection)
+        ? routeSelection
+        : response.items[0]?.contextId ?? null);
       setState(response.items.length ? "ready" : "empty");
     }).catch((error) => {
       if (!active) return;

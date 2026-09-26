@@ -2,18 +2,24 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import { Locale, t } from "../i18n";
+import { Locale, t, userFacingError } from "../i18n";
 import {
   addExploratoryEvidenceRef,
   addExploratoryNote,
   createExploratoryBugCandidate,
   createExploratorySession,
   endExploratorySession,
+  fetchExploratoryEvidenceContent,
   fetchExploratorySession,
   fetchExploratorySessions,
+  fetchExploratoryTraceability,
+  uploadExploratoryEvidenceImage,
   type CurrentUser,
   type EnvironmentItem,
+  type ExploratoryEvidenceRef,
   type ExploratorySession,
+  type ExploratoryTraceNode,
+  type ExploratoryTraceability,
   type ProjectItem,
 } from "../lib/api";
 
@@ -34,6 +40,7 @@ export function ExploratorySessionsPage({ currentUser, environments, locale, pro
   const [sessions, setSessions] = useState<ExploratorySession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ExploratorySession | null>(null);
+  const [traceability, setTraceability] = useState<ExploratoryTraceability | null>(null);
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,16 +54,20 @@ export function ExploratorySessionsPage({ currentUser, environments, locale, pro
     timeboxMinutes: 60,
     tester: currentUser?.name ?? "",
   });
-  const [noteForm, setNoteForm] = useState({ noteType: "observation" as NoteType, content: "" });
+  const [noteForm, setNoteForm] = useState({ noteType: "observation" as NoteType, content: "", evidenceRefIds: [] as string[] });
   const [evidenceForm, setEvidenceForm] = useState({ evidenceType: "screenshot", ref: "", summary: "" });
+  const [evidenceMode, setEvidenceMode] = useState<"upload" | "reference">("upload");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadSummary, setUploadSummary] = useState("");
+  const [confirmImageSafe, setConfirmImageSafe] = useState(false);
+  const [preview, setPreview] = useState<{ evidenceId: string; url: string } | null>(null);
   const [candidateForm, setCandidateForm] = useState({
     title: "",
     summary: "",
     severity: "medium",
     category: "functional_ui",
     confidence: 0.8,
-    existingEvidenceRefId: "",
-    newEvidenceRef: "",
+    evidenceRefIds: [] as string[],
   });
   const [debriefForm, setDebriefForm] = useState({ debrief: "", outcomeSummary: "", followUps: "" });
 
@@ -92,6 +103,10 @@ export function ExploratorySessionsPage({ currentUser, environments, locale, pro
     void loadDetail(selectedSessionId);
   }, [selectedSessionId, canRead]);
 
+  useEffect(() => () => {
+    if (preview) URL.revokeObjectURL(preview.url);
+  }, [preview]);
+
   const selectedSession = detail ?? sessions.find((session) => session.id === selectedSessionId) ?? null;
   const evidenceOptions = detail?.evidenceRefs ?? [];
 
@@ -105,7 +120,7 @@ export function ExploratorySessionsPage({ currentUser, environments, locale, pro
         setSelectedSessionId(data.items[0].id);
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : t(locale, "exploratoryLoadFailed"));
+      setError(userFacingError(locale, loadError, "exploratoryLoadFailed"));
     } finally {
       setLoading(false);
     }
@@ -115,9 +130,14 @@ export function ExploratorySessionsPage({ currentUser, environments, locale, pro
     setDetailLoading(true);
     setError(null);
     try {
-      setDetail(await fetchExploratorySession(sessionId));
+      const [session, trace] = await Promise.all([
+        fetchExploratorySession(sessionId),
+        fetchExploratoryTraceability(sessionId),
+      ]);
+      setDetail(session);
+      setTraceability(trace);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : t(locale, "exploratoryLoadFailed"));
+      setError(userFacingError(locale, loadError, "exploratoryLoadFailed"));
     } finally {
       setDetailLoading(false);
     }
@@ -134,7 +154,7 @@ export function ExploratorySessionsPage({ currentUser, environments, locale, pro
         await loadDetail(selectedSessionId);
       }
     } catch (actionFailure) {
-      setActionError(actionFailure instanceof Error ? actionFailure.message : t(locale, "exploratoryActionFailed"));
+      setActionError(userFacingError(locale, actionFailure, "exploratoryActionFailed"));
     }
   }
 
@@ -159,10 +179,36 @@ export function ExploratorySessionsPage({ currentUser, environments, locale, pro
           await addExploratoryNote(selectedSessionId, {
             noteType: noteForm.noteType,
             content: noteForm.content,
+            evidenceRefIds: noteForm.evidenceRefIds,
           });
-          setNoteForm((value) => ({ ...value, content: "" }));
+          setNoteForm((value) => ({ ...value, content: "", evidenceRefIds: [] }));
         }, "exploratoryNoteSaved")
       : undefined;
+
+  const handleUploadEvidence = () =>
+    selectedSessionId && uploadFile
+      ? runAction(async () => {
+          await uploadExploratoryEvidenceImage(selectedSessionId, uploadFile, uploadSummary, confirmImageSafe);
+          setUploadFile(null);
+          setUploadSummary("");
+          setConfirmImageSafe(false);
+        }, "exploratoryImageUploaded")
+      : undefined;
+
+  const handlePreviewEvidence = async (evidence: ExploratoryEvidenceRef) => {
+    if (!selectedSessionId || !evidence.contentAvailable) return;
+    setActionError(null);
+    try {
+      const blob = await fetchExploratoryEvidenceContent(selectedSessionId, evidence.id);
+      const url = URL.createObjectURL(blob);
+      setPreview((current) => {
+        if (current) URL.revokeObjectURL(current.url);
+        return { evidenceId: evidence.id, url };
+      });
+    } catch (previewError) {
+      setActionError(userFacingError(locale, previewError, "exploratoryActionFailed"));
+    }
+  };
 
   const handleAddEvidence = () =>
     selectedSessionId
@@ -179,10 +225,6 @@ export function ExploratorySessionsPage({ currentUser, environments, locale, pro
   const handleCreateCandidate = () =>
     selectedSessionId
       ? runAction(async () => {
-          const evidenceRefIds = candidateForm.existingEvidenceRefId ? [candidateForm.existingEvidenceRefId] : [];
-          const evidenceRefs = candidateForm.newEvidenceRef
-            ? [{ evidenceType: "other" as const, ref: candidateForm.newEvidenceRef, summary: candidateForm.title }]
-            : [];
           await createExploratoryBugCandidate(selectedSessionId, {
             title: candidateForm.title,
             summary: candidateForm.summary,
@@ -190,10 +232,10 @@ export function ExploratorySessionsPage({ currentUser, environments, locale, pro
             category: candidateForm.category,
             confidence: candidateForm.confidence,
             location: {},
-            evidenceRefIds,
-            evidenceRefs,
+            evidenceRefIds: candidateForm.evidenceRefIds,
+            evidenceRefs: [],
           });
-          setCandidateForm((value) => ({ ...value, title: "", summary: "", newEvidenceRef: "" }));
+          setCandidateForm((value) => ({ ...value, title: "", summary: "", evidenceRefIds: [] }));
         }, "exploratoryCandidateNormalized")
       : undefined;
 
@@ -209,7 +251,7 @@ export function ExploratorySessionsPage({ currentUser, environments, locale, pro
       : undefined;
 
   return (
-    <div className="page-shell" data-route="/exploratory-sessions">
+    <div className="page-shell exploratory-sessions-page" data-route="/exploratory-sessions">
       <div className="page-toolbar">
         <div>
           <h1>{t(locale, "exploratorySessions")}</h1>
@@ -222,8 +264,8 @@ export function ExploratorySessionsPage({ currentUser, environments, locale, pro
       {statusMessage ? <div className="empty-state"><strong>{statusMessage}</strong></div> : null}
 
       {canRead ? (
-        <div className="page-columns">
-          <section className="panel">
+        <div className="page-columns page-columns--exploratory">
+          <section className="panel exploratory-session-index">
             <div className="panel__header">
               <span className="eyebrow">{t(locale, "sessions")}</span>
               <h2>{t(locale, "exploratorySessions")}</h2>
@@ -247,13 +289,13 @@ export function ExploratorySessionsPage({ currentUser, environments, locale, pro
               {!loading && sessions.length === 0 ? <div className="empty-state">{t(locale, "noExploratorySessions")}</div> : null}
             </div>
 
-            <section className="panel panel--flat">
+            <section className="panel panel--flat exploratory-session-create">
               <div className="panel__header">
                 <span className="eyebrow">{t(locale, "create")}</span>
                 <h2>{t(locale, "newExploratorySession")}</h2>
               </div>
               {!canManage ? <StateBanner title={t(locale, "currentEditionReadOnly")} copy={t(locale, "exploratoryManageRestricted")} /> : null}
-              <div className="form-grid">
+              <div className="form-grid exploratory-session-create__form">
                 <label>
                   <span>{t(locale, "project")}</span>
                   <select disabled={!canManage} value={createForm.projectId} onChange={(event) => setCreateForm({ ...createForm, projectId: event.target.value, environmentId: "" })}>
@@ -304,10 +346,7 @@ export function ExploratorySessionsPage({ currentUser, environments, locale, pro
                   <MetricTile label={t(locale, "bugCandidates")} value={String(selectedSession.candidateCount)} />
                   <MetricTile label={t(locale, "normalizedFindings")} value={String(selectedSession.normalizedFindingCount)} />
                 </div>
-                <div className="code-panel">
-                  <strong>{t(locale, "traceability")}</strong>
-                  <pre>{JSON.stringify({ executionId: selectedSession.backingExecutionId, traceId: selectedSession.traceId, replayRefs: selectedSession.replayRefs }, null, 2)}</pre>
-                </div>
+                <TraceabilityCards locale={locale} traceability={traceability} />
 
                 <div className="work-grid">
                   <section className="panel panel--flat">
@@ -326,6 +365,16 @@ export function ExploratorySessionsPage({ currentUser, environments, locale, pro
                         <span>{t(locale, "content")}</span>
                         <textarea disabled={!canManage || selectedSession.status !== "active"} value={noteForm.content} onChange={(event) => setNoteForm({ ...noteForm, content: event.target.value })} />
                       </label>
+                      <div className="form-grid__full">
+                        <EvidenceChecklist
+                          disabled={!canManage || selectedSession.status !== "active"}
+                          evidence={evidenceOptions}
+                          label={t(locale, "selectSupportingEvidence")}
+                          locale={locale}
+                          onChange={(ids) => setNoteForm({ ...noteForm, evidenceRefIds: ids })}
+                          selectedIds={noteForm.evidenceRefIds}
+                        />
+                      </div>
                     </div>
                     <button className="secondary-button" disabled={!canManage || selectedSession.status !== "active" || !noteForm.content} onClick={() => void handleAddNote()} type="button">{t(locale, "saveNote")}</button>
                     <RecordList rows={detail?.notes ?? []} emptyLabel={t(locale, "noNotes")} render={(note) => (
@@ -339,31 +388,72 @@ export function ExploratorySessionsPage({ currentUser, environments, locale, pro
                   <section className="panel panel--flat">
                     <div className="panel__header">
                       <span className="eyebrow">{t(locale, "evidenceRefs")}</span>
-                      <h3>{t(locale, "referenceEvidenceOnly")}</h3>
+                      <h3>{t(locale, "managedEvidence")}</h3>
                     </div>
-                    <div className="form-grid">
-                      <label>
-                        <span>{t(locale, "type")}</span>
-                        <select disabled={!canManage || selectedSession.status !== "active"} value={evidenceForm.evidenceType} onChange={(event) => setEvidenceForm({ ...evidenceForm, evidenceType: event.target.value })}>
-                          {["screenshot", "log", "link", "execution_artifact", "console", "network", "har", "other"].map((item) => <option key={item} value={item}>{item}</option>)}
-                        </select>
-                      </label>
-                      <label>
-                        <span>{t(locale, "reference")}</span>
-                        <input disabled={!canManage || selectedSession.status !== "active"} value={evidenceForm.ref} onChange={(event) => setEvidenceForm({ ...evidenceForm, ref: event.target.value })} />
-                      </label>
-                      <label className="form-grid__full">
-                        <span>{t(locale, "summary")}</span>
-                        <input disabled={!canManage || selectedSession.status !== "active"} value={evidenceForm.summary} onChange={(event) => setEvidenceForm({ ...evidenceForm, summary: event.target.value })} />
-                      </label>
+                    <div className="evidence-mode-switch" role="tablist">
+                      <button aria-selected={evidenceMode === "upload"} className={evidenceMode === "upload" ? "is-active" : ""} onClick={() => setEvidenceMode("upload")} role="tab" type="button">{t(locale, "uploadImage")}</button>
+                      <button aria-selected={evidenceMode === "reference"} className={evidenceMode === "reference" ? "is-active" : ""} onClick={() => setEvidenceMode("reference")} role="tab" type="button">{t(locale, "referenceEvidence")}</button>
                     </div>
-                    <button className="secondary-button" disabled={!canManage || selectedSession.status !== "active" || !evidenceForm.ref} onClick={() => void handleAddEvidence()} type="button">{t(locale, "addEvidenceRef")}</button>
+                    {evidenceMode === "upload" ? (
+                      <div className="exploratory-upload-panel">
+                        <p>{t(locale, "imageUploadPolicy")}</p>
+                        <div className="form-grid">
+                          <label className="form-grid__full">
+                            <span>{t(locale, "selectImage")}</span>
+                            <input
+                              accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                              disabled={!canManage || selectedSession.status !== "active"}
+                              onChange={(event) => setUploadFile(event.currentTarget.files?.[0] ?? null)}
+                              type="file"
+                            />
+                          </label>
+                          <label className="form-grid__full">
+                            <span>{t(locale, "summary")}</span>
+                            <input disabled={!canManage || selectedSession.status !== "active"} value={uploadSummary} onChange={(event) => setUploadSummary(event.target.value)} />
+                          </label>
+                          <label className="form-grid__full checkbox-field">
+                            <input checked={confirmImageSafe} disabled={!canManage || selectedSession.status !== "active"} onChange={(event) => setConfirmImageSafe(event.target.checked)} type="checkbox" />
+                            <span>{t(locale, "confirmImageSafe")}</span>
+                          </label>
+                        </div>
+                        <button className="secondary-button" disabled={!canManage || selectedSession.status !== "active" || !uploadFile || !confirmImageSafe} onClick={() => void handleUploadEvidence()} type="button">{t(locale, "uploadEvidenceImage")}</button>
+                      </div>
+                    ) : (
+                      <div className="form-grid">
+                        <label>
+                          <span>{t(locale, "type")}</span>
+                          <select disabled={!canManage || selectedSession.status !== "active"} value={evidenceForm.evidenceType} onChange={(event) => setEvidenceForm({ ...evidenceForm, evidenceType: event.target.value })}>
+                            {["screenshot", "log", "link", "execution_artifact", "console", "network", "har", "other"].map((item) => <option key={item} value={item}>{item}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          <span>{t(locale, "reference")}</span>
+                          <input disabled={!canManage || selectedSession.status !== "active"} value={evidenceForm.ref} onChange={(event) => setEvidenceForm({ ...evidenceForm, ref: event.target.value })} />
+                        </label>
+                        <label className="form-grid__full">
+                          <span>{t(locale, "summary")}</span>
+                          <input disabled={!canManage || selectedSession.status !== "active"} value={evidenceForm.summary} onChange={(event) => setEvidenceForm({ ...evidenceForm, summary: event.target.value })} />
+                        </label>
+                        <button className="secondary-button" disabled={!canManage || selectedSession.status !== "active" || !evidenceForm.ref} onClick={() => void handleAddEvidence()} type="button">{t(locale, "addEvidenceRef")}</button>
+                      </div>
+                    )}
                     <RecordList rows={evidenceOptions} emptyLabel={t(locale, "noEvidenceRefs")} render={(evidence) => (
-                      <div>
-                        <strong>{String(evidence.evidenceType)}: {String(evidence.ref)}</strong>
-                        <p>{String(evidence.redactionStatus)}</p>
+                      <div className="evidence-record">
+                        <strong>{evidence.summary || String(evidence.evidenceType)}</strong>
+                        <p>{String(evidence.evidenceType)} · {String(evidence.redactionStatus)}</p>
+                        {evidence.contentAvailable ? <button className="link-button" onClick={() => void handlePreviewEvidence(evidence)} type="button">{t(locale, "preview")}</button> : null}
+                        <details><summary>{t(locale, "technicalDetails")}</summary><code>{String(evidence.ref)}</code></details>
                       </div>
                     )} />
+                    {preview ? (
+                      <div className="evidence-preview">
+                        <div className="evidence-preview__toolbar">
+                          <strong>{t(locale, "imagePreview")}</strong>
+                          <button className="link-button" onClick={() => setPreview(null)} type="button">{t(locale, "closePreview")}</button>
+                        </div>
+                        <img alt={t(locale, "imagePreview")} src={preview.url} />
+                      </div>
+                    ) : null}
                   </section>
                 </div>
 
@@ -395,21 +485,20 @@ export function ExploratorySessionsPage({ currentUser, environments, locale, pro
                       <span>{t(locale, "summary")}</span>
                       <textarea disabled={!canManage || selectedSession.status !== "active"} value={candidateForm.summary} onChange={(event) => setCandidateForm({ ...candidateForm, summary: event.target.value })} />
                     </label>
-                    <label>
-                      <span>{t(locale, "existingEvidence")}</span>
-                      <select disabled={!canManage || selectedSession.status !== "active"} value={candidateForm.existingEvidenceRefId} onChange={(event) => setCandidateForm({ ...candidateForm, existingEvidenceRefId: event.target.value })}>
-                        <option value="">{t(locale, "none")}</option>
-                        {evidenceOptions.map((evidence) => <option key={evidence.id} value={evidence.id}>{evidence.ref}</option>)}
-                      </select>
-                    </label>
-                    <label>
-                      <span>{t(locale, "newEvidenceRef")}</span>
-                      <input disabled={!canManage || selectedSession.status !== "active"} value={candidateForm.newEvidenceRef} onChange={(event) => setCandidateForm({ ...candidateForm, newEvidenceRef: event.target.value })} />
-                    </label>
+                    <div className="form-grid__full">
+                      <EvidenceChecklist
+                        disabled={!canManage || selectedSession.status !== "active"}
+                        evidence={evidenceOptions}
+                        label={t(locale, "selectSupportingEvidence")}
+                        locale={locale}
+                        onChange={(ids) => setCandidateForm({ ...candidateForm, evidenceRefIds: ids })}
+                        selectedIds={candidateForm.evidenceRefIds}
+                      />
+                    </div>
                   </div>
                   <button
                     className="primary-button"
-                    disabled={!canManage || selectedSession.status !== "active" || !candidateForm.title || !candidateForm.summary || (!candidateForm.existingEvidenceRefId && !candidateForm.newEvidenceRef)}
+                    disabled={!canManage || selectedSession.status !== "active" || !candidateForm.title || !candidateForm.summary || candidateForm.evidenceRefIds.length === 0}
                     onClick={() => void handleCreateCandidate()}
                     type="button"
                   >
@@ -487,6 +576,154 @@ function MetricTile({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function EvidenceChecklist({
+  disabled,
+  evidence,
+  label,
+  locale,
+  onChange,
+  selectedIds,
+}: {
+  disabled: boolean;
+  evidence: ExploratoryEvidenceRef[];
+  label: string;
+  locale: Locale;
+  onChange: (ids: string[]) => void;
+  selectedIds: string[];
+}) {
+  return (
+    <fieldset className="evidence-checklist">
+      <legend>{label}</legend>
+      {evidence.map((item) => (
+        <label key={item.id}>
+          <input
+            checked={selectedIds.includes(item.id)}
+            disabled={disabled}
+            onChange={(event) => onChange(event.target.checked ? [...selectedIds, item.id] : selectedIds.filter((id) => id !== item.id))}
+            type="checkbox"
+          />
+          <span>{item.summary || item.ref}</span>
+          <small>{item.evidenceType}</small>
+        </label>
+      ))}
+      {evidence.length === 0 ? <p>{t(locale, "noSupportingEvidence")}</p> : null}
+    </fieldset>
+  );
+}
+
+function TraceabilityCards({ locale, traceability }: { locale: Locale; traceability: ExploratoryTraceability | null }) {
+  if (!traceability) {
+    return <StateBanner title={t(locale, "traceability")} copy={t(locale, "loadingReadOnlyData")} />;
+  }
+  const primary = traceability.nodes.filter((node) => node.group === "primary");
+  const system = traceability.nodes.filter((node) => node.group === "system");
+  const nodesById = new Map(traceability.nodes.map((node) => [node.id, node]));
+  const primaryEdges = traceability.edges.filter(
+    (edge) => nodesById.get(edge.source)?.group === "primary" && nodesById.get(edge.target)?.group === "primary",
+  );
+  return (
+    <section className="traceability-panel" aria-label={t(locale, "traceability")}>
+      <div className="traceability-panel__header">
+        <div>
+          <span className="eyebrow">{t(locale, "traceability")}</span>
+          <h3>{t(locale, "humanReadableTrace")}</h3>
+        </div>
+        <span className={`traceability-status traceability-status--${traceability.status}`}>
+          {traceability.status === "complete" ? t(locale, "traceLinksComplete") : t(locale, "traceLinksPartial")}
+        </span>
+      </div>
+      <div className="traceability-summary">
+        <span>{t(locale, "notes")}: {traceability.summary.notes ?? 0}</span>
+        <span>{t(locale, "evidence")}: {traceability.summary.evidence ?? 0}</span>
+        <span>{t(locale, "bugCandidates")}: {traceability.summary.bugCandidates ?? 0}</span>
+        <span>{t(locale, "normalizedFindings")}: {traceability.summary.normalizedFindings ?? 0}</span>
+      </div>
+      <div className="traceability-node-grid">
+        {primary.map((node) => <TraceNodeCard key={node.id} locale={locale} node={node} />)}
+      </div>
+      {primaryEdges.length > 0 ? (
+        <div className="traceability-links">
+          <strong>{t(locale, "traceRelationships")}</strong>
+          {primaryEdges.map((edge, index) => (
+            <div key={`${edge.source}:${edge.target}:${edge.relation}:${index}`}>
+              <span>{traceNodeLabel(locale, nodesById.get(edge.source)?.kind ?? edge.source)}</span>
+              <b>→ {traceRelationLabel(locale, edge.relation)} →</b>
+              <span>{traceNodeLabel(locale, nodesById.get(edge.target)?.kind ?? edge.target)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {traceability.missingLinks.length > 0 ? (
+        <div className="traceability-warning">
+          <strong>{t(locale, "missingTraceLinks")}</strong>
+          <ul>{traceability.missingLinks.map((item) => <li key={`${item.code}:${item.sourceId}`}>{item.code}: {shortRef(item.sourceId)}</li>)}</ul>
+        </div>
+      ) : null}
+      {system.length > 0 ? (
+        <details className="traceability-system">
+          <summary>{t(locale, "systemTraceReferences")} ({system.length})</summary>
+          <div className="traceability-node-grid">{system.map((node) => <TraceNodeCard key={node.id} locale={locale} node={node} />)}</div>
+        </details>
+      ) : null}
+      <details className="traceability-technical">
+        <summary>{t(locale, "technicalDetails")}</summary>
+        <pre>{JSON.stringify(traceability, null, 2)}</pre>
+      </details>
+    </section>
+  );
+}
+
+function TraceNodeCard({ locale, node }: { locale: Locale; node: ExploratoryTraceNode }) {
+  return (
+    <article className={`traceability-node traceability-node--${node.group}`}>
+      <div>
+        <span>{traceNodeLabel(locale, node.kind)}</span>
+        <small>{node.status}</small>
+      </div>
+      <strong>{node.description}</strong>
+      <code title={node.referenceId}>{shortRef(node.referenceId)}</code>
+    </article>
+  );
+}
+
+function shortRef(value: string) {
+  return value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value;
+}
+
+function traceNodeLabel(locale: Locale, kind: string) {
+  const labels: Record<string, [string, string]> = {
+    exploratory_session: ["Exploratory session", "探索会话"],
+    execution: ["Backing execution", "承载执行"],
+    note: ["Session note", "会话笔记"],
+    image_evidence: ["Image evidence", "图片证据"],
+    evidence_reference: ["Evidence reference", "证据引用"],
+    bug_candidate: ["Bug candidate", "Bug 候选"],
+    raw_finding: ["Raw finding", "原始问题"],
+    normalized_finding: ["Normalized finding", "归一化问题"],
+    session_report: ["Session report", "会话报告"],
+    trace: ["Root trace", "根追踪"],
+    audit: ["Audit record", "审计记录"],
+    skill_invocation: ["Skill invocation", "Skill 调用"],
+    execution_replay: ["Execution replay", "执行回放"],
+  };
+  const label = labels[kind];
+  return label ? label[locale === "zh-CN" ? 1 : 0] : kind.replaceAll("_", " ");
+}
+
+function traceRelationLabel(locale: Locale, relation: string) {
+  const labels: Record<string, [string, string]> = {
+    backed_by: ["backed by", "由其承载"],
+    records: ["records", "记录"],
+    supports: ["supports", "支持"],
+    produces: ["produces", "产生"],
+    materializes: ["materializes", "形成"],
+    normalizes_to: ["normalizes to", "归一化为"],
+    summarizes: ["summarizes", "汇总为"],
+  };
+  const label = labels[relation];
+  return label ? label[locale === "zh-CN" ? 1 : 0] : relation.replaceAll("_", " ");
 }
 
 function RecordList<T>({ rows, emptyLabel, render }: { rows: T[]; emptyLabel: string; render: (row: T) => ReactNode }) {

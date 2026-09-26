@@ -150,6 +150,7 @@ SKILL_PRODUCT_FEATURES: tuple[dict[str, object], ...] = (
     {"id": "skill.binding.scoped_draft", "ossIncluded": True, "availability": "community_and_full", "requiredCapability": "capability_bindings.write", "executionSemantics": "non_executable_until_enabled"},
     {"id": "skill.binding.manual_lifecycle", "ossIncluded": True, "availability": "community_policy_limited", "requiredCapability": "community_skills.manage", "executionSemantics": "explicit_enable_disable"},
     {"id": "skill.invocation.observation", "ossIncluded": True, "availability": "community_and_full", "requiredCapability": "skill_invocations.read", "executionSemantics": "read_only_safe_projection"},
+    {"id": "skill.invocation.privileged_snapshots", "ossIncluded": False, "availability": "full_only_capability_gated", "requiredCapability": "capability_bindings.admin", "executionSemantics": "read_only_privileged_projection"},
     {"id": "skill.version.managed_manifest_draft", "ossIncluded": False, "availability": "full_only", "requiredCapability": "custom_skills.manage", "executionSemantics": "data_only_manifest_existing_adapter"},
     {"id": "skill.binding.candidate_version", "ossIncluded": False, "availability": "full_only", "requiredCapability": "custom_skills.manage", "executionSemantics": "exact_draft_version_non_executable"},
     {"id": "skill.activation.governed_preparation", "ossIncluded": False, "availability": "full_only", "requiredCapability": "capability_bindings.admin", "executionSemantics": "validation_evaluation_non_authoritative_shadow"},
@@ -4205,7 +4206,14 @@ class SkillService:
     ) -> None:
         if context.user.edition != "community":
             return
-        if connector_name not in {"github", "gitlab", "mock-scm"}:
+        if connector_name not in {
+            "github",
+            "gitlab",
+            "mock-scm",
+            "mock-requirement-docs",
+            "lark-requirement-docs",
+            "zentao-requirement-docs",
+        }:
             raise ValueError("COMMUNITY_CONNECTOR_NOT_ALLOWED")
         project_value = self._connector_scope_value(scope, "projectId", "project_id")
         environment_value = self._connector_scope_value(scope, "environmentId", "environment_id")

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { useEffect, useState } from "react";
 
+import { EvidenceReferenceList, type EvidenceReferenceLike } from "../components/EvidenceReferenceList";
 import { SafeJsonViewer } from "../components/SafeJsonViewer";
 import { SectionCard } from "../components/SectionCard";
 import { Locale, t } from "../i18n";
@@ -34,6 +35,12 @@ export function SkillInvocationsPage({
     ? guardrailEvents.filter((event) => event.skillInvocationId === selectedInvocation.id)
     : [];
   const replayInvocationCount = replay?.skillInvocations.length ?? 0;
+  const invocationEvidence = selectedInvocation ? [
+    ...selectedInvocation.artifactRefs.map((item) => invocationReference(item, "artifact")),
+    ...selectedInvocation.toolCallRefs.map((item) => invocationReference(item, "tool_call")),
+    ...selectedInvocation.connectorCallRefs.map((item) => invocationReference(item, "connector_call")),
+    ...selectedInvocation.approvalRefs.map((item) => invocationReference(item, "approval")),
+  ].filter((item): item is EvidenceReferenceLike => item !== null) : [];
   const linkedApprovals = selectedInvocation
     ? approvals.filter(
         (approval) =>
@@ -145,15 +152,12 @@ export function SkillInvocationsPage({
                 <ObservationSnapshot locale={locale} title={t(locale, "connectorBindingSnapshot")} value={selectedInvocation.connectorBindingSnapshot} />
               </div>
 
-              <ObservationSnapshot
+              <EvidenceReferenceList
+                emptyLabel={t(locale, "none")}
+                label={t(locale, "linkedEvidenceAndCalls")}
                 locale={locale}
-                title={t(locale, "linkedEvidenceAndCalls")}
-                value={{
-                  artifactRefs: selectedInvocation.artifactRefs,
-                  toolCallRefs: selectedInvocation.toolCallRefs,
-                  connectorCallRefs: selectedInvocation.connectorCallRefs,
-                  approvalRefs: selectedInvocation.approvalRefs,
-                }}
+                maxVisible={6}
+                refs={invocationEvidence}
               />
 
               <div className="detail-grid">
@@ -169,22 +173,10 @@ export function SkillInvocationsPage({
                 />
               </div>
 
-              {selectedInvocation.inputSnapshot || selectedInvocation.outputSnapshot || selectedInvocation.policySnapshot ? (
-                <div>
-                  <h3>{t(locale, "privilegedSnapshots")}</h3>
-                  <p className="empty-copy">{t(locale, "privilegedSnapshotsNotice")}</p>
-                  <div className="detail-grid">
-                    {selectedInvocation.inputSnapshot ? <ObservationSnapshot locale={locale} title={t(locale, "input")} value={selectedInvocation.inputSnapshot} /> : null}
-                    {selectedInvocation.outputSnapshot ? <ObservationSnapshot locale={locale} title={t(locale, "output")} value={selectedInvocation.outputSnapshot} /> : null}
-                    {selectedInvocation.policySnapshot ? <ObservationSnapshot locale={locale} title={t(locale, "policy")} value={selectedInvocation.policySnapshot} /> : null}
-                  </div>
-                </div>
-              ) : (
-                <div className="empty-state">
-                  <strong>{t(locale, "privilegedSnapshotsNotExposed")}</strong>
-                  <p>{t(locale, "privilegedSnapshotsNotExposedNotice")}</p>
-                </div>
-              )}
+              <div className="empty-state">
+                <strong>{t(locale, "privilegedSnapshotsNotExposed")}</strong>
+                <p>{t(locale, "privilegedSnapshotsNotExposedNotice")}</p>
+              </div>
             </div>
           ) : (
             <p className="empty-copy">{t(locale, "noSkillInvocations")}</p>
@@ -242,6 +234,17 @@ function LinkedRecords({ emptyLabel, title, items }: { emptyLabel: string; title
       </div>
     </div>
   );
+}
+
+function invocationReference(item: Record<string, unknown>, defaultType: string): EvidenceReferenceLike | null {
+  const id = [item.ref, item.id, item.artifactId, item.toolCallId, item.connectorCallId, item.approvalId]
+    .find((value): value is string => typeof value === "string" && value.length > 0);
+  if (!id) return null;
+  return {
+    ...item,
+    type: typeof item.type === "string" ? item.type : defaultType,
+    ref: id.includes("://") ? id : `${defaultType.replaceAll("_", "-")}://${id}`,
+  };
 }
 
 function formatTimestamp(value: string, locale: Locale) {

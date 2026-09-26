@@ -62,10 +62,18 @@ PRIMARY、CHALLENGER、JUDGE、LOCAL_FALLBACK。解析顺序是 environment 精�
 
 ### 第一次真实浏览器测试
 
-在工作流的测试计划管理中选择项目与环境，选择“元素可见”或“元素文本匹配”，
-填写目标 URL、元素角色/名称或 CSS 选择器，保存计划，再在执行控制中启动功能执行。
+在工作流的测试计划管理中选择项目与环境后，可以按“场景集合”维护浏览器测试：
+一个计划可包含多个场景，每个场景又可按顺序包含跳转、填写、点击、元素可见和元素文本匹配等动作。
+“元素可见”用于确认页面上出现了目标元素；“元素文本匹配”还会校验该元素的文本内容。
+
+从需求工作流生成测试资产时，平台会同时保存结构化浏览器场景候选。候选默认不能直接执行；
+用户需要补齐目标 URL、定位信息或参数引用，并逐个确认场景。启动执行时可以只勾选本次要运行的场景，
+后端会把所选场景及动作冻结到对应执行任务中。未确认、来源已变化、信息不完整或包含明文敏感值的候选会拒绝执行。
+
+项目环境配置了 `base_url` 时，编辑器会给出 URL 建议；既有执行中成功使用过的定位信息会作为历史提示展示，
+但不会自动覆盖当前配置。需求或生成计划发生变化后，既有场景会标记为来源已变化，需要接受新来源并重新确认。
 页面展示后端记录的任务状态、真实/模拟执行模式和失败信息；进入执行详情检查产物。
-高级 API 配置在仅更新计划名称等字段时会保留，选择新的浏览器模板才替换对应动作。
+高级 API 配置在仅更新计划名称等字段时会保留，选择新的浏览器场景配置才替换对应动作。
 完整本地演示页面和脚本见[真实浏览器示例](../examples/community-browser/README.md#简体中文)。
 
 ## 5. 可替换 Skill
@@ -112,9 +120,26 @@ SCM 配置和纳入 composition 的只读分析，不开放 PR Admission/Enforce
 4. 查看标准化 Finding 及其已有证据引用，不把原始日志或模拟结果当作业务结论；
 5. 创建 WorkItem，并执行认领、完成或取消等授权流转；
 6. 通过 Trace 和审计投影复核已记录的调用与状态；
-7. 有现成数据时查看 candidate path、change set、impact 和 selective replay plan。
+7. 查看 candidate path、change set、impact 和 selective replay plan；owner/admin 可在这些页面按需刷新受限分析链。
 
-当前 v1 没有开放 Requirement Intake、Test Assets、Gate/PR Admission、完整
+Change Set、Impact 和 Selective Replay 的结果页仍是只读投影。数据为空或陈旧时，页面通过
+服务端 `coverage-readiness` 投影列出当前项目已有的需求版本、测试计划、执行、执行图和覆盖
+快照数量，并逐项说明缺失或陈旧的后端事实。owner/admin 可使用“生成/刷新分析”创建受限分析链；
+member 仅能由其已获授权的执行生命周期自动触发，viewer 只能查看。该链只生成同项目需求
+Change Set、observed 非权威图、Coverage/Proof、关闭 AI 的确定性 Impact 和不执行的 Selective
+Replay Plan；不会启动测试、审批、Gate、Memory、CI、模型调用或外部写，也不会把图提升为 canonical。
+空列表、过期结果与页面故障保持明确区分。
+
+需求变更集的“变更字段”是字段名，不是需求正文，也不是测试数。新增条目会显示新增需求文本；
+删除和修改条目分别显示变更前文本、变更前后文本。正文通过单独的只读预览接口从冻结需求版本读取，
+同时要求 `change.read` 和 `requirements.read`，并核对项目范围与条目内容哈希；无法核对时明确显示
+“内容不可用”。旧版按列表序号生成的 `requirement-N` 在跨版本修改时仅表示位置匹配，需人工核对身份。
+已纳入需求库投影的来源需求版本可跳转到相应版本筛选视图。
+
+选择性回放计划中的后端 `status=fallback` 表示证据不足时采用保守选择策略，不表示已经执行回退。
+Community 页面只展示计划和只读执行交接信息；过期或陈旧的计划需要刷新分析数据，页面不会执行测试。
+
+当前 v1 已开放 Requirement Intake；没有开放完整 Test Assets、Gate/PR Admission、完整
 Coverage/Replay/Evidence 页面，也不在 Community 工作流中启用自动 Triage/Healing。
 当前失败分析以执行状态、失败信息、Artifact、Finding 和可追溯记录为基础；不要通过
 直接 URL 或修改 DOM 绕过 composition，也不要把完整产品的自动归因能力误写为 OSS
@@ -122,9 +147,19 @@ Coverage/Replay/Evidence 页面，也不在 Community 工作流中启用自动 T
 
 ## 8. 可见和隐藏模块
 
-默认可见：Workspace、Workflow、Exploratory 只读投影、Tasks、Findings、Audit、
+默认可见：Workspace、Workflow、Exploratory 本地会话闭环、Tasks、Findings、Audit、
 Candidate Paths、Change Sets、Impact、Selective Replay Plans、Observability、
 Execution、Skill Invocation/Binding、Project/Environment/Model/Connector 设置。
+
+Exploratory 支持在授权项目/环境内创建会话、记录笔记、添加证据引用或上传受限图片证据、把缺陷候选经
+`RawFindingRecord -> NORMALIZE -> Finding` 形成项目内 Finding，以及结束会话和查看报告。
+图片只接受单个 PNG、JPEG 或 WebP，最大 8 MiB；服务端会校验真实格式和像素、拒绝动画，
+并解码重编码以移除 EXIF/内嵌元数据。上传前仍需确认图片可见内容不含不应存储的密钥或个人
+敏感信息；预览必须登录并再次通过项目 scope 校验。笔记与 Bug candidate 从已经管理的证据中
+勾选关联，不能在缺陷表单内绕过证据入口。member 只能维护自己创建的会话，owner/admin 可维护
+项目内会话，viewer 只读。该闭环不支持其他文件、脚本、命令、可执行二进制或任意上传，也不支持
+外部缺陷同步、Gate/CI 写回、Approval、Memory 或自动化外部操作。页面默认显示人类可读追溯卡片；
+原始 JSON 只放在折叠的技术详情中。
 
 默认隐藏且后端未组合：Enterprise IAM、Gate Policy、PR Admission/Enforce、受管
 Replay Repository、Agent/Queue、Correction、Knowledge、Lessons、Improvement、

@@ -100,6 +100,11 @@ export type PlanItem = {
   requirementScope: RequirementScopeItem | null;
   input: Record<string, unknown>;
   generatedPlan: Record<string, unknown>;
+  executableScenarioInsights?: {
+    schemaVersion: string;
+    environmentTargetUrl: string | null;
+    historicalLocatorHints: Array<Record<string, unknown>>;
+  };
 };
 
 export type RequirementScopeItem = {

@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from agentic_qa.domain.enums import PlanStatus, RiskLevel, SourceType, TestDomain
 from agentic_qa.schemas.requirement_scope import RequirementScope
@@ -35,7 +35,13 @@ class UpdateTestPlanRequest(BaseModel):
     requirementVersionId: UUID | None = None
     requirementScope: RequirementScope | None = None
     input: dict[str, Any] | None = None
-    status: PlanStatus | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_client_managed_status(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "status" in value:
+            raise ValueError("PLAN_STATUS_BACKEND_MANAGED: test plan status is managed by the backend lifecycle")
+        return value
 
 
 class TestPlanResponse(BaseModel):

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { CurrentUser, EnvironmentItem, EnvironmentMutationPayload, ProjectItem } from "../lib/api";
-import { Locale, t } from "../i18n";
+import { Locale, t, userFacingError } from "../i18n";
 
 type EnvironmentSettingsPageProps = {
   currentUser: CurrentUser | null;
@@ -44,6 +44,7 @@ export function EnvironmentSettingsPage({
   const [form, setForm] = useState({ key: "", name: "", description: "", baseUrl: "", status: "active" });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<"info" | "success" | "error">("info");
   const actionRequirementId = "environment-action-requirement";
   const updateRequirementId = "environment-update-requirement";
 
@@ -64,10 +65,12 @@ export function EnvironmentSettingsPage({
   const submitCreate = async () => {
     if (!canManageEnvironments) {
       setMessage(t(locale, "settingsReadOnlyNotice"));
+      setMessageTone("info");
       return;
     }
     if (!selectedProject) {
       setMessage(t(locale, "environmentProjectRequired"));
+      setMessageTone("info");
       return;
     }
     setSaving(true);
@@ -83,8 +86,10 @@ export function EnvironmentSettingsPage({
         metadata: {},
       });
       setMessage(t(locale, "environmentSaved"));
+      setMessageTone("success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t(locale, "environmentSaveFailed"));
+      setMessage(userFacingError(locale, error, "environmentSaveFailed"));
+      setMessageTone("error");
     } finally {
       setSaving(false);
     }
@@ -93,10 +98,12 @@ export function EnvironmentSettingsPage({
   const submitUpdate = async () => {
     if (!canManageEnvironments) {
       setMessage(t(locale, "settingsReadOnlyNotice"));
+      setMessageTone("info");
       return;
     }
     if (!selectedEnvironment) {
       setMessage(t(locale, "environmentSelectionRequired"));
+      setMessageTone("info");
       return;
     }
     setSaving(true);
@@ -112,8 +119,10 @@ export function EnvironmentSettingsPage({
         metadata: selectedEnvironment.metadata,
       });
       setMessage(t(locale, "environmentSaved"));
+      setMessageTone("success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t(locale, "environmentSaveFailed"));
+      setMessage(userFacingError(locale, error, "environmentSaveFailed"));
+      setMessageTone("error");
     } finally {
       setSaving(false);
     }
@@ -137,7 +146,7 @@ export function EnvironmentSettingsPage({
       {canManageEnvironments && !selectedProject ? (
         <div className="notice-banner" id={actionRequirementId} role="status">{t(locale, "environmentProjectRequired")}</div>
       ) : null}
-      {message ? <div className="notice-banner" role="status">{message}</div> : null}
+      {message ? <div className={`notice-banner notice-banner--${messageTone}`} role={messageTone === "error" ? "alert" : "status"}>{message}</div> : null}
 
       <section className="panel">
         <div className="panel__header">

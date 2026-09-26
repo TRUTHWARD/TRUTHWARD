@@ -8,12 +8,27 @@ export function normalizeProductProfile(value: string | undefined): ProductProfi
 export const PRODUCT_PROFILE = normalizeProductProfile(import.meta.env.VITE_PRODUCT_PROFILE);
 export const IS_OSS_PROFILE = PRODUCT_PROFILE === "oss";
 
+export function shouldLoadCoverageData(
+  sectionId: string,
+  profile: ProductProfile = PRODUCT_PROFILE,
+): boolean {
+  return profile === "full" && (sectionId === "test-assets" || sectionId === "coverage-matrix");
+}
+
+export function shouldLoadCoverageProof(
+  sectionId: string,
+  profile: ProductProfile = PRODUCT_PROFILE,
+): boolean {
+  return profile === "full" && sectionId === "coverage-matrix";
+}
+
 // This is a UX projection of the backend-authoritative Community capability ceiling.
 // A route being present here never grants access; every page and API still checks
 // the effective capabilities returned by /auth/me.
 export const OSS_SECTION_CAPABILITIES = {
   workspace: null,
   "workflow-runs": null,
+  "requirement-intake": "requirements.read",
   workflow: "test_plans.manage",
   "exploratory-sessions": "exploratory_sessions.read",
   tasks: "work_items.read",

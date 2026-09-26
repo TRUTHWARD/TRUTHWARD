@@ -7,7 +7,9 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
-EvidenceType = Literal["screenshot", "log", "link", "execution_artifact", "console", "network", "har", "other"]
+EvidenceType = Literal[
+    "screenshot", "log", "link", "execution_artifact", "console", "network", "har", "other"
+]
 RedactionStatus = Literal["not_required", "redacted", "pending"]
 SessionStatus = Literal["active", "completed", "cancelled"]
 NoteType = Literal["note", "observation", "risk", "question"]
@@ -34,7 +36,8 @@ class CreateExploratorySessionRequest(BaseModel):
 class AddExploratoryNoteRequest(BaseModel):
     noteType: NoteType
     content: str = Field(min_length=1)
-    evidenceRefs: list[ExploratoryEvidenceRefInput] = Field(default_factory=list)
+    evidenceRefIds: list[UUID] = Field(default_factory=list, max_length=50)
+    evidenceRefs: list[ExploratoryEvidenceRefInput] = Field(default_factory=list, max_length=50)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -49,8 +52,8 @@ class CreateBugCandidateRequest(BaseModel):
     category: str = "functional_ui"
     confidence: float = Field(default=0.8, ge=0, le=1)
     location: dict[str, Any] = Field(default_factory=dict)
-    evidenceRefIds: list[UUID] = Field(default_factory=list)
-    evidenceRefs: list[ExploratoryEvidenceRefInput] = Field(default_factory=list)
+    evidenceRefIds: list[UUID] = Field(default_factory=list, max_length=50)
+    evidenceRefs: list[ExploratoryEvidenceRefInput] = Field(default_factory=list, max_length=50)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -67,4 +70,3 @@ class ExploratorySessionQuery(BaseModel):
     projectId: UUID | None = None
     environmentId: UUID | None = None
     status: SessionStatus | None = None
-

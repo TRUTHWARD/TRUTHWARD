@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { useEffect, useState } from "react";
 
+import { EvidenceReferenceList, type EvidenceReferenceLike } from "../components/EvidenceReferenceList";
 import type {
   ReplayExport,
   ReplayExportRecord,
@@ -182,12 +183,8 @@ export function ReplayCenterPage({
                       </div>
                       <span className="status-pill">{displayStatus(locale, replayExport.redactionStatus)}</span>
                     </div>
-                    <SnapshotCard locale={locale} title={t(locale, "snapshot")} value={{
-                      traceabilitySnapshotRef: replayExport.traceabilitySnapshotRef,
-                      traceabilitySnapshotHash: replayExport.traceabilitySnapshotHash,
-                      coverageSummarySnapshot: replayExport.coverageSummarySnapshot,
-                      coverageMatrixSnapshotRef: replayExport.coverageMatrixSnapshotRef,
-                    }} />
+                    <EvidenceReferenceList label={t(locale, "evidenceRefs")} locale={locale} maxVisible={6} refs={replayExportEvidence(replayExport)} />
+                    {replayExport.coverageSummarySnapshot ? <SnapshotCard locale={locale} title={t(locale, "snapshot")} value={replayExport.coverageSummarySnapshot} /> : null}
                   </div>
                 ) : (
                   <p className="empty-copy">{t(locale, "replayExportUnavailable")}</p>
@@ -213,7 +210,6 @@ export function ReplayCenterPage({
                 </div>
               </section>
 
-              <SnapshotCard locale={locale} title={t(locale, "auditRefs")} value={replayExport?.auditRefs ?? []} />
             </div>
           </div> : null}
         </section>
@@ -297,4 +293,29 @@ function formatTimestamp(value: string, locale: Locale) {
     return value;
   }
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "medium" }).format(timestamp);
+}
+
+function replayExportEvidence(value: ReplayExport): EvidenceReferenceLike[] {
+  const refs: EvidenceReferenceLike[] = [
+    ...(value.exportArtifactRef ? [{ type: "replay_export", ref: value.exportArtifactRef, contentHash: value.exportHash }] : []),
+    ...(value.storageRef ? [{ type: "artifact", ref: value.storageRef, contentHash: value.exportPayloadHash }] : []),
+    ...(value.traceabilitySnapshotRef ? [{ type: "traceability_snapshot", ref: value.traceabilitySnapshotRef, contentHash: value.traceabilitySnapshotHash }] : []),
+    ...(value.coverageMatrixSnapshotRef ? [{ type: "coverage_snapshot", ref: value.coverageMatrixSnapshotRef }] : []),
+    ...value.traceRefs.map((ref) => ({ type: "trace", ref })),
+    ...value.auditRefs.map((item) => replayReference(item, "audit_log")).filter((item): item is EvidenceReferenceLike => item !== null),
+  ];
+  const seen = new Set<string>();
+  return refs.filter((item) => {
+    const ref = typeof item.ref === "string" ? item.ref : "";
+    if (!ref || seen.has(ref)) return false;
+    seen.add(ref);
+    return true;
+  });
+}
+
+function replayReference(item: Record<string, unknown>, defaultType: string): EvidenceReferenceLike | null {
+  const id = [item.ref, item.id, item.auditLogId]
+    .find((candidate): candidate is string => typeof candidate === "string" && candidate.length > 0);
+  if (!id) return null;
+  return { ...item, type: typeof item.type === "string" ? item.type : defaultType, ref: id };
 }

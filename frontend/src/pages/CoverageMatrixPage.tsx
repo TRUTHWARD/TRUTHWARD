@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import type { CoverageProofBundle } from "../lib/api";
+import { EvidenceReferenceList, type EvidenceReferenceLike } from "../components/EvidenceReferenceList";
 import { Locale, t } from "../i18n";
+import { displayStatus } from "../lib/presentation";
 import { CoverageMatrixItem, CoverageMatrixRowItem, CoverageSummaryItem, PlanItem } from "../store/platform";
 
 type CoverageMatrixPageProps = {
@@ -45,7 +47,7 @@ export function CoverageMatrixPage({
           <h1>{t(locale, "coverageMatrix")}</h1>
         </div>
         <div className="badge-row">
-          <span className="status-pill">{coverageSummary?.status ?? t(locale, "unknown")}</span>
+          <span className="status-pill">{displayStatus(locale, coverageSummary?.status ?? t(locale, "unknown"))}</span>
         </div>
       </div>
 
@@ -58,9 +60,7 @@ export function CoverageMatrixPage({
           {scope ? (
             <div className="notice-banner">
               <strong>{scope.scopeId}</strong>
-              <p>
-                {t(locale, "requirementVersions")}: {scopeRequirementVersionIds.join(", ")}
-              </p>
+              <EvidenceReferenceList label={t(locale, "requirementVersions")} refs={scopeRequirementVersionIds.map((id) => ({ type: "requirement_version", ref: `requirement_version://${id}` }))} locale={locale} />
               <p>
                 {t(locale, "selectedRequirementItems")}: {scopeSelectedRequirementItemIds.length > 0 ? scopeSelectedRequirementItemIds.join(", ") : t(locale, "allActiveRequirementItems")}
               </p>
@@ -78,7 +78,7 @@ export function CoverageMatrixPage({
                   <strong>{plan.name}</strong>
                   <p>{plan.requirementVersionId ?? t(locale, "noRequirementVersion")}</p>
                 </div>
-                <span>{plan.status}</span>
+                <span>{displayStatus(locale, plan.status)}</span>
               </button>
             ))}
             {plans.length === 0 ? <div className="empty-state">{t(locale, "noData")}</div> : null}
@@ -131,8 +131,8 @@ export function CoverageMatrixPage({
                       <td>{(row.evidenceArtifacts ?? []).length}</td>
                       <td>{(row.normalizedFindings ?? []).length}</td>
                       <td>{(row.gateImpact ?? []).length}</td>
-                      <td><span className={`status-pill status-pill--${row.coverageStatus}`}>{row.coverageStatus}</span></td>
-                      <td><span className={`status-pill status-pill--${row.riskStatus}`}>{row.riskStatus}</span></td>
+                      <td><span className={`status-pill status-pill--${row.coverageStatus}`}>{displayStatus(locale, row.coverageStatus)}</span></td>
+                      <td><span className={`status-pill status-pill--${row.riskStatus}`}>{displayStatus(locale, row.riskStatus)}</span></td>
                     </tr>
                   );
                 })}
@@ -187,8 +187,8 @@ function CoverageProofDrawer({
       {!proofLoading && !proofError && proof ? (
         <div className="detail-stack">
           <div className="stats-grid stats-grid--compact">
-            <MetricTile label={t(locale, "coverage")} value={proof.coverageStatus} />
-            <MetricTile label={t(locale, "proofStatus")} value={proof.proofStatus} />
+            <MetricTile label={t(locale, "coverage")} value={displayStatus(locale, proof.coverageStatus)} />
+            <MetricTile label={t(locale, "proofStatus")} value={displayStatus(locale, proof.proofStatus)} />
             <MetricTile label={t(locale, "chains")} value={String(proof.proofChain.length)} />
             <MetricTile label={t(locale, "issues")} value={String(proof.proofIssues.length)} />
           </div>
@@ -223,14 +223,13 @@ function CoverageProofDrawer({
             </table>
           </div>
 
+          <div className="detail-stack">
+            {proof.proofChain.map((chain, index) => <ProofEvidenceChain chain={chain} index={index} key={`${chain.testCaseId ?? chain.testPointId ?? "chain"}:evidence:${index}`} locale={locale} />)}
+          </div>
+
           <div className="detail-grid">
-            <SnapshotCard title={t(locale, "traceabilitySnapshot")} value={{
-              traceabilitySnapshotRef: proof.proofChain[0]?.traceabilitySnapshotRef ?? null,
-              traceabilitySnapshotHash: proof.proofChain[0]?.traceabilitySnapshotHash ?? null,
-              coverageMatrixSnapshotRef: proof.proofChain[0]?.coverageMatrixSnapshotRef ?? null,
-              coverageMatrixSnapshotHash: proof.proofChain[0]?.coverageMatrixSnapshotHash ?? null,
-            }} />
-            <SnapshotCard title={t(locale, "proofIssues")} value={proof.proofIssues} />
+            <EvidenceReferenceList label={t(locale, "traceabilitySnapshot")} refs={snapshotRefs(proof)} locale={locale} />
+            <div><h3>{t(locale, "proofIssues")}</h3>{proof.proofIssues.length ? <ul className="evidence-issue-list">{proof.proofIssues.map((issue) => <li key={issue}>{displayStatus(locale, issue)}</li>)}</ul> : <p className="muted-text">{t(locale, "none")}</p>}</div>
           </div>
         </div>
       ) : null}
@@ -248,13 +247,31 @@ function MetricTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SnapshotCard({ title, value }: { title: string; value: unknown }) {
-  return (
-    <div>
-      <h3>{title}</h3>
-      <pre className="snapshot-json">{JSON.stringify(value, null, 2)}</pre>
-    </div>
-  );
+function ProofEvidenceChain({ chain, index, locale }: { chain: CoverageProofBundle["proofChain"][number]; index: number; locale: Locale }) {
+  const refs: EvidenceReferenceLike[] = [
+    ...chain.evidenceArtifactRefs.map((item) => withDefaultType(item, "artifact")),
+    ...chain.normalizedFindingRefs.map((item) => withDefaultType(item, "normalized_finding")),
+    ...chain.approvalRefs.map((item) => withDefaultType(item, "approval")),
+    ...chain.auditRefs.map((item) => withDefaultType(item, "audit_log")),
+    ...chain.traceRefs.map((ref) => ({ type: "trace", ref })),
+  ];
+  if (chain.gateDecisionRef) refs.push({ type: "gate_decision", ref: chain.gateDecisionRef });
+  if (chain.replayExportRef) refs.push({ type: "replay", ref: chain.replayExportRef, contentHash: chain.replayExportHash });
+  const title = chain.testCaseId ?? chain.testPointId ?? `${t(locale, "proofChain")} ${index + 1}`;
+  return <article className="notice notice--info"><strong>{title}</strong><EvidenceReferenceList label={t(locale, "candidateSupportingEvidence")} refs={refs} locale={locale} /></article>;
+}
+
+function withDefaultType(value: Record<string, unknown>, type: string): EvidenceReferenceLike {
+  return { ...value, type: typeof value.type === "string" ? value.type : type };
+}
+
+function snapshotRefs(proof: CoverageProofBundle): EvidenceReferenceLike[] {
+  const first = proof.proofChain[0];
+  if (!first) return [];
+  return [
+    { type: "traceability_snapshot", ref: first.traceabilitySnapshotRef, contentHash: first.traceabilitySnapshotHash },
+    { type: "coverage_snapshot", ref: first.coverageMatrixSnapshotRef, contentHash: first.coverageMatrixSnapshotHash },
+  ];
 }
 
 function getRequirementItemId(row: CoverageMatrixRowItem) {

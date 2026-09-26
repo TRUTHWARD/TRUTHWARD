@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { SectionCard } from "../components/SectionCard";
-import { Locale, t } from "../i18n";
+import { Locale, t, userFacingError } from "../i18n";
 import type { RuntimeReadiness, RuntimeReadinessStatus } from "../lib/api";
 import { displayRuntimeItemLabel, displayRuntimeItemSummary, displayStatus } from "../lib/presentation";
 import { JobItem } from "../store/platform";
@@ -121,7 +121,7 @@ export function JobsPage({ locale, jobs, selectedJobId, onSelectJob, runtimeRead
               {selectedJob.errorMessage ? (
                 <div className="error-banner">
                   <strong>{t(locale, "errorState")}</strong>
-                  <p>{selectedJob.errorMessage}</p>
+                  <p>{userFacingError(locale, new Error(selectedJob.errorMessage), "operationFailed")}</p>
                 </div>
               ) : null}
             </div>

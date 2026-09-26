@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from typing import Callable
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from agentic_qa.domain.enums import (
@@ -31,9 +33,10 @@ from agentic_qa.domain.models import (
     TestPlan,
 )
 from agentic_qa.infra.trace import ensure_trace, traced_operation
+from agentic_qa.infra.settings import get_settings
 from agentic_qa.services.analysis_service import AnalysisService
 from agentic_qa.services.approval_service import ApprovalService
-from agentic_qa.services.common import ServiceContext
+from agentic_qa.services.common import ServiceContext, canonical_hash
 from agentic_qa.services.core_loop_service import CoreLoopService
 from agentic_qa.services.execution_service import ExecutionService
 from agentic_qa.services.memory_service import MemoryService
@@ -44,11 +47,20 @@ from agentic_qa.schemas.requirement_scope import (
     requirement_scope_item_id,
 )
 from agentic_qa.services.requirement_scope_service import RequirementScopeService
+from agentic_qa.services.scope_service import ScopeAuthorizationError, ScopeAuthorizationService
 from agentic_qa.services.traceability_service import TraceabilityService
 
 
 class OrchestrationConflictError(Exception):
     """Raised when an orchestration action is invalid for the current run state."""
+
+
+class RequirementPipelineQueueUnavailable(Exception):
+    """Raised when a committed Community pipeline cannot be sent to the worker."""
+
+    def __init__(self, orchestration_id: str) -> None:
+        self.orchestration_id = orchestration_id
+        super().__init__("PIPELINE_QUEUE_UNAVAILABLE")
 
 
 class OrchestratorService:
@@ -68,6 +80,7 @@ class OrchestratorService:
         return self._run_pipeline(payload, context, event_type="pr_trigger", trigger_type="pr_trigger")
 
     def run_requirement_pipeline(self, payload, context: ServiceContext) -> dict[str, object]:
+        self._authorize_requirement_payload(payload, context)
         requirement = self.core_loop_service.create_requirement_version(payload, context)
         requirement_version_id = UUID(str(requirement["requirementVersionId"]))
         requirement_scope = RequirementScopeService(self.db).persist(
@@ -136,7 +149,25 @@ class OrchestratorService:
         self.db.commit()
         return self._continue_requirement_pipeline(run.id, context)
 
-    def run_requirement_library_pipeline(self, payload, context: ServiceContext) -> dict[str, object]:
+    def run_requirement_library_pipeline(
+        self, payload, context: ServiceContext, *, defer_execution: bool = False
+    ) -> dict[str, object]:
+        idempotency_key = getattr(payload, "idempotencyKey", None) if defer_execution else None
+        if defer_execution and not idempotency_key:
+            raise ValueError("PIPELINE_IDEMPOTENCY_KEY_REQUIRED")
+        request_hash = (
+            canonical_hash(payload.model_dump(mode="json", exclude={"idempotencyKey"}))
+            if idempotency_key else None
+        )
+        if idempotency_key:
+            existing = self.db.scalar(
+                select(OrchestrationRun).where(
+                    OrchestrationRun.created_by == context.user.id,
+                    OrchestrationRun.idempotency_key == idempotency_key,
+                )
+            )
+            if existing is not None:
+                return self._deduplicated_requirement_pipeline(existing, request_hash, context)
         requested_version_ids = self._requirement_scope_version_ids(payload)
         requirements = [self.db.get(RequirementVersion, version_id) for version_id in requested_version_ids]
         missing_version_id = next(
@@ -146,6 +177,8 @@ class OrchestratorService:
         if missing_version_id is not None:
             raise LookupError(f"requirement version not found: {missing_version_id}")
         resolved_requirements = [item for item in requirements if item is not None]
+        for selected_requirement in resolved_requirements:
+            self._authorize_requirement_version(selected_requirement, context, write=True)
         requirement = resolved_requirements[0]
         selection = self._build_requirement_library_selection(resolved_requirements, payload)
         requirement_scope = RequirementScopeService(self.db).persist(
@@ -180,9 +213,12 @@ class OrchestratorService:
             id=uuid4(),
             source="requirement",
             trigger_type="requirement_library_selection",
-            status=JobStatus.RUNNING,
-            current_step="CLARIFICATION",
+            status=JobStatus.QUEUED if defer_execution else JobStatus.RUNNING,
+            current_step="CLARIFICATION" if not defer_execution else "PLAN",
             request_id=context.request_id,
+            created_by=context.user.id if idempotency_key else None,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
             trace_id=UUID(context.trace_id),
             linked_requirement_version_id=requirement.id,
             requirement_scope_id=str(requirement_scope["scopeId"]),
@@ -199,10 +235,23 @@ class OrchestratorService:
                 "clarifications": clarifications,
                 "requirementLibrarySelection": selection["selectionSnapshot"],
             },
-            started_at=datetime.now(timezone.utc),
+            started_at=None if defer_execution else datetime.now(timezone.utc),
         )
         self.db.add_all([integration_event, run])
-        self.db.flush()
+        try:
+            self.db.flush()
+        except IntegrityError:
+            self.db.rollback()
+            if idempotency_key:
+                existing = self.db.scalar(
+                    select(OrchestrationRun).where(
+                        OrchestrationRun.created_by == context.user.id,
+                        OrchestrationRun.idempotency_key == idempotency_key,
+                    )
+                )
+                if existing is not None:
+                    return self._deduplicated_requirement_pipeline(existing, request_hash, context)
+            raise
         integration_event.linked_pipeline_id = run.id
         self._record_checkpoint(
             run_id=run.id,
@@ -232,9 +281,86 @@ class OrchestratorService:
                 execution_id=None,
             )
             self.db.commit()
+            return {**self._requirement_pipeline_response(run), "deduplicated": False} if defer_execution else self._requirement_pipeline_response(run)
+        self.db.commit()
+        if defer_execution:
+            return {**self._requirement_pipeline_response(run), "deduplicated": False}
+        return self._continue_requirement_pipeline(run.id, context)
+
+    def _deduplicated_requirement_pipeline(
+        self, run: OrchestrationRun, request_hash: str | None, context: ServiceContext
+    ) -> dict[str, object]:
+        self._authorize_requirement_run(run, context, write=False)
+        if run.request_hash != request_hash:
+            raise OrchestrationConflictError("PIPELINE_IDEMPOTENCY_CONFLICT")
+        return {**self._requirement_pipeline_response(run), "deduplicated": True}
+
+    @staticmethod
+    def dispatch_queued_requirement_pipeline(
+        data: dict[str, object], context: ServiceContext, schedule_after_response: Callable[..., object]
+    ) -> None:
+        if data["status"] != "queued" or data["blocked"] or data["currentStep"] != "PLAN":
+            return
+        from agentic_qa.infra.queue import enqueue_task
+
+        args = (
+            str(data["orchestrationId"]),
+            str(context.user.id),
+            context.request_id,
+            context.trace_id,
+        )
+        if get_settings().queue_mode == "inline":
+            schedule_after_response(enqueue_task, "requirement.pipeline.run", *args)
+            return
+        try:
+            enqueue_task("requirement.pipeline.run", *args, _publish_retry=False)
+        except Exception as exc:
+            raise RequirementPipelineQueueUnavailable(str(data["orchestrationId"])) from exc
+
+    def run_queued_requirement_pipeline(self, run_id: UUID, context: ServiceContext) -> dict[str, object]:
+        """Continue one accepted Community run under the queue's per-run lock."""
+        run = self._require_run(run_id)
+        if run.trigger_type != "requirement_library_selection" or run.idempotency_key is None:
+            raise OrchestrationConflictError("PIPELINE_ASYNC_RUN_INVALID")
+        if run.status in {JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED}:
             return self._requirement_pipeline_response(run)
+        if run.status == JobStatus.RUNNING:
+            return self._fail_interrupted_requirement_pipeline(run)
+        if run.status != JobStatus.QUEUED or run.current_step != "PLAN" or run.result_payload.get("blocked"):
+            return self._requirement_pipeline_response(run)
+        if run.created_by != context.user.id:
+            return self._fail_queued_requirement_pipeline(run, "PIPELINE_ACTOR_MISMATCH")
+        try:
+            if "requirements.manage" not in context.user.capabilities:
+                raise ScopeAuthorizationError("PIPELINE_ACTOR_CAPABILITY_REVOKED", status_code=403)
+            self._authorize_requirement_run(run, context, write=True)
+        except ScopeAuthorizationError as exc:
+            return self._fail_queued_requirement_pipeline(run, exc.code)
+        run.status = JobStatus.RUNNING
+        run.started_at = datetime.now(timezone.utc)
         self.db.commit()
         return self._continue_requirement_pipeline(run.id, context)
+
+    def _fail_interrupted_requirement_pipeline(self, run: OrchestrationRun) -> dict[str, object]:
+        return self._fail_queued_requirement_pipeline(run, "PIPELINE_INTERRUPTED_REVIEW_REQUIRED")
+
+    def _fail_queued_requirement_pipeline(self, run: OrchestrationRun, reason: str) -> dict[str, object]:
+        run.status = JobStatus.FAILED
+        run.error_message = reason
+        run.ended_at = datetime.now(timezone.utc)
+        self._record_checkpoint(
+            run_id=run.id,
+            step_name=run.current_step,
+            execution_stage=self._envelope_stage(run.envelope_snapshot),
+            status=JobStatus.FAILED,
+            envelope_snapshot=run.envelope_snapshot,
+            result_payload={"reasonCode": reason},
+            trace_id=run.trace_id,
+            execution_id=run.linked_execution_id,
+            error_message=reason,
+        )
+        self.db.commit()
+        return self._requirement_pipeline_response(run)
 
     def answer_requirement_clarification(
         self,
@@ -244,6 +370,7 @@ class OrchestratorService:
         context: ServiceContext,
     ) -> dict[str, object]:
         run = self._require_run(run_id)
+        self._authorize_requirement_run(run, context, write=True)
         if run.source != "requirement" or run.linked_requirement_version_id is None:
             raise OrchestrationConflictError("pipeline is not a requirement pipeline")
         clarification = next(
@@ -758,6 +885,7 @@ class OrchestratorService:
         try:
             if run.linked_plan_id is None:
                 run.current_step = "PLAN"
+                self.db.commit()
                 plan_result = self._run_requirement_plan_stage(run.linked_requirement_version_id, requirement_context, context)
                 run = self._require_run(run.id)
                 run.linked_plan_id = UUID(str(plan_result["planId"]))
@@ -776,6 +904,7 @@ class OrchestratorService:
                 plan_result = {"planId": str(run.linked_plan_id), "jobId": None, "jobStatus": "reused"}
 
             run.current_step = "ASSET_REVIEW"
+            self.db.commit()
             assets = self.core_loop_service.create_test_assets(run.linked_requirement_version_id, run.linked_plan_id)
             coverage = self.plan_service.analyze_coverage(run.linked_plan_id, context)
             review = self.core_loop_service.review_test_assets(
@@ -833,6 +962,7 @@ class OrchestratorService:
                 return self._requirement_pipeline_response(run)
 
             run.current_step = "EXECUTE"
+            self.db.commit()
             plan = self.db.get(TestPlan, run.linked_plan_id)
             execution_result, current_envelope = self._run_execution_stage(
                 run.linked_plan_id,
@@ -883,6 +1013,7 @@ class OrchestratorService:
             self.db.commit()
 
             run.current_step = "ANALYZE"
+            self.db.commit()
             triage_result, current_envelope = self._run_triage_stage(run.linked_execution_id, context, current_envelope)
             attributions = self.analysis_service.get_failure_attribution(run.linked_execution_id)
             for attribution in attributions["attributions"]:
@@ -917,6 +1048,7 @@ class OrchestratorService:
             self.db.commit()
 
             run.current_step = "NORMALIZE"
+            self.db.commit()
             normalize_result, current_envelope = self._run_normalize_stage(
                 run.linked_execution_id,
                 context,
@@ -946,6 +1078,7 @@ class OrchestratorService:
             self.db.commit()
 
             run.current_step = "GATE"
+            self.db.commit()
             gate_result, current_envelope = self._run_gate_stage(run.linked_execution_id, context, current_envelope)
             gate_result = {**gate_result, "requirementScope": self._requirement_scope_for_run(run)}
             gate = self.db.scalar(select(GateDecision).where(GateDecision.execution_id == run.linked_execution_id))
@@ -990,6 +1123,7 @@ class OrchestratorService:
             )
 
             run.current_step = "KNOWLEDGE"
+            self.db.commit()
             gate_evidence = current_envelope.get("findingRefs", []) or [
                 {"type": "gate_decision", "id": str(gate.id) if gate else str(run.linked_execution_id)}
             ]
@@ -1402,15 +1536,21 @@ class OrchestratorService:
             self.db.commit()
             raise
 
-    def get_pipeline(self, run_id: UUID) -> dict[str, object]:
+    def get_pipeline(
+        self,
+        run_id: UUID,
+        context: ServiceContext | None = None,
+    ) -> dict[str, object]:
         run = self._require_run(run_id)
+        if context is not None:
+            self._authorize_requirement_run(run, context, write=False)
         integration_event = self._find_integration_event_for_run(run.id)
         retry_info = self._extract_retry_info(integration_event)
         checkpoint_count = self.db.scalar(
             select(func.count()).select_from(OrchestrationCheckpoint).where(OrchestrationCheckpoint.run_id == run.id)
         ) or 0
         return {
-            "id": str(run.id),
+            "orchestrationId": str(run.id),
             "source": run.source,
             "triggerType": run.trigger_type,
             "status": run.status.value,
@@ -1453,8 +1593,14 @@ class OrchestratorService:
             )
         return None
 
-    def replay_pipeline(self, run_id: UUID) -> dict[str, object]:
+    def replay_pipeline(
+        self,
+        run_id: UUID,
+        context: ServiceContext | None = None,
+    ) -> dict[str, object]:
         run = self._require_run(run_id)
+        if context is not None:
+            self._authorize_requirement_run(run, context, write=False)
         checkpoints = list(
             self.db.scalars(
                 select(OrchestrationCheckpoint)
@@ -1469,6 +1615,93 @@ class OrchestratorService:
             "finalEnvelope": run.envelope_snapshot,
             "checkpoints": [self._serialize_checkpoint(row) for row in checkpoints],
         }
+
+    def _authorize_requirement_payload(self, payload, context: ServiceContext) -> None:
+        project_id = getattr(payload, "projectId", None)
+        environment_id = getattr(payload, "environmentId", None)
+        if project_id is None:
+            if context.user.edition == "community":
+                raise ScopeAuthorizationError(
+                    "COMMUNITY_REQUIREMENT_PROJECT_SCOPE_REQUIRED",
+                    status_code=400,
+                    field="projectId",
+                )
+            return
+        ScopeAuthorizationService(self.db).resolve_project(
+            UUID(str(project_id)),
+            context,
+            environment_id=UUID(str(environment_id)) if environment_id else None,
+            write=True,
+        )
+        risk_level = getattr(payload, "riskLevel", None)
+        risk_value = risk_level.value if hasattr(risk_level, "value") else str(risk_level or "")
+        if context.user.edition == "community" and risk_value == RiskLevel.HIGH.value:
+            raise ScopeAuthorizationError(
+                "COMMUNITY_REQUIREMENT_HIGH_RISK_APPROVAL_UNAVAILABLE",
+                status_code=409,
+                field="riskLevel",
+            )
+
+    def _authorize_requirement_version(
+        self,
+        requirement: RequirementVersion,
+        context: ServiceContext,
+        *,
+        write: bool,
+    ) -> None:
+        metadata = dict(requirement.metadata_json or {})
+        project_value = metadata.get("projectId")
+        environment_value = metadata.get("environmentId")
+        if not project_value:
+            if context.user.edition == "community":
+                raise ScopeAuthorizationError("SCOPE_PROJECT_NOT_FOUND")
+            return
+        try:
+            project_id = UUID(str(project_value))
+            environment_id = UUID(str(environment_value)) if environment_value else None
+        except ValueError as exc:
+            raise ScopeAuthorizationError("SCOPE_CONTEXT_INVALID", status_code=409) from exc
+        ScopeAuthorizationService(self.db).resolve_project(
+            project_id,
+            context,
+            environment_id=environment_id,
+            write=write,
+        )
+        if (
+            context.user.edition == "community"
+            and str(metadata.get("riskLevel") or "").lower() == RiskLevel.HIGH.value
+        ):
+            raise ScopeAuthorizationError(
+                "COMMUNITY_REQUIREMENT_HIGH_RISK_APPROVAL_UNAVAILABLE",
+                status_code=409,
+                field="riskLevel",
+            )
+
+    def _authorize_requirement_run(
+        self,
+        run: OrchestrationRun,
+        context: ServiceContext,
+        *,
+        write: bool,
+    ) -> None:
+        if run.linked_requirement_version_id is not None:
+            requirement = self.db.get(RequirementVersion, run.linked_requirement_version_id)
+            if requirement is None:
+                raise ScopeAuthorizationError("SCOPE_PROJECT_NOT_FOUND")
+            self._authorize_requirement_version(requirement, context, write=write)
+            return
+        if run.linked_plan_id is not None:
+            plan = self.db.get(TestPlan, run.linked_plan_id)
+            if plan is not None and plan.project_id is not None:
+                ScopeAuthorizationService(self.db).resolve_project(
+                    plan.project_id,
+                    context,
+                    environment_id=plan.environment_id,
+                    write=write,
+                )
+                return
+        if context.user.edition == "community":
+            raise ScopeAuthorizationError("SCOPE_PROJECT_NOT_FOUND")
 
     def _run_plan_stage(self, payload, context: ServiceContext) -> dict[str, object]:
         plan_payload = SimpleNamespace(

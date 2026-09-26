@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { SectionCard } from "../components/SectionCard";
-import { t, type Locale } from "../i18n";
+import { t, userFacingError, type Locale } from "../i18n";
 import {
   createCommunityModel,
   deleteCommunityModel,
@@ -29,6 +29,14 @@ type CommunityModelsPageProps = {
 
 const providers: ModelProvider[] = ["openai", "anthropic", "openai_compatible", "ollama", "vllm", "custom"];
 const roles: ModelRole[] = ["PRIMARY", "CHALLENGER", "JUDGE", "LOCAL_FALLBACK"];
+type MessageTone = "success" | "warning" | "error";
+
+function healthMessageTone(status: string): MessageTone {
+  const normalizedStatus = status.trim().toLowerCase();
+  if (normalizedStatus === "healthy") return "success";
+  if (normalizedStatus === "degraded" || normalizedStatus === "unknown") return "warning";
+  return "error";
+}
 
 function initialDraft(projectId: string | null): ModelMutationPayload {
   return {
@@ -63,6 +71,7 @@ export function CommunityModelsPage({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<MessageTone>("success");
 
   useEffect(() => {
     if (!editingId && effectiveProjectId) {
@@ -98,6 +107,7 @@ export function CommunityModelsPage({
     setMessage(null);
     if (!draft.projectId || !draft.name.trim() || !draft.model.trim() || draft.roles.length === 0) {
       setMessage(t(locale, "communityModelFormRequired"));
+      setMessageTone("error");
       return;
     }
     try {
@@ -109,8 +119,10 @@ export function CommunityModelsPage({
       await onRefreshModels();
       reset();
       setMessage(t(locale, "modelConfigurationSaved"));
+      setMessageTone("success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t(locale, "modelSaveFailed"));
+      setMessage(userFacingError(locale, error, "modelSaveFailed"));
+      setMessageTone("error");
     }
   };
 
@@ -152,17 +164,21 @@ export function CommunityModelsPage({
       if (action === "health") {
         const result = await runCommunityModelHealthCheck(model.id);
         setMessage(`${t(locale, "connectionTest")}: ${result.status}`);
+        setMessageTone(healthMessageTone(result.status));
       } else if (action === "scan") {
         await runCommunityModelCapabilityScan(model.id);
         setMessage(t(locale, "capabilityDeclarationRecorded"));
+        setMessageTone("success");
       } else {
         await deleteCommunityModel(model.id);
         if (editingId === model.id) reset();
         setMessage(t(locale, "modelConfigurationDeleted"));
+        setMessageTone("success");
       }
       await onRefreshModels();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t(locale, "operationFailed"));
+      setMessage(userFacingError(locale, error, "operationFailed"));
+      setMessageTone("error");
     } finally {
       setBusyId(null);
     }
@@ -175,7 +191,7 @@ export function CommunityModelsPage({
           <p className="muted-copy">
             {t(locale, "communityModelResolutionBoundary")}
           </p>
-          {message ? <p className="inline-notice">{message}</p> : null}
+          {message ? <div className={`notice-banner notice-banner--${messageTone}`} role={messageTone === "error" ? "alert" : "status"}>{message}</div> : null}
           <div className="table-wrap">
             <table className="data-table">
               <thead><tr><th>{t(locale, "name")}</th><th>{t(locale, "model")}</th><th>{t(locale, "roles")}</th><th>{t(locale, "environment")}</th><th>{t(locale, "status")}</th><th>{t(locale, "actions")}</th></tr></thead>

@@ -3,13 +3,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import base64
+import binascii
+from datetime import datetime, timezone
+from uuid import UUID
 from threading import RLock
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import event, func, select
+from sqlalchemy import and_, event, func, or_, select
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
@@ -43,6 +47,10 @@ class ServiceContext:
 
 class IdempotencyConflictError(ValueError):
     """Raised when an idempotency key is reused for a different request."""
+
+
+class InvalidPaginationCursor(ValueError):
+    """Raised when an opaque keyset cursor cannot be safely decoded."""
 
 
 def canonical_json(payload: object) -> str:
@@ -130,3 +138,86 @@ def paginate_query(db: Session, statement: Select[Any], page: int, page_size: in
     total = db.scalar(select(func.count()).select_from(statement.order_by(None).subquery())) or 0
     rows = list(db.scalars(statement.offset(offset).limit(page_size)))
     return rows, total
+
+
+def paginate_keyset_query(
+    db: Session,
+    statement: Select[Any],
+    *,
+    created_at_column: Any,
+    id_column: Any,
+    cursor: str,
+    page_size: int,
+) -> tuple[list[Any], str | None, bool]:
+    """Page a descending ``created_at, id`` order without COUNT or OFFSET."""
+
+    if cursor != "start":
+        created_at, row_id = _decode_keyset_cursor(cursor)
+        statement = statement.where(
+            or_(
+                created_at_column < created_at,
+                and_(created_at_column == created_at, id_column < row_id),
+            )
+        )
+    rows = list(db.scalars(statement.limit(page_size + 1)))
+    has_more = len(rows) > page_size
+    page_rows = rows[:page_size]
+    next_cursor = None
+    if has_more and page_rows:
+        last = page_rows[-1]
+        next_cursor = _encode_keyset_cursor(
+            getattr(last, created_at_column.key),
+            getattr(last, id_column.key),
+        )
+    return page_rows, next_cursor, has_more
+
+
+def paginate_cursor_result(
+    items: list[Any],
+    *,
+    page_size: int,
+    next_cursor: str | None,
+    has_more: bool,
+) -> dict[str, Any]:
+    return {
+        "items": items,
+        "total": None,
+        "page": None,
+        "pageSize": page_size,
+        "nextCursor": next_cursor,
+        "hasMore": has_more,
+        "paginationMode": "keyset",
+        "totalIsExact": False,
+    }
+
+
+def _encode_keyset_cursor(created_at: datetime, row_id: object) -> str:
+    if created_at.tzinfo is None or created_at.utcoffset() is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    payload = canonical_json(
+        {
+            "createdAt": created_at.isoformat(),
+            "id": str(row_id),
+            "version": 1,
+        }
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_keyset_cursor(cursor: str) -> tuple[datetime, UUID]:
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        payload = json.loads(
+            base64.urlsafe_b64decode((cursor + padding).encode("ascii")).decode("utf-8")
+        )
+        if not isinstance(payload, dict):
+            raise ValueError("cursor payload must be an object")
+        if payload.get("version") != 1:
+            raise ValueError("unsupported cursor version")
+        created_at = datetime.fromisoformat(str(payload["createdAt"]))
+        if created_at.tzinfo is None or created_at.utcoffset() is None:
+            raise ValueError("cursor timestamp must include timezone")
+        row_id = UUID(str(payload["id"]))
+        return created_at, row_id
+    except (binascii.Error, KeyError, TypeError, ValueError, UnicodeDecodeError) as exc:
+        raise InvalidPaginationCursor("invalid pagination cursor") from exc

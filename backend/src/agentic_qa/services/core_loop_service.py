@@ -19,6 +19,7 @@ from agentic_qa.domain.models import (
     TestAsset,
     TestAssetReview,
     TestPlan,
+    TestPlanDomain,
 )
 from agentic_qa.infra.audit import write_audit_log
 from agentic_qa.infra.trace import ensure_trace
@@ -292,8 +293,9 @@ class CoreLoopService:
                     requirement_refs=self._matching_requirement_refs(str(value), effective_requirements, requirement_refs),
                 )
         generated_cases = generated_plan.get("generatedCases", {})
+        executable_by_index = self._functional_executable_scenarios(plan)
         for domain, cases in generated_cases.items():
-            for case in cases:
+            for case_index, case in enumerate(cases):
                 objective = str(case["goal"]).strip()
                 self._add_test_asset(
                     requirement,
@@ -303,6 +305,12 @@ class CoreLoopService:
                     title=str(case["name"]).strip(),
                     objective=objective,
                     requirement_refs=self._matching_requirement_refs(objective, effective_requirements, requirement_refs),
+                    metadata=(
+                        {"executableScenario": executable_by_index[case_index]}
+                        if str(domain) == "functional"
+                        and case_index < len(executable_by_index)
+                        else {}
+                    ),
                 )
         self.db.commit()
         rows = list(
@@ -328,9 +336,8 @@ class CoreLoopService:
                 TestAssetReview.test_plan_id == plan_id,
             )
             .order_by(TestAssetReview.created_at.desc())
+            .limit(1)
         )
-        if existing is not None:
-            return self.serialize_asset_review(existing)
         assets = list(
             self.db.scalars(
                 select(TestAsset).where(
@@ -339,6 +346,7 @@ class CoreLoopService:
                 )
             )
         )
+        self._sync_functional_assets_from_plan(self._require_plan(plan_id), assets)
         issues = [*list(coverage_map.get("weakCoverageAreas", [])), *list(coverage_map.get("duplicateCoverageAreas", []))]
         case_count = len([asset for asset in assets if asset.asset_type == "test_case"])
         requirement_coverage = float(coverage_map.get("requirementCoverage", 0.0))
@@ -346,6 +354,11 @@ class CoreLoopService:
             issues.append({"type": "missing_test_cases", "message": "no executable test cases generated"})
         status = "approved" if requirement_coverage >= 0.9 and not issues and case_count > 0 else "needs_review"
         confidence = min(float(coverage_map.get("coverageConfidence", 0.0)), 1.0)
+        if existing is not None:
+            existing_issue_hash = self._content_hash(existing.issues)
+            current_issue_hash = self._content_hash(issues)
+            if existing.status == status and existing_issue_hash == current_issue_hash:
+                return self.serialize_asset_review(existing)
         row = TestAssetReview(
             id=uuid4(),
             requirement_version_id=requirement_version_id,
@@ -427,6 +440,7 @@ class CoreLoopService:
                 "objective": asset.objective,
                 "requirementRefs": asset.requirement_refs,
                 "requirementScope": requirement_scope,
+                "executableScenario": self._confirmed_asset_scenario(asset),
             }
             for asset in assets
         ]
@@ -728,6 +742,7 @@ class CoreLoopService:
         title: str,
         objective: str,
         requirement_refs: list[str],
+        metadata: dict[str, object] | None = None,
     ) -> None:
         row = TestAsset(
             id=uuid4(),
@@ -740,11 +755,84 @@ class CoreLoopService:
             requirement_refs=requirement_refs,
             status="draft",
             evidence_refs=[{"type": "test_plan", "id": str(plan.id)}],
-            metadata_json={"requirementScope": self._scope_for_plan(requirement.id, plan)},
+            metadata_json={
+                "requirementScope": self._scope_for_plan(requirement.id, plan),
+                **dict(metadata or {}),
+            },
         )
         self.db.add(row)
         self.db.flush()
         self.serialize_test_asset(row)
+
+    def _functional_executable_scenarios(self, plan: TestPlan) -> list[dict[str, object]]:
+        functional = self.db.scalar(
+            select(TestPlanDomain).where(
+                TestPlanDomain.plan_id == plan.id,
+                TestPlanDomain.domain == "functional",
+            )
+        )
+        if functional is None or not isinstance(functional.config, dict):
+            return []
+        collection = functional.config.get("executableScenarios")
+        if not isinstance(collection, dict):
+            return []
+        scenarios = collection.get("scenarios")
+        if not isinstance(scenarios, list):
+            return []
+        frozen_fields = {
+            "collectionSourceFingerprint": collection.get("sourceFingerprint"),
+            "collectionContentHash": collection.get("contentHash"),
+            "collectionRevision": collection.get("revision"),
+            "collectionSourceChanged": bool(collection.get("sourceChanged", False)),
+        }
+        return [
+            {**dict(item), **frozen_fields}
+            for item in scenarios
+            if isinstance(item, dict)
+        ]
+
+    def _sync_functional_assets_from_plan(
+        self,
+        plan: TestPlan,
+        assets: list[TestAsset],
+    ) -> None:
+        scenarios = self._functional_executable_scenarios(plan)
+        by_id = {
+            str(item.get("scenarioId")): item
+            for item in scenarios
+            if item.get("scenarioId")
+        }
+        remaining = iter(scenarios)
+        for asset in [
+            item
+            for item in assets
+            if item.asset_type == "test_case" and item.domain == "functional"
+        ]:
+            existing = asset.metadata_json.get("executableScenario")
+            scenario_id = (
+                str(existing.get("scenarioId"))
+                if isinstance(existing, dict) and existing.get("scenarioId")
+                else ""
+            )
+            scenario = by_id.get(scenario_id)
+            if scenario is None:
+                scenario = next(remaining, None)
+            if scenario is not None and asset.status != "approved":
+                asset.metadata_json = {
+                    **dict(asset.metadata_json or {}),
+                    "executableScenario": dict(scenario),
+                }
+
+    @staticmethod
+    def _confirmed_asset_scenario(asset: TestAsset) -> dict[str, object] | None:
+        scenario = asset.metadata_json.get("executableScenario")
+        if not isinstance(scenario, dict):
+            return None
+        if scenario.get("selected", True) is False or scenario.get("status") != "confirmed":
+            return None
+        if scenario.get("collectionSourceChanged") is True:
+            return None
+        return dict(scenario)
 
     def _validate_generated_asset_payload(self, generated_plan: dict[str, object]) -> None:
         for domain, key in (("functional", "scenarios"), ("performance", "targets"), ("security", "checks")):

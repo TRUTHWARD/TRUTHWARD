@@ -148,11 +148,67 @@ class PRContext(_StrictScmModel):
     executionCreated: Literal[False]
 
 
+class RequirementMatchReasonDetails(_StrictScmModel):
+    matchMethod: Literal[
+        "explicit_reference",
+        "manual_mapping",
+        "verified_traceability",
+        "project_rule",
+        "historical_overlap",
+        "ai_suggestion",
+    ] | None = None
+    explicitSources: list[Literal["pr_title", "pr_template", "commit_message"]] = Field(
+        default_factory=list, max_length=3
+    )
+    configuredPullRequestNumber: str | None = Field(default=None, max_length=1000)
+    matchedPullRequestNumber: str | None = Field(default=None, max_length=1000)
+    configuredLabels: list[str] = Field(default_factory=list, max_length=200)
+    matchedLabels: list[str] = Field(default_factory=list, max_length=200)
+    configuredPathPrefixes: list[str] = Field(default_factory=list, max_length=200)
+    matchedPaths: list[str] = Field(default_factory=list, max_length=200)
+    appliesToAll: bool | None = None
+    traceabilityPath: str | None = Field(default=None, max_length=1000)
+    capabilityRef: str | None = Field(default=None, max_length=500)
+    historicalContextRef: ScmRef | None = None
+    overlappingLabels: list[str] = Field(default_factory=list, max_length=200)
+    overlappingPaths: list[str] = Field(default_factory=list, max_length=200)
+    factsTruncated: bool = False
+
+    @field_validator(
+        "configuredLabels",
+        "matchedLabels",
+        "configuredPathPrefixes",
+        "matchedPaths",
+        "overlappingLabels",
+        "overlappingPaths",
+    )
+    @classmethod
+    def validate_match_fact_values(cls, values: list[str]) -> list[str]:
+        for value in values:
+            if (
+                contains_unsafe_control_characters(value)
+                or redact_sensitive_text(value) != value
+                or len(value) > 1000
+            ):
+                raise ValueError("requirement match facts must contain safe identifiers only")
+        return values
+
+    @field_validator("traceabilityPath", "capabilityRef")
+    @classmethod
+    def validate_match_fact_identifier(cls, value: str | None) -> str | None:
+        if value is not None and (
+            contains_unsafe_control_characters(value) or redact_sensitive_text(value) != value
+        ):
+            raise ValueError("requirement match facts must contain safe identifiers only")
+        return value
+
+
 class RequirementMatchReason(_StrictScmModel):
     code: str = Field(min_length=1, max_length=160)
     layer: Literal["explicit", "mapping", "traceability", "rule_history", "ai"]
     explanationKey: str = Field(min_length=1, max_length=160)
     evidenceRefs: list[ScmRef] = Field(default_factory=list, max_length=256)
+    details: RequirementMatchReasonDetails | None = None
 
 
 class RequirementMatchCandidate(_StrictScmModel):
@@ -225,6 +281,7 @@ __all__ = [
     "RequirementMatch",
     "RequirementMatchCandidate",
     "RequirementMatchReason",
+    "RequirementMatchReasonDetails",
     "RequirementMatchSnapshot",
     "ScmRef",
     "WebhookEnvelope",

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
+import { EvidenceReferenceList } from "../components/EvidenceReferenceList";
 import { SafeJsonViewer } from "../components/SafeJsonViewer";
 import { formatT, t, type Locale } from "../i18n";
 import { displayStatus } from "../lib/presentation";
@@ -33,6 +34,7 @@ export function ExecutionExplanationsPage({
   const { state, projection, error, loadingMore } = useExecutionExplanationTimeline(
     selectedExecutionId,
     canRead,
+    locale,
   );
   const [view, setView] = useState<ExplanationView>("plain");
   const professionalAllowed = Boolean(projection?.capabilityProjection.explanationProfessional);
@@ -289,16 +291,20 @@ function ReferenceField({ label, locale, refs }: { label: string; locale: Locale
 }
 
 function ReferenceList({ locale, refs }: { locale: Locale; refs: DecisionTimelineReference[] }) {
-  if (refs.length === 0) return <span className="empty-copy">{t(locale, "executionExplanationNoRefs")}</span>;
-  return (
-    <ul className="explanation-reference-list">
-      {refs.map((ref) => (
-        <li key={`${ref.referenceType}:${ref.referenceId}:${ref.relationship}`}>
-          {ref.available && ref.href ? <a href={ref.href}>{ref.referenceType}: {ref.referenceId}</a> : <span>{ref.referenceType}: {ref.referenceId} · {t(locale, "executionExplanationReferenceUnavailable")}</span>}
-        </li>
-      ))}
-    </ul>
-  );
+  return <EvidenceReferenceList
+    emptyLabel={t(locale, "executionExplanationNoRefs")}
+    locale={locale}
+    maxVisible={4}
+    refs={refs.map((item) => ({
+      type: item.referenceType,
+      ref: item.referenceId.includes("://") ? item.referenceId : `${item.referenceType}://${item.referenceId}`,
+      summary: item.relationship,
+      available: item.available,
+      unavailableReasonCode: item.unavailableReasonCode,
+      href: item.href,
+      redactionStatus: item.visibility,
+    }))}
+  />;
 }
 
 function State({ copy, role, tone = "default" }: { copy: string; role: "status" | "alert"; tone?: string }) {

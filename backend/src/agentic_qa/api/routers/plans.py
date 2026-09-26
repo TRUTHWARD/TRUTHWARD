@@ -7,6 +7,7 @@ from agentic_qa.api.deps import capability_dependency, get_current_user, get_db,
 from agentic_qa.api.responses import success_response
 from agentic_qa.schemas.plans import CreateTestPlanRequest, UpdateTestPlanRequest
 from agentic_qa.services.common import ServiceContext
+from agentic_qa.services.executable_scenario_compiler import ExecutableScenarioError
 from agentic_qa.services.plan_service import TestPlanService
 
 
@@ -26,6 +27,8 @@ def create_plan(request: Request, payload: CreateTestPlanRequest, db=Depends(get
     service = TestPlanService(db)
     try:
         data = service.create_plan(payload, ServiceContext(user=user, request_id=get_request_id(request), trace_id=get_trace_id(request)))
+    except ExecutableScenarioError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return success_response(request, data, "created")
@@ -58,6 +61,8 @@ def update_plan(request: Request, plan_id: UUID, payload: UpdateTestPlanRequest,
     service = TestPlanService(db)
     try:
         data = service.update_plan(plan_id, payload, ServiceContext(user=user, request_id=get_request_id(request), trace_id=get_trace_id(request)))
+    except ExecutableScenarioError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return success_response(request, data)

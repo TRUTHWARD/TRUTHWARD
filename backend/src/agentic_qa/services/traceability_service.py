@@ -182,7 +182,9 @@ class TraceabilityService:
     ) -> Any:
         spec = RELATION_SPECS[table]
         if status in EFFECTIVE_RELATION_STATUSES and source in CANDIDATE_RELATION_SOURCES:
-            raise ValueError("candidate relation sources must be validated before becoming effective")
+            raise ValueError(
+                "candidate relation sources must be validated before becoming effective"
+            )
         relation = spec.model(
             **{
                 spec.source_field: source_id,
@@ -202,7 +204,9 @@ class TraceabilityService:
         self.db.flush()
         return relation
 
-    def confirm_relation(self, table: str, relation_id: UUID, context: ServiceContext | None = None) -> Any:
+    def confirm_relation(
+        self, table: str, relation_id: UUID, context: ServiceContext | None = None
+    ) -> Any:
         relation = self._get_relation(table, relation_id)
         if relation.source in CANDIDATE_RELATION_SOURCES:
             relation.source = TraceabilityRelationSource.MANUAL
@@ -212,7 +216,9 @@ class TraceabilityService:
         self.db.flush()
         return relation
 
-    def invalidate_relation(self, table: str, relation_id: UUID, reason: str, context: ServiceContext | None = None) -> Any:
+    def invalidate_relation(
+        self, table: str, relation_id: UUID, reason: str, context: ServiceContext | None = None
+    ) -> Any:
         relation = self._get_relation(table, relation_id)
         relation.status = TraceabilityRelationStatus.INVALID
         relation.invalidated_at = _utcnow()
@@ -226,9 +232,13 @@ class TraceabilityService:
         object_id_text = str(object_id)
         for spec in RELATION_SPECS.values():
             if spec.source_type == object_type:
-                count += self._mark_matching_relations_stale(spec, spec.source_field, object_id_text, reason)
+                count += self._mark_matching_relations_stale(
+                    spec, spec.source_field, object_id_text, reason
+                )
             if spec.target_type == object_type:
-                count += self._mark_matching_relations_stale(spec, spec.target_field, object_id_text, reason)
+                count += self._mark_matching_relations_stale(
+                    spec, spec.target_field, object_id_text, reason
+                )
         self.db.flush()
         return count
 
@@ -329,7 +339,9 @@ class TraceabilityService:
 
         graph = self._load_scope_graph(scope_id)
         rows = [self._build_matrix_row(requirement_version_id, item, graph) for item in items]
-        rows = self._filter_rows(rows, coverage_status, risk_status, missing_link_code, requirement_item_id)
+        rows = self._filter_rows(
+            rows, coverage_status, risk_status, missing_link_code, requirement_item_id
+        )
         all_missing = [missing for row in rows for missing in row.missingLinks]
         summary = self._build_summary(requirement_version_id, scope, rows, graph, now)
         selected_rows = rows if include_all else rows[(page - 1) * page_size : page * page_size]
@@ -353,96 +365,221 @@ class TraceabilityService:
 
     def traceability_for_requirement(self, requirement_item_id: str) -> dict[str, Any]:
         relations = self._effective_relations(RequirementItemTestPoint)
-        relations = [relation for relation in relations if relation.requirement_item_id == requirement_item_id]
+        relations = [
+            relation
+            for relation in relations
+            if relation.requirement_item_id == requirement_item_id
+        ]
         missing = []
         if not relations:
-            missing.append(_missing("MISSING_TEST_POINT", "requirement_item", requirement_item_id, "test_point"))
+            missing.append(
+                _missing(
+                    "MISSING_TEST_POINT", "requirement_item", requirement_item_id, "test_point"
+                )
+            )
         return TraceabilityPathResponse(
             sourceType="requirement_item",
             sourceId=requirement_item_id,
-            downstreamPath=[self._node("test_point", relation.test_point_id) for relation in relations],
-            relationStatus=[self._relation_view("requirement_item_test_points", relation) for relation in relations],
+            downstreamPath=[
+                self._node("test_point", relation.test_point_id) for relation in relations
+            ],
+            relationStatus=[
+                self._relation_view("requirement_item_test_points", relation)
+                for relation in relations
+            ],
             missingLinks=missing,
             staleLinks=[],
         ).model_dump(mode="json")
 
     def traceability_for_test_case(self, test_case_id: UUID) -> dict[str, Any]:
-        upstream = [relation for relation in self._effective_relations(TestPointTestCase) if relation.test_case_id == test_case_id]
-        downstream = [relation for relation in self._effective_relations(TestCaseExecutionTask) if relation.test_case_id == test_case_id]
+        upstream = [
+            relation
+            for relation in self._effective_relations(TestPointTestCase)
+            if relation.test_case_id == test_case_id
+        ]
+        downstream = [
+            relation
+            for relation in self._effective_relations(TestCaseExecutionTask)
+            if relation.test_case_id == test_case_id
+        ]
         missing = []
         if not upstream:
-            missing.append(_missing("MISSING_TEST_POINT", "test_case", str(test_case_id), "test_point"))
+            missing.append(
+                _missing("MISSING_TEST_POINT", "test_case", str(test_case_id), "test_point")
+            )
         if not downstream:
-            missing.append(_missing("MISSING_EXECUTION_TASK", "test_case", str(test_case_id), "execution_task"))
+            missing.append(
+                _missing("MISSING_EXECUTION_TASK", "test_case", str(test_case_id), "execution_task")
+            )
         return TraceabilityPathResponse(
             sourceType="test_case",
             sourceId=str(test_case_id),
-            upstreamPath=[self._node("test_point", relation.test_point_id) for relation in upstream],
-            downstreamPath=[self._node("execution_task", relation.execution_task_id) for relation in downstream],
+            upstreamPath=[
+                self._node("test_point", relation.test_point_id) for relation in upstream
+            ],
+            downstreamPath=[
+                self._node("execution_task", relation.execution_task_id) for relation in downstream
+            ],
             relationStatus=[
                 *[self._relation_view("test_point_test_cases", relation) for relation in upstream],
-                *[self._relation_view("test_case_execution_tasks", relation) for relation in downstream],
+                *[
+                    self._relation_view("test_case_execution_tasks", relation)
+                    for relation in downstream
+                ],
             ],
             missingLinks=missing,
             staleLinks=[],
         ).model_dump(mode="json")
 
     def traceability_for_evidence(self, evidence_artifact_id: UUID) -> dict[str, Any]:
-        upstream = [relation for relation in self._effective_relations(ExecutionTaskEvidenceArtifact) if relation.evidence_artifact_id == evidence_artifact_id]
-        downstream = [relation for relation in self._effective_relations(EvidenceRawFinding) if relation.evidence_artifact_id == evidence_artifact_id]
+        upstream = [
+            relation
+            for relation in self._effective_relations(ExecutionTaskEvidenceArtifact)
+            if relation.evidence_artifact_id == evidence_artifact_id
+        ]
+        downstream = [
+            relation
+            for relation in self._effective_relations(EvidenceRawFinding)
+            if relation.evidence_artifact_id == evidence_artifact_id
+        ]
         missing = []
         if not downstream:
-            missing.append(_missing("MISSING_RAW_FINDING", "evidence_artifact", str(evidence_artifact_id), "raw_finding", blocks=False))
+            missing.append(
+                _missing(
+                    "MISSING_RAW_FINDING",
+                    "evidence_artifact",
+                    str(evidence_artifact_id),
+                    "raw_finding",
+                    blocks=False,
+                )
+            )
         return TraceabilityPathResponse(
             sourceType="evidence_artifact",
             sourceId=str(evidence_artifact_id),
-            upstreamPath=[self._node("execution_task", relation.execution_task_id) for relation in upstream],
-            downstreamPath=[self._node("raw_finding", relation.raw_finding_id) for relation in downstream],
+            upstreamPath=[
+                self._node("execution_task", relation.execution_task_id) for relation in upstream
+            ],
+            downstreamPath=[
+                self._node("raw_finding", relation.raw_finding_id) for relation in downstream
+            ],
             relationStatus=[
-                *[self._relation_view("execution_task_evidence_artifacts", relation) for relation in upstream],
-                *[self._relation_view("evidence_raw_findings", relation) for relation in downstream],
+                *[
+                    self._relation_view("execution_task_evidence_artifacts", relation)
+                    for relation in upstream
+                ],
+                *[
+                    self._relation_view("evidence_raw_findings", relation)
+                    for relation in downstream
+                ],
             ],
             missingLinks=missing,
             staleLinks=[],
         ).model_dump(mode="json")
 
     def traceability_for_finding(self, normalized_finding_id: UUID) -> dict[str, Any]:
-        upstream = [relation for relation in self._effective_relations(RawNormalizedFinding) if relation.normalized_finding_id == normalized_finding_id]
-        downstream = [relation for relation in self._effective_relations(NormalizedFindingGateDecision) if relation.normalized_finding_id == normalized_finding_id]
+        upstream = [
+            relation
+            for relation in self._effective_relations(RawNormalizedFinding)
+            if relation.normalized_finding_id == normalized_finding_id
+        ]
+        downstream = [
+            relation
+            for relation in self._effective_relations(NormalizedFindingGateDecision)
+            if relation.normalized_finding_id == normalized_finding_id
+        ]
         missing = []
         if not upstream:
-            missing.append(_missing("MISSING_RAW_FINDING", "normalized_finding", str(normalized_finding_id), "raw_finding"))
+            missing.append(
+                _missing(
+                    "MISSING_RAW_FINDING",
+                    "normalized_finding",
+                    str(normalized_finding_id),
+                    "raw_finding",
+                )
+            )
         if not downstream:
-            missing.append(_missing("MISSING_GATE_DECISION", "normalized_finding", str(normalized_finding_id), "gate_decision", blocks=False))
+            missing.append(
+                _missing(
+                    "MISSING_GATE_DECISION",
+                    "normalized_finding",
+                    str(normalized_finding_id),
+                    "gate_decision",
+                    blocks=False,
+                )
+            )
         return TraceabilityPathResponse(
             sourceType="normalized_finding",
             sourceId=str(normalized_finding_id),
-            upstreamPath=[self._node("raw_finding", relation.raw_finding_id) for relation in upstream],
-            downstreamPath=[self._node("gate_decision", relation.gate_decision_id) for relation in downstream],
+            upstreamPath=[
+                self._node("raw_finding", relation.raw_finding_id) for relation in upstream
+            ],
+            downstreamPath=[
+                self._node("gate_decision", relation.gate_decision_id) for relation in downstream
+            ],
             relationStatus=[
-                *[self._relation_view("raw_normalized_findings", relation) for relation in upstream],
-                *[self._relation_view("normalized_finding_gate_decisions", relation) for relation in downstream],
+                *[
+                    self._relation_view("raw_normalized_findings", relation)
+                    for relation in upstream
+                ],
+                *[
+                    self._relation_view("normalized_finding_gate_decisions", relation)
+                    for relation in downstream
+                ],
             ],
             missingLinks=missing,
             staleLinks=[],
         ).model_dump(mode="json")
 
     def traceability_for_gate_decision(self, gate_decision_id: UUID) -> dict[str, Any]:
-        upstream = [relation for relation in self._effective_relations(NormalizedFindingGateDecision) if relation.gate_decision_id == gate_decision_id]
-        downstream = [relation for relation in self._effective_relations(GateDecisionReplayExport) if relation.gate_decision_id == gate_decision_id]
+        upstream = [
+            relation
+            for relation in self._effective_relations(NormalizedFindingGateDecision)
+            if relation.gate_decision_id == gate_decision_id
+        ]
+        downstream = [
+            relation
+            for relation in self._effective_relations(GateDecisionReplayExport)
+            if relation.gate_decision_id == gate_decision_id
+        ]
         missing = []
         if not upstream:
-            missing.append(_missing("MISSING_NORMALIZED_FINDING", "gate_decision", str(gate_decision_id), "normalized_finding"))
+            missing.append(
+                _missing(
+                    "MISSING_NORMALIZED_FINDING",
+                    "gate_decision",
+                    str(gate_decision_id),
+                    "normalized_finding",
+                )
+            )
         if not downstream:
-            missing.append(_missing("MISSING_REPLAY_EXPORT", "gate_decision", str(gate_decision_id), "replay_export", blocks=False))
+            missing.append(
+                _missing(
+                    "MISSING_REPLAY_EXPORT",
+                    "gate_decision",
+                    str(gate_decision_id),
+                    "replay_export",
+                    blocks=False,
+                )
+            )
         return TraceabilityPathResponse(
             sourceType="gate_decision",
             sourceId=str(gate_decision_id),
-            upstreamPath=[self._node("normalized_finding", relation.normalized_finding_id) for relation in upstream],
-            downstreamPath=[self._node("replay_export", relation.replay_export_id) for relation in downstream],
+            upstreamPath=[
+                self._node("normalized_finding", relation.normalized_finding_id)
+                for relation in upstream
+            ],
+            downstreamPath=[
+                self._node("replay_export", relation.replay_export_id) for relation in downstream
+            ],
             relationStatus=[
-                *[self._relation_view("normalized_finding_gate_decisions", relation) for relation in upstream],
-                *[self._relation_view("gate_decision_replay_exports", relation) for relation in downstream],
+                *[
+                    self._relation_view("normalized_finding_gate_decisions", relation)
+                    for relation in upstream
+                ],
+                *[
+                    self._relation_view("gate_decision_replay_exports", relation)
+                    for relation in downstream
+                ],
             ],
             missingLinks=missing,
             staleLinks=[],
@@ -550,7 +687,11 @@ class TraceabilityService:
         if replay_export_hash is not None:
             historical = self.db.scalar(
                 select(CoverageProofBundleRecord)
-                .join(TraceabilitySnapshotRecord, CoverageProofBundleRecord.traceability_snapshot_id == TraceabilitySnapshotRecord.id)
+                .join(
+                    TraceabilitySnapshotRecord,
+                    CoverageProofBundleRecord.traceability_snapshot_id
+                    == TraceabilitySnapshotRecord.id,
+                )
                 .where(
                     CoverageProofBundleRecord.requirement_version_id == requirement_version_id,
                     CoverageProofBundleRecord.requirement_item_id == requirement_item_id,
@@ -562,8 +703,16 @@ class TraceabilityService:
             if historical is None:
                 replay_ref = self.db.scalar(
                     select(CoverageProofReplayRef)
-                    .join(CoverageProofBundleRecord, CoverageProofReplayRef.coverage_proof_bundle_id == CoverageProofBundleRecord.id)
-                    .join(TraceabilitySnapshotRecord, CoverageProofBundleRecord.traceability_snapshot_id == TraceabilitySnapshotRecord.id)
+                    .join(
+                        CoverageProofBundleRecord,
+                        CoverageProofReplayRef.coverage_proof_bundle_id
+                        == CoverageProofBundleRecord.id,
+                    )
+                    .join(
+                        TraceabilitySnapshotRecord,
+                        CoverageProofBundleRecord.traceability_snapshot_id
+                        == TraceabilitySnapshotRecord.id,
+                    )
                     .where(
                         CoverageProofBundleRecord.requirement_version_id == requirement_version_id,
                         CoverageProofBundleRecord.requirement_item_id == requirement_item_id,
@@ -573,9 +722,13 @@ class TraceabilityService:
                     .order_by(CoverageProofReplayRef.created_at.desc())
                 )
                 if replay_ref is not None:
-                    historical = self.db.get(CoverageProofBundleRecord, replay_ref.coverage_proof_bundle_id)
+                    historical = self.db.get(
+                        CoverageProofBundleRecord, replay_ref.coverage_proof_bundle_id
+                    )
             if historical is None:
-                raise ValueError(f"coverage proof not found for replayExportHash: {replay_export_hash}")
+                raise ValueError(
+                    f"coverage proof not found for replayExportHash: {replay_export_hash}"
+                )
             return dict(historical.proof_bundle)
 
         snapshot_record = self.freeze_traceability_snapshot_record(
@@ -615,7 +768,9 @@ class TraceabilityService:
         execution_id: UUID,
         requirement_scope: dict[str, Any] | None = None,
     ) -> None:
-        scope_payload = self._normalize_requirement_scope(requirement_version_id, requirement_scope=requirement_scope)
+        scope_payload = self._normalize_requirement_scope(
+            requirement_version_id, requirement_scope=requirement_scope
+        )
         scope_id = str(scope_payload["scopeId"])
         assets = list(
             self.db.scalars(
@@ -669,7 +824,9 @@ class TraceabilityService:
 
         points_by_requirement: dict[str, list[TestAsset]] = {}
         for point in test_points:
-            for requirement_item_id in self._verified_asset_requirement_item_ids(point, requirement_items):
+            for requirement_item_id in self._verified_asset_requirement_item_ids(
+                point, requirement_items
+            ):
                 points_by_requirement.setdefault(requirement_item_id, []).append(point)
                 self._ensure_relation(
                     "requirement_item_test_points",
@@ -679,12 +836,17 @@ class TraceabilityService:
                     relation_type="covers",
                     source=TraceabilityRelationSource.DETERMINISTIC_RULE,
                     requirement_version_id=UUID(
-                        str(requirement_items[requirement_item_id].get("requirementVersionId") or requirement_version_id)
+                        str(
+                            requirement_items[requirement_item_id].get("requirementVersionId")
+                            or requirement_version_id
+                        )
                     ),
                 )
 
         for case in test_cases:
-            case_requirement_ids = set(self._verified_asset_requirement_item_ids(case, requirement_items))
+            case_requirement_ids = set(
+                self._verified_asset_requirement_item_ids(case, requirement_items)
+            )
             point_candidates = [
                 point
                 for requirement_item_id in case_requirement_ids
@@ -762,7 +924,11 @@ class TraceabilityService:
         for finding in findings:
             impact = "informational"
             if finding.status == FindingStatus.OPEN:
-                impact = "blocking" if finding.severity in {FindingSeverity.HIGH, FindingSeverity.CRITICAL} else "warning"
+                impact = (
+                    "blocking"
+                    if finding.severity in {FindingSeverity.HIGH, FindingSeverity.CRITICAL}
+                    else "warning"
+                )
             self._ensure_relation(
                 "normalized_finding_gate_decisions",
                 source_id=finding.id,
@@ -790,7 +956,11 @@ class TraceabilityService:
             "gate_decision_replay_exports",
             source_id=gate.id,
             target_id=replay_export_id,
-            scope_id=str(self._normalize_requirement_scope(requirement_version_id, requirement_scope=requirement_scope)["scopeId"]),
+            scope_id=str(
+                self._normalize_requirement_scope(
+                    requirement_version_id, requirement_scope=requirement_scope
+                )["scopeId"]
+            ),
             relation_type="included_in_replay",
             source=TraceabilityRelationSource.DETERMINISTIC_RULE,
             export_hash=replay_export_hash,
@@ -832,7 +1002,9 @@ class TraceabilityService:
             **extra_fields,
         )
 
-    def _verified_asset_requirement_item_ids(self, asset: TestAsset, requirement_items: dict[str, dict[str, Any]]) -> list[str]:
+    def _verified_asset_requirement_item_ids(
+        self, asset: TestAsset, requirement_items: dict[str, dict[str, Any]]
+    ) -> list[str]:
         verified: list[str] = []
         for ref in asset.requirement_refs or []:
             requirement_item_id = self._requirement_item_id(ref)
@@ -893,7 +1065,9 @@ class TraceabilityService:
             raise ValueError(f"traceability relation not found: {table}/{relation_id}")
         return relation
 
-    def _mark_matching_relations_stale(self, spec: RelationSpec, field_name: str, object_id: str, reason: str) -> int:
+    def _mark_matching_relations_stale(
+        self, spec: RelationSpec, field_name: str, object_id: str, reason: str
+    ) -> int:
         count = 0
         for relation in self._effective_relations(spec.model):
             if str(getattr(relation, field_name)) == object_id:
@@ -910,7 +1084,10 @@ class TraceabilityService:
         requirement_scope: dict[str, Any] | None = None,
         selected_requirement_item_ids: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        if requirement_scope and requirement_scope.get("schemaVersion") == REQUIREMENT_SCOPE_V2_SCHEMA_VERSION:
+        if (
+            requirement_scope
+            and requirement_scope.get("schemaVersion") == REQUIREMENT_SCOPE_V2_SCHEMA_VERSION
+        ):
             selected_by_version = {
                 UUID(str(item.get("requirementVersionId"))): [
                     str(value) for value in item.get("requirementItemIds") or []
@@ -942,7 +1119,9 @@ class TraceabilityService:
         version = self.db.get(RequirementVersion, requirement_version_id)
         if version is None:
             raise ValueError(f"requirement version not found: {requirement_version_id}")
-        return self._active_items_for_version(version, selected_ids=selected_requirement_item_ids or [])
+        return self._active_items_for_version(
+            version, selected_ids=selected_requirement_item_ids or []
+        )
 
     def _active_items_for_version(
         self,
@@ -962,7 +1141,9 @@ class TraceabilityService:
                     continue
                 if item.get("notApplicable", item.get("not_applicable", False)) is True:
                     continue
-                item_id = str(item.get("id") or item.get("requirementItemId") or f"requirement-{index}")
+                item_id = str(
+                    item.get("id") or item.get("requirementItemId") or f"requirement-{index}"
+                )
                 if selected_id_set and item_id not in selected_id_set:
                     continue
                 text = str(item.get("text") or item.get("title") or item_id)
@@ -976,7 +1157,9 @@ class TraceabilityService:
             found = {str(item["id"]) for item in items}
             missing = [item_id for item_id in selected_ids if item_id not in found]
             if missing:
-                raise ValueError(f"requirement scope contains unknown or inactive requirement item id: {missing[0]}")
+                raise ValueError(
+                    f"requirement scope contains unknown or inactive requirement item id: {missing[0]}"
+                )
         return items
 
     def _normalize_requirement_scope(
@@ -990,7 +1173,9 @@ class TraceabilityService:
         if requirement_scope:
             scope_requirement_version_id = UUID(str(requirement_scope.get("requirementVersionId")))
             if scope_requirement_version_id != requirement_version_id:
-                raise ValueError("requirementScope.requirementVersionId must match requirementVersionId")
+                raise ValueError(
+                    "requirementScope.requirementVersionId must match requirementVersionId"
+                )
             selected_ids = scope_item_ids(requirement_scope)
             merged_filters = {**dict(requirement_scope.get("filters") or {}), **(filters or {})}
             scope = normalize_requirement_scope(
@@ -1000,14 +1185,19 @@ class TraceabilityService:
                 requirement_item_refs=list(requirement_scope.get("requirementItemRefs") or []),
                 filters=merged_filters,
                 metadata=dict(requirement_scope.get("metadata") or {}),
-                force_v2=str(requirement_scope.get("schemaVersion")) == REQUIREMENT_SCOPE_V2_SCHEMA_VERSION,
+                force_v2=str(requirement_scope.get("schemaVersion"))
+                == REQUIREMENT_SCOPE_V2_SCHEMA_VERSION,
             )
         else:
             scope = normalize_requirement_scope(
                 requirement_version_id=requirement_version_id,
                 selected_requirement_item_ids=selected_requirement_item_ids or [],
                 filters=filters or {},
-                metadata={"selectionMode": "requirement_items" if selected_requirement_item_ids else "requirement_version"},
+                metadata={
+                    "selectionMode": "requirement_items"
+                    if selected_requirement_item_ids
+                    else "requirement_version"
+                },
             )
         self._active_requirement_items(
             requirement_version_id,
@@ -1018,14 +1208,22 @@ class TraceabilityService:
 
     def _load_scope_graph(self, scope_id: str) -> dict[str, list[Any]]:
         return {
-            "requirement_item_test_points": self._effective_relations(RequirementItemTestPoint, scope_id),
+            "requirement_item_test_points": self._effective_relations(
+                RequirementItemTestPoint, scope_id
+            ),
             "test_point_test_cases": self._effective_relations(TestPointTestCase, scope_id),
             "test_case_execution_tasks": self._effective_relations(TestCaseExecutionTask, scope_id),
-            "execution_task_evidence_artifacts": self._effective_relations(ExecutionTaskEvidenceArtifact, scope_id),
+            "execution_task_evidence_artifacts": self._effective_relations(
+                ExecutionTaskEvidenceArtifact, scope_id
+            ),
             "evidence_raw_findings": self._effective_relations(EvidenceRawFinding, scope_id),
             "raw_normalized_findings": self._effective_relations(RawNormalizedFinding, scope_id),
-            "normalized_finding_gate_decisions": self._effective_relations(NormalizedFindingGateDecision, scope_id),
-            "gate_decision_replay_exports": self._effective_relations(GateDecisionReplayExport, scope_id),
+            "normalized_finding_gate_decisions": self._effective_relations(
+                NormalizedFindingGateDecision, scope_id
+            ),
+            "gate_decision_replay_exports": self._effective_relations(
+                GateDecisionReplayExport, scope_id
+            ),
         }
 
     def _relation_snapshot(self, scope_id: str) -> list[dict[str, Any]]:
@@ -1034,7 +1232,10 @@ class TraceabilityService:
         for table, relations in graph.items():
             for relation in relations:
                 view = self._relation_view(table, relation).model_dump(mode="json")
-                if view["status"] not in {TraceabilityRelationStatus.CONFIRMED.value, TraceabilityRelationStatus.SYSTEM_VERIFIED.value}:
+                if view["status"] not in {
+                    TraceabilityRelationStatus.CONFIRMED.value,
+                    TraceabilityRelationStatus.SYSTEM_VERIFIED.value,
+                }:
                     continue
                 if view["source"] in {source.value for source in CANDIDATE_RELATION_SOURCES}:
                     continue
@@ -1053,12 +1254,23 @@ class TraceabilityService:
     ) -> tuple[dict[str, Any], UUID | None]:
         matrix = dict(snapshot_record.coverage_matrix_snapshot)
         rows = list(matrix.get("rows") or [])
-        row = next((item for item in rows if str((item.get("requirementItem") or {}).get("id")) == requirement_item_id), None)
+        row = next(
+            (
+                item
+                for item in rows
+                if str((item.get("requirementItem") or {}).get("id")) == requirement_item_id
+            ),
+            None,
+        )
         if row is None:
-            raise ValueError(f"requirement item not found in coverage snapshot: {requirement_item_id}")
+            raise ValueError(
+                f"requirement item not found in coverage snapshot: {requirement_item_id}"
+            )
 
         coverage_status = CoverageStatus(str(row.get("coverageStatus")))
-        chains, first_gate_snapshot_id = self._proof_chains_from_snapshot(snapshot_record, requirement_item_id)
+        chains, first_gate_snapshot_id = self._proof_chains_from_snapshot(
+            snapshot_record, requirement_item_id
+        )
         bundle_issues = self._bundle_issues(coverage_status, chains)
         proof_status = self._proof_status(coverage_status, chains, bundle_issues)
         scope_payload = dict(snapshot_record.traceability_snapshot.get("requirementScope") or {})
@@ -1090,16 +1302,26 @@ class TraceabilityService:
         snapshot_record: TraceabilitySnapshotRecord,
         requirement_item_id: str,
     ) -> tuple[list[CoverageProofChain], UUID | None]:
-        relations = [relation for relation in snapshot_record.relation_snapshot if relation.get("scopeId") == snapshot_record.scope_id]
+        relations = [
+            relation
+            for relation in snapshot_record.relation_snapshot
+            if relation.get("scopeId") == snapshot_record.scope_id
+        ]
         by_table: dict[str, list[dict[str, Any]]] = {}
         for relation in relations:
             by_table.setdefault(str(relation["table"]), []).append(relation)
 
         first_gate_snapshot_id: UUID | None = None
         chains: list[CoverageProofChain] = []
-        req_tp_relations = [relation for relation in by_table.get("requirement_item_test_points", []) if relation.get("sourceId") == requirement_item_id]
+        req_tp_relations = [
+            relation
+            for relation in by_table.get("requirement_item_test_points", [])
+            if relation.get("sourceId") == requirement_item_id
+        ]
         for req_tp in req_tp_relations:
-            tp_tc_relations = self._snapshot_relations_from(by_table, "test_point_test_cases", req_tp["targetId"])
+            tp_tc_relations = self._snapshot_relations_from(
+                by_table, "test_point_test_cases", req_tp["targetId"]
+            )
             if not tp_tc_relations:
                 chain, gate_snapshot_id = self._chain_from_snapshot_path(snapshot_record, [req_tp])
                 chains.append(chain)
@@ -1107,31 +1329,45 @@ class TraceabilityService:
                 continue
 
             for tp_tc in tp_tc_relations:
-                tc_task_relations = self._snapshot_relations_from(by_table, "test_case_execution_tasks", tp_tc["targetId"])
+                tc_task_relations = self._snapshot_relations_from(
+                    by_table, "test_case_execution_tasks", tp_tc["targetId"]
+                )
                 if not tc_task_relations:
-                    chain, gate_snapshot_id = self._chain_from_snapshot_path(snapshot_record, [req_tp, tp_tc])
+                    chain, gate_snapshot_id = self._chain_from_snapshot_path(
+                        snapshot_record, [req_tp, tp_tc]
+                    )
                     chains.append(chain)
                     first_gate_snapshot_id = first_gate_snapshot_id or gate_snapshot_id
                     continue
 
                 for tc_task in tc_task_relations:
-                    task_artifact_relations = self._snapshot_relations_from(by_table, "execution_task_evidence_artifacts", tc_task["targetId"])
+                    task_artifact_relations = self._snapshot_relations_from(
+                        by_table, "execution_task_evidence_artifacts", tc_task["targetId"]
+                    )
                     if not task_artifact_relations:
-                        chain, gate_snapshot_id = self._chain_from_snapshot_path(snapshot_record, [req_tp, tp_tc, tc_task])
+                        chain, gate_snapshot_id = self._chain_from_snapshot_path(
+                            snapshot_record, [req_tp, tp_tc, tc_task]
+                        )
                         chains.append(chain)
                         first_gate_snapshot_id = first_gate_snapshot_id or gate_snapshot_id
                         continue
 
                     for task_artifact in task_artifact_relations:
-                        evidence_raw_relations = self._snapshot_relations_from(by_table, "evidence_raw_findings", task_artifact["targetId"])
+                        evidence_raw_relations = self._snapshot_relations_from(
+                            by_table, "evidence_raw_findings", task_artifact["targetId"]
+                        )
                         if not evidence_raw_relations:
-                            chain, gate_snapshot_id = self._chain_from_snapshot_path(snapshot_record, [req_tp, tp_tc, tc_task, task_artifact])
+                            chain, gate_snapshot_id = self._chain_from_snapshot_path(
+                                snapshot_record, [req_tp, tp_tc, tc_task, task_artifact]
+                            )
                             chains.append(chain)
                             first_gate_snapshot_id = first_gate_snapshot_id or gate_snapshot_id
                             continue
 
                         for evidence_raw in evidence_raw_relations:
-                            raw_normalized_relations = self._snapshot_relations_from(by_table, "raw_normalized_findings", evidence_raw["targetId"])
+                            raw_normalized_relations = self._snapshot_relations_from(
+                                by_table, "raw_normalized_findings", evidence_raw["targetId"]
+                            )
                             if not raw_normalized_relations:
                                 chain, gate_snapshot_id = self._chain_from_snapshot_path(
                                     snapshot_record,
@@ -1150,10 +1386,19 @@ class TraceabilityService:
                                 if not gate_relations:
                                     chain, gate_snapshot_id = self._chain_from_snapshot_path(
                                         snapshot_record,
-                                        [req_tp, tp_tc, tc_task, task_artifact, evidence_raw, raw_normalized],
+                                        [
+                                            req_tp,
+                                            tp_tc,
+                                            tc_task,
+                                            task_artifact,
+                                            evidence_raw,
+                                            raw_normalized,
+                                        ],
                                     )
                                     chains.append(chain)
-                                    first_gate_snapshot_id = first_gate_snapshot_id or gate_snapshot_id
+                                    first_gate_snapshot_id = (
+                                        first_gate_snapshot_id or gate_snapshot_id
+                                    )
                                     continue
 
                                 for gate_relation in gate_relations:
@@ -1165,10 +1410,20 @@ class TraceabilityService:
                                     if not replay_relations:
                                         chain, gate_snapshot_id = self._chain_from_snapshot_path(
                                             snapshot_record,
-                                            [req_tp, tp_tc, tc_task, task_artifact, evidence_raw, raw_normalized, gate_relation],
+                                            [
+                                                req_tp,
+                                                tp_tc,
+                                                tc_task,
+                                                task_artifact,
+                                                evidence_raw,
+                                                raw_normalized,
+                                                gate_relation,
+                                            ],
                                         )
                                         chains.append(chain)
-                                        first_gate_snapshot_id = first_gate_snapshot_id or gate_snapshot_id
+                                        first_gate_snapshot_id = (
+                                            first_gate_snapshot_id or gate_snapshot_id
+                                        )
                                         continue
 
                                     for replay_relation in replay_relations:
@@ -1186,11 +1441,19 @@ class TraceabilityService:
                                             ],
                                         )
                                         chains.append(chain)
-                                        first_gate_snapshot_id = first_gate_snapshot_id or gate_snapshot_id
+                                        first_gate_snapshot_id = (
+                                            first_gate_snapshot_id or gate_snapshot_id
+                                        )
         return chains, first_gate_snapshot_id
 
-    def _snapshot_relations_from(self, by_table: dict[str, list[dict[str, Any]]], table: str, source_id: object) -> list[dict[str, Any]]:
-        return [relation for relation in by_table.get(table, []) if str(relation.get("sourceId")) == str(source_id)]
+    def _snapshot_relations_from(
+        self, by_table: dict[str, list[dict[str, Any]]], table: str, source_id: object
+    ) -> list[dict[str, Any]]:
+        return [
+            relation
+            for relation in by_table.get(table, [])
+            if str(relation.get("sourceId")) == str(source_id)
+        ]
 
     def _chain_from_snapshot_path(
         self,
@@ -1201,24 +1464,37 @@ class TraceabilityService:
         relation_by_table = {str(relation["table"]): relation for relation in path}
         gate_relation = relation_by_table.get("normalized_finding_gate_decisions")
         replay_relation = relation_by_table.get("gate_decision_replay_exports")
-        gate_snapshot = self._ensure_gate_input_snapshot(gate_relation["targetId"]) if gate_relation else None
+        gate_snapshot = (
+            self._ensure_gate_input_snapshot(gate_relation["targetId"]) if gate_relation else None
+        )
         proof_issues = self._chain_missing_issues(relation_by_table)
         for edge in edges:
             if edge.currentStatus == ProofEdgeCurrentStatus.STALE:
                 proof_issues.append("stale_relation")
             if edge.currentStatus == ProofEdgeCurrentStatus.SUPERSEDED:
                 proof_issues.append("superseded_relation")
-            if edge.currentStatus in {ProofEdgeCurrentStatus.INVALID, ProofEdgeCurrentStatus.MISSING}:
+            if edge.currentStatus in {
+                ProofEdgeCurrentStatus.INVALID,
+                ProofEdgeCurrentStatus.MISSING,
+            }:
                 proof_issues.append("broken_relation")
-        trace_refs = sorted({str(relation["traceId"]) for relation in path if relation.get("traceId")})
+        trace_refs = sorted(
+            {str(relation["traceId"]) for relation in path if relation.get("traceId")}
+        )
         chain = CoverageProofChain(
             testPointId=self._target_id(relation_by_table, "requirement_item_test_points"),
             testCaseId=self._target_id(relation_by_table, "test_point_test_cases"),
             executionTaskId=self._target_id(relation_by_table, "test_case_execution_tasks"),
             proofEdges=edges,
-            evidenceArtifactRefs=self._typed_refs(relation_by_table, "execution_task_evidence_artifacts", "evidence_artifact"),
-            rawFindingRefs=self._typed_refs(relation_by_table, "evidence_raw_findings", "raw_finding"),
-            normalizedFindingRefs=self._typed_refs(relation_by_table, "raw_normalized_findings", "normalized_finding"),
+            evidenceArtifactRefs=self._typed_refs(
+                relation_by_table, "execution_task_evidence_artifacts", "evidence_artifact"
+            ),
+            rawFindingRefs=self._typed_refs(
+                relation_by_table, "evidence_raw_findings", "raw_finding"
+            ),
+            normalizedFindingRefs=self._typed_refs(
+                relation_by_table, "raw_normalized_findings", "normalized_finding"
+            ),
             gateDecisionRef=self._target_id(relation_by_table, "normalized_finding_gate_decisions"),
             gateInputSnapshotRef=gate_snapshot.gate_input_snapshot_ref if gate_snapshot else None,
             policySnapshotRef=gate_snapshot.policy_snapshot_ref if gate_snapshot else None,
@@ -1320,7 +1596,9 @@ class TraceabilityService:
             "decidedBy": gate.decided_by,
         }
         gate_hash = canonical_hash(gate_input_snapshot)
-        existing = self.db.scalar(select(GateInputSnapshot).where(GateInputSnapshot.gate_input_snapshot_hash == gate_hash))
+        existing = self.db.scalar(
+            select(GateInputSnapshot).where(GateInputSnapshot.gate_input_snapshot_hash == gate_hash)
+        )
         if existing is not None:
             return existing
         policy_hash = canonical_hash(policy_snapshot)
@@ -1353,13 +1631,20 @@ class TraceabilityService:
             issues.append("missing_replay")
         return issues
 
-    def _bundle_issues(self, coverage_status: CoverageStatus, chains: list[CoverageProofChain]) -> list[str]:
+    def _bundle_issues(
+        self, coverage_status: CoverageStatus, chains: list[CoverageProofChain]
+    ) -> list[str]:
         issues = sorted({issue for chain in chains for issue in chain.proofIssues})
         if coverage_status in {CoverageStatus.COVERED, CoverageStatus.PARTIAL} and not chains:
             issues.append("missing_proof_chain")
         return sorted(set(issues))
 
-    def _proof_status(self, coverage_status: CoverageStatus, chains: list[CoverageProofChain], bundle_issues: list[str]) -> ProofStatus:
+    def _proof_status(
+        self,
+        coverage_status: CoverageStatus,
+        chains: list[CoverageProofChain],
+        bundle_issues: list[str],
+    ) -> ProofStatus:
         if coverage_status == CoverageStatus.NOT_COVERED and not chains and not bundle_issues:
             return ProofStatus.VALID
         current_statuses = {edge.currentStatus for chain in chains for edge in chain.proofEdges}
@@ -1370,7 +1655,14 @@ class TraceabilityService:
         if current_statuses & {ProofEdgeCurrentStatus.INVALID, ProofEdgeCurrentStatus.MISSING}:
             return ProofStatus.BROKEN
         if coverage_status in {CoverageStatus.COVERED, CoverageStatus.PARTIAL} and any(
-            issue in bundle_issues for issue in {"missing_execution", "missing_evidence", "missing_gate", "missing_replay", "missing_proof_chain"}
+            issue in bundle_issues
+            for issue in {
+                "missing_execution",
+                "missing_evidence",
+                "missing_gate",
+                "missing_replay",
+                "missing_proof_chain",
+            }
         ):
             return ProofStatus.BROKEN
         return ProofStatus.VALID
@@ -1379,7 +1671,9 @@ class TraceabilityService:
         relation = relation_by_table.get(table)
         return str(relation["targetId"]) if relation else None
 
-    def _typed_refs(self, relation_by_table: dict[str, dict[str, Any]], table: str, ref_type: str) -> list[dict[str, Any]]:
+    def _typed_refs(
+        self, relation_by_table: dict[str, dict[str, Any]], table: str, ref_type: str
+    ) -> list[dict[str, Any]]:
         target_id = self._target_id(relation_by_table, table)
         return [{"type": ref_type, "id": target_id}] if target_id else []
 
@@ -1391,7 +1685,9 @@ class TraceabilityService:
                 return str(replay_ref), str(replay_hash)
         return None, None
 
-    def _persist_coverage_proof_replay_refs(self, record: CoverageProofBundleRecord, bundle_payload: dict[str, Any]) -> None:
+    def _persist_coverage_proof_replay_refs(
+        self, record: CoverageProofBundleRecord, bundle_payload: dict[str, Any]
+    ) -> None:
         seen_hashes: set[str] = set()
         for chain in bundle_payload.get("proofChain") or []:
             replay_ref = chain.get("replayExportRef")
@@ -1419,21 +1715,51 @@ class TraceabilityService:
             statement = statement.where(model.scope_id == scope_id)
         return list(self.db.scalars(statement))
 
-    def _build_matrix_row(self, requirement_version_id: UUID, item: dict[str, Any], graph: dict[str, list[Any]]) -> CoverageMatrixRow:
+    def _build_matrix_row(
+        self, requirement_version_id: UUID, item: dict[str, Any], graph: dict[str, list[Any]]
+    ) -> CoverageMatrixRow:
         item_id = item["id"]
-        req_tp = [relation for relation in graph["requirement_item_test_points"] if relation.requirement_item_id == item_id]
+        req_tp = [
+            relation
+            for relation in graph["requirement_item_test_points"]
+            if relation.requirement_item_id == item_id
+        ]
         test_point_ids = {relation.test_point_id for relation in req_tp}
-        tp_tc = [relation for relation in graph["test_point_test_cases"] if relation.test_point_id in test_point_ids]
+        tp_tc = [
+            relation
+            for relation in graph["test_point_test_cases"]
+            if relation.test_point_id in test_point_ids
+        ]
         test_case_ids = {relation.test_case_id for relation in tp_tc}
-        tc_task = [relation for relation in graph["test_case_execution_tasks"] if relation.test_case_id in test_case_ids]
+        tc_task = [
+            relation
+            for relation in graph["test_case_execution_tasks"]
+            if relation.test_case_id in test_case_ids
+        ]
         task_ids = {relation.execution_task_id for relation in tc_task}
-        task_artifact = [relation for relation in graph["execution_task_evidence_artifacts"] if relation.execution_task_id in task_ids]
+        task_artifact = [
+            relation
+            for relation in graph["execution_task_evidence_artifacts"]
+            if relation.execution_task_id in task_ids
+        ]
         artifact_ids = {relation.evidence_artifact_id for relation in task_artifact}
-        evidence_raw = [relation for relation in graph["evidence_raw_findings"] if relation.evidence_artifact_id in artifact_ids]
+        evidence_raw = [
+            relation
+            for relation in graph["evidence_raw_findings"]
+            if relation.evidence_artifact_id in artifact_ids
+        ]
         raw_ids = {relation.raw_finding_id for relation in evidence_raw}
-        raw_norm = [relation for relation in graph["raw_normalized_findings"] if relation.raw_finding_id in raw_ids]
+        raw_norm = [
+            relation
+            for relation in graph["raw_normalized_findings"]
+            if relation.raw_finding_id in raw_ids
+        ]
         normalized_ids = {relation.normalized_finding_id for relation in raw_norm}
-        norm_gate = [relation for relation in graph["normalized_finding_gate_decisions"] if relation.normalized_finding_id in normalized_ids]
+        norm_gate = [
+            relation
+            for relation in graph["normalized_finding_gate_decisions"]
+            if relation.normalized_finding_id in normalized_ids
+        ]
         gate_ids = {relation.gate_decision_id for relation in norm_gate}
 
         missing = self._missing_for_row(item_id, req_tp, tp_tc, tc_task, task_artifact)
@@ -1446,55 +1772,111 @@ class TraceabilityService:
             requirementItem={
                 "id": item_id,
                 "requirementItemId": item.get("requirementItemId") or item_id,
-                "requirementVersionId": item.get("requirementVersionId") or str(requirement_version_id),
+                "requirementVersionId": item.get("requirementVersionId")
+                or str(requirement_version_id),
                 "text": item["text"],
                 "index": item["index"],
                 "metadata": item["metadata"],
             },
-            testPoints=[self._serialize_asset(asset) for asset in self._load_many(TestAsset, test_point_ids)],
-            testCases=[self._serialize_asset(asset) for asset in self._load_many(TestAsset, test_case_ids)],
-            executionTasks=[self._serialize_task(task) for task in self._load_many(ExecutionTask, task_ids)],
-            evidenceArtifacts=[self._serialize_artifact(artifact) for artifact in self._load_many(ExecutionArtifact, artifact_ids)],
-            rawFindings=[self._serialize_raw_finding(raw) for raw in self._load_many(RawFindingRecord, raw_ids)],
-            normalizedFindings=[self._serialize_finding(finding) for finding in normalized_findings],
-            gateImpact=[self._serialize_gate(gate) for gate in self._load_many(GateDecision, gate_ids)],
+            testPoints=[
+                self._serialize_asset(asset) for asset in self._load_many(TestAsset, test_point_ids)
+            ],
+            testCases=[
+                self._serialize_asset(asset) for asset in self._load_many(TestAsset, test_case_ids)
+            ],
+            executionTasks=[
+                self._serialize_task(task) for task in self._load_many(ExecutionTask, task_ids)
+            ],
+            evidenceArtifacts=[
+                self._serialize_artifact(artifact)
+                for artifact in self._load_many(ExecutionArtifact, artifact_ids)
+            ],
+            rawFindings=[
+                self._serialize_raw_finding(raw)
+                for raw in self._load_many(RawFindingRecord, raw_ids)
+            ],
+            normalizedFindings=[
+                self._serialize_finding(finding) for finding in normalized_findings
+            ],
+            gateImpact=[
+                self._serialize_gate(gate) for gate in self._load_many(GateDecision, gate_ids)
+            ],
             coverageStatus=coverage_status,
             riskStatus=risk_status,
             missingLinks=missing,
         )
 
-    def _missing_for_row(self, item_id: str, req_tp: list[Any], tp_tc: list[Any], tc_task: list[Any], task_artifact: list[Any]) -> list[MissingLink]:
+    def _missing_for_row(
+        self,
+        item_id: str,
+        req_tp: list[Any],
+        tp_tc: list[Any],
+        tc_task: list[Any],
+        task_artifact: list[Any],
+    ) -> list[MissingLink]:
         missing: list[MissingLink] = []
         if not req_tp:
-            missing.append(_missing("MISSING_TEST_POINT", "requirement_item", item_id, "test_point"))
+            missing.append(
+                _missing("MISSING_TEST_POINT", "requirement_item", item_id, "test_point")
+            )
             return missing
         if not tp_tc:
-            missing.append(_missing("MISSING_TEST_CASE", "test_point", str(req_tp[0].test_point_id), "test_case"))
+            missing.append(
+                _missing(
+                    "MISSING_TEST_CASE", "test_point", str(req_tp[0].test_point_id), "test_case"
+                )
+            )
             return missing
         if not tc_task:
-            missing.append(_missing("MISSING_EXECUTION_TASK", "test_case", str(tp_tc[0].test_case_id), "execution_task"))
+            missing.append(
+                _missing(
+                    "MISSING_EXECUTION_TASK",
+                    "test_case",
+                    str(tp_tc[0].test_case_id),
+                    "execution_task",
+                )
+            )
             return missing
         if not task_artifact:
-            missing.append(_missing("MISSING_EVIDENCE", "execution_task", str(tc_task[0].execution_task_id), "evidence_artifact"))
+            missing.append(
+                _missing(
+                    "MISSING_EVIDENCE",
+                    "execution_task",
+                    str(tc_task[0].execution_task_id),
+                    "evidence_artifact",
+                )
+            )
         return missing
 
-    def _coverage_status(self, req_tp: list[Any], tp_tc: list[Any], tc_task: list[Any], task_artifact: list[Any]) -> CoverageStatus:
+    def _coverage_status(
+        self, req_tp: list[Any], tp_tc: list[Any], tc_task: list[Any], task_artifact: list[Any]
+    ) -> CoverageStatus:
         if req_tp and tp_tc and tc_task and task_artifact:
             return CoverageStatus.COVERED
         if req_tp or tp_tc or tc_task or task_artifact:
             return CoverageStatus.PARTIAL
         return CoverageStatus.NOT_COVERED
 
-    def _risk_status(self, coverage_status: CoverageStatus, missing: list[MissingLink], findings: list[Finding]) -> CoverageRiskStatus:
+    def _risk_status(
+        self, coverage_status: CoverageStatus, missing: list[MissingLink], findings: list[Finding]
+    ) -> CoverageRiskStatus:
         if coverage_status == CoverageStatus.BLOCKED:
             return CoverageRiskStatus.BLOCKED
         severities = {finding.severity for finding in findings}
         missing_severities = {link.severity for link in missing if link.blocksCoverage}
         if FindingSeverity.CRITICAL in severities or FindingSeverity.CRITICAL in missing_severities:
             return CoverageRiskStatus.CRITICAL
-        if FindingSeverity.HIGH in severities or FindingSeverity.HIGH in missing_severities or coverage_status == CoverageStatus.NOT_COVERED:
+        if (
+            FindingSeverity.HIGH in severities
+            or FindingSeverity.HIGH in missing_severities
+            or coverage_status == CoverageStatus.NOT_COVERED
+        ):
             return CoverageRiskStatus.HIGH
-        if FindingSeverity.MEDIUM in severities or FindingSeverity.MEDIUM in missing_severities or coverage_status == CoverageStatus.PARTIAL:
+        if (
+            FindingSeverity.MEDIUM in severities
+            or FindingSeverity.MEDIUM in missing_severities
+            or coverage_status == CoverageStatus.PARTIAL
+        ):
             return CoverageRiskStatus.MEDIUM
         if coverage_status == CoverageStatus.UNKNOWN:
             return CoverageRiskStatus.UNKNOWN
@@ -1517,26 +1899,36 @@ class TraceabilityService:
         ]
         test_points = {relation.test_point_id for relation in requirement_test_point_relations}
         test_point_case_relations = [
-            relation for relation in graph["test_point_test_cases"] if relation.test_point_id in test_points
+            relation
+            for relation in graph["test_point_test_cases"]
+            if relation.test_point_id in test_points
         ]
         test_points_with_cases = {relation.test_point_id for relation in test_point_case_relations}
         test_cases = {relation.test_case_id for relation in test_point_case_relations}
         test_case_task_relations = [
-            relation for relation in graph["test_case_execution_tasks"] if relation.test_case_id in test_cases
+            relation
+            for relation in graph["test_case_execution_tasks"]
+            if relation.test_case_id in test_cases
         ]
         test_cases_with_tasks = {relation.test_case_id for relation in test_case_task_relations}
         tasks = {relation.execution_task_id for relation in test_case_task_relations}
         task_artifact_relations = [
-            relation for relation in graph["execution_task_evidence_artifacts"] if relation.execution_task_id in tasks
+            relation
+            for relation in graph["execution_task_evidence_artifacts"]
+            if relation.execution_task_id in tasks
         ]
         tasks_with_evidence = {relation.execution_task_id for relation in task_artifact_relations}
         artifacts = {relation.evidence_artifact_id for relation in task_artifact_relations}
         evidence_raw_relations = [
-            relation for relation in graph["evidence_raw_findings"] if relation.evidence_artifact_id in artifacts
+            relation
+            for relation in graph["evidence_raw_findings"]
+            if relation.evidence_artifact_id in artifacts
         ]
         raw_ids = {relation.raw_finding_id for relation in evidence_raw_relations}
         raw_normalized_relations = [
-            relation for relation in graph["raw_normalized_findings"] if relation.raw_finding_id in raw_ids
+            relation
+            for relation in graph["raw_normalized_findings"]
+            if relation.raw_finding_id in raw_ids
         ]
         normalized = {relation.normalized_finding_id for relation in raw_normalized_relations}
         traceable_normalized = {
@@ -1551,9 +1943,13 @@ class TraceabilityService:
         ]
         gates_with_findings = {relation.gate_decision_id for relation in normalized_gate_relations}
         gate_replay_relations = [
-            relation for relation in graph["gate_decision_replay_exports"] if relation.gate_decision_id in gates_with_findings
+            relation
+            for relation in graph["gate_decision_replay_exports"]
+            if relation.gate_decision_id in gates_with_findings
         ]
-        gates = gates_with_findings | {relation.gate_decision_id for relation in gate_replay_relations}
+        gates = gates_with_findings | {
+            relation.gate_decision_id for relation in gate_replay_relations
+        }
         missing = [link for row in rows for link in row.missingLinks]
         status = self._aggregate_status(rows)
         return CoverageSummaryResponse(
@@ -1598,9 +1994,15 @@ class TraceabilityService:
         if risk_status is not None:
             filtered = [row for row in filtered if row.riskStatus == risk_status]
         if missing_link_code is not None:
-            filtered = [row for row in filtered if any(link.code == missing_link_code for link in row.missingLinks)]
+            filtered = [
+                row
+                for row in filtered
+                if any(link.code == missing_link_code for link in row.missingLinks)
+            ]
         if requirement_item_id is not None:
-            filtered = [row for row in filtered if row.requirementItem.get("id") == requirement_item_id]
+            filtered = [
+                row for row in filtered if row.requirementItem.get("id") == requirement_item_id
+            ]
         return filtered
 
     def _load_many(self, model: type, ids: set[Any]) -> list[Any]:
@@ -1630,19 +2032,43 @@ class TraceabilityService:
         return TraceabilityNode(type=node_type, id=str(node_id))
 
     def _serialize_asset(self, asset: TestAsset) -> dict[str, Any]:
-        return {"id": str(asset.id), "type": asset.asset_type, "title": asset.title, "status": asset.status}
+        return {
+            "id": str(asset.id),
+            "type": asset.asset_type,
+            "title": asset.title,
+            "status": asset.status,
+        }
 
     def _serialize_task(self, task: ExecutionTask) -> dict[str, Any]:
-        return {"id": str(task.id), "status": task.status.value, "runner": task.runner, "taskType": task.task_type}
+        return {
+            "id": str(task.id),
+            "status": task.status.value,
+            "runner": task.runner,
+            "taskType": task.task_type,
+        }
 
     def _serialize_artifact(self, artifact: ExecutionArtifact) -> dict[str, Any]:
-        return {"id": str(artifact.id), "artifactType": artifact.artifact_type.value, "uri": artifact.uri}
+        return {
+            "id": str(artifact.id),
+            "artifactType": artifact.artifact_type.value,
+            "uri": artifact.redacted_uri or artifact.uri,
+        }
 
     def _serialize_raw_finding(self, finding: RawFindingRecord) -> dict[str, Any]:
-        return {"id": str(finding.id), "severity": finding.severity, "title": finding.title, "dedupeKey": finding.dedupe_key}
+        return {
+            "id": str(finding.id),
+            "severity": finding.severity,
+            "title": finding.title,
+            "dedupeKey": finding.dedupe_key,
+        }
 
     def _serialize_finding(self, finding: Finding) -> dict[str, Any]:
-        return {"id": str(finding.id), "severity": finding.severity.value, "title": finding.title, "dedupeKey": finding.dedupe_key}
+        return {
+            "id": str(finding.id),
+            "severity": finding.severity.value,
+            "title": finding.title,
+            "dedupeKey": finding.dedupe_key,
+        }
 
     def _serialize_gate(self, gate: GateDecision) -> dict[str, Any]:
         return {
@@ -1656,7 +2082,9 @@ class TraceabilityService:
 
 
 def canonical_hash(payload: dict[str, Any]) -> str:
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str)
+    canonical = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str
+    )
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 

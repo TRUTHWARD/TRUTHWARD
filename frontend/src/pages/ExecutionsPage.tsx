@@ -3,8 +3,10 @@ import { useState } from "react";
 import { createRegressionPresentation, type RegressionPresentation } from "../lib/api";
 
 import { SectionCard } from "../components/SectionCard";
-import { Locale, t } from "../i18n";
-import type { ExecutionTaskArtifact, ExecutionTaskLog, ExecutionTaskMetric, ExecutionTaskRecord, ExternalIssueLink } from "../lib/api";
+import { EvidenceReferenceList } from "../components/EvidenceReferenceList";
+import { Locale, t, userFacingError } from "../i18n";
+import type { ExecutionFinding, ExecutionTaskArtifact, ExecutionTaskLog, ExecutionTaskMetric, ExecutionTaskRecord } from "../lib/api";
+import { findingEvidenceReferences } from "../lib/findingEvidence";
 import {
   displayArtifactLabel,
   displayDomainLabel,
@@ -24,20 +26,14 @@ type ExecutionProgress = {
   progress: number;
   currentTask: string | null;
   completedTasks: number;
+  failedTasks: number;
+  cancelledTasks: number;
+  terminalTasks: number;
   totalTasks: number;
 } | null;
 
-type FindingItem = {
-  id: string;
-  executionId: string;
-  taskId: string | null;
-  domain: string;
-  severity: string;
-  source: string;
-  title: string;
-  summary: string;
-  externalIssueLink: ExternalIssueLink | null;
-};
+type FindingItem = Pick<ExecutionFinding, "id" | "executionId" | "taskId" | "domain" | "severity" | "source" | "title" | "summary" | "externalIssueLink">
+  & Partial<Pick<ExecutionFinding, "status" | "category" | "description" | "evidenceRef" | "confidence" | "dedupeKey" | "rawRef" | "location" | "evidence" | "comment" | "metadata">>;
 
 type HealingSuggestion = {
   taskId: string | null;
@@ -108,6 +104,25 @@ export function ExecutionsPage({
   const selectedTaskFindings = selectedTaskId ? findings.filter((finding) => finding.taskId === selectedTaskId) : [];
   const runtime = selectedExecution?.runtime ?? null;
   const currentPresentation = presentation?.executionId === selectedExecution?.id ? presentation?.data : null;
+  const executionIsTerminal = progress
+    ? progress.totalTasks > 0 && progress.terminalTasks === progress.totalTasks
+    : false;
+  const selectedTaskReasonCode = selectedTask?.resultPayload.runnerMetadata
+    && typeof selectedTask.resultPayload.runnerMetadata === "object"
+    ? (selectedTask.resultPayload.runnerMetadata as Record<string, unknown>).reasonCode
+    : null;
+  const selectedTaskIsSimulatedSecurity = selectedTask?.domain === "security"
+    && selectedTask.resultPayload.executionMode === "simulated"
+    && selectedTask.resultPayload.actualExecution === false;
+  const selectedTaskError = selectedTask?.errorMessage
+    ? selectedTaskIsSimulatedSecurity
+      ? t(locale, "simulatedSecurityResultNotActualEvidence")
+      : selectedTask.resultPayload.toolStatus === "unavailable"
+        ? selectedTaskReasonCode === "SECURITY_SCAN_TARGET_UNAVAILABLE"
+          ? t(locale, "securityScanTargetUnavailable")
+          : t(locale, "securityScanRunnerUnavailable")
+      : userFacingError(locale, new Error(selectedTask.errorMessage), "executionTaskDetailLoadFailed")
+    : null;
   const generatePresentation = async () => {
     if (!selectedExecution || !canGenerateRegressionPresentation) return;
     const executionId = selectedExecution.id;
@@ -116,7 +131,7 @@ export function ExecutionsPage({
     try {
       setPresentation({ executionId, data: await createRegressionPresentation(executionId) });
     } catch (error) {
-      setPresentationError(error instanceof Error ? error.message : t(locale, "communityRegressionFailed"));
+      setPresentationError(userFacingError(locale, error, "communityRegressionFailed"));
     } finally {
       setPresenting(false);
     }
@@ -126,7 +141,7 @@ export function ExecutionsPage({
     try {
       await action();
     } catch (issueError) {
-      setActionError(issueError instanceof Error ? issueError.message : t(locale, "issueTrackerSyncFailed"));
+      setActionError(userFacingError(locale, issueError, "issueTrackerSyncFailed"));
     }
   };
 
@@ -196,8 +211,13 @@ export function ExecutionsPage({
                 <div className="progress-panel">
                   <div className="progress-meta">
                     <strong>{progress.progress}%</strong>
-                    <span>{progress.completedTasks}/{progress.totalTasks} {t(locale, "taskCount")}</span>
-                    <span>{progress.currentTask ?? t(locale, "waitingForNextTask")}</span>
+                    <span>{progress.terminalTasks}/{progress.totalTasks} {t(locale, "tasksFinished")}</span>
+                    <span>{progress.currentTask ?? (executionIsTerminal ? t(locale, "executionFinished") : t(locale, "waitingForNextTask"))}</span>
+                  </div>
+                  <div className="chip-row">
+                    <span className="tag">{t(locale, "tasksSucceeded")} {progress.completedTasks}</span>
+                    <span className="tag">{t(locale, "tasksFailed")} {progress.failedTasks}</span>
+                    <span className="tag">{t(locale, "tasksCancelled")} {progress.cancelledTasks}</span>
                   </div>
                   <div className="progress-bar">
                     <div className="progress-bar__value" style={{ width: `${progress.progress}%` }} />
@@ -212,7 +232,7 @@ export function ExecutionsPage({
                     <div className="stats-grid stats-grid--compact">
                       <div className="stat-tile">
                         <span>{t(locale, "tasks")}</span>
-                        <strong>{runtime.counts.completedTaskCount}/{runtime.counts.taskCount}</strong>
+                        <strong>{runtime.counts.terminalTaskCount}/{runtime.counts.taskCount}</strong>
                       </div>
                       <div className="stat-tile">
                         <span>{t(locale, "artifactRefs")}</span>
@@ -238,7 +258,7 @@ export function ExecutionsPage({
                       </div>
                       <div className="inline-status">
                         <strong>{t(locale, "gate")}</strong>
-                        <span>{runtime.readiness.gateCompleted ? t(locale, "yes") : runtime.readiness.gateReady ? t(locale, "gateReady") : t(locale, "no")}</span>
+                        <span>{runtime.readiness.gateCompleted ? t(locale, "yes") : runtime.readiness.allTasksTerminal && runtime.readiness.normalizeCompleted ? t(locale, "gateNotExecuted") : runtime.readiness.gateReady ? t(locale, "gateReady") : t(locale, "no")}</span>
                       </div>
                     </div>
                   </div>
@@ -283,7 +303,7 @@ export function ExecutionsPage({
                           <strong>{displayDomainLabel(locale, task.domain)}</strong>
                           <p>{task.runner} {separator} {task.taskType}</p>
                         </div>
-                        <span>{displayStatus(locale, task.status)}{task.retryCount > 0 ? ` ${separator} ${t(locale, "retry")} ${task.retryCount}` : ""}</span>
+                        <span>{displayStatus(locale, task.resultPayload.toolStatus === "unavailable" ? "unavailable" : task.status)}{task.retryCount > 0 ? ` ${separator} ${t(locale, "retry")} ${task.retryCount}` : ""}</span>
                       </button>
                     ))}
                     {tasks.length === 0 ? <p className="empty-copy">{t(locale, "noExecutionTask")}</p> : null}
@@ -338,14 +358,14 @@ export function ExecutionsPage({
                       <div className="detail-banner">
                         <div>
                           <strong>{selectedTask.taskType}</strong>
-                          <p>{selectedTask.runner} {separator} {displayDomainLabel(locale, selectedTask.domain)} {separator} {displayStatus(locale, selectedTask.status)}</p>
+                          <p>{selectedTask.runner} {separator} {displayDomainLabel(locale, selectedTask.domain)} {separator} {displayStatus(locale, selectedTask.resultPayload.toolStatus === "unavailable" ? "unavailable" : selectedTask.status)}</p>
                         </div>
                         <div className="chip-row">
                           <span className="tag">{t(locale, "stage")} {selectedTask.stage ? displayStageLabel(locale, selectedTask.stage) : t(locale, "none")}</span>
                           <span className="tag">{t(locale, "retry")} {selectedTask.retryCount}</span>
                         </div>
                       </div>
-                      {selectedTask.errorMessage ? <p className="error-copy">{selectedTask.errorMessage}</p> : null}
+                      {selectedTaskError ? <p className="error-copy">{selectedTaskError}</p> : null}
                       <details className="json-block">
                         <summary>{t(locale, "taskResultPayload")}</summary>
                         <pre>{JSON.stringify(selectedTask.resultPayload, null, 2)}</pre>
@@ -370,24 +390,33 @@ export function ExecutionsPage({
                     ))}
                     {selectedTaskFindings.length === 0 ? <p className="empty-copy">{t(locale, "noTaskFindings")}</p> : null}
                   </div>
+                  {selectedTaskFindings.length ? (
+                    <EvidenceReferenceList
+                      emptyLabel={t(locale, "evidencePreviewUnavailable")}
+                      label={t(locale, "evidenceRefs")}
+                      locale={locale}
+                      refs={selectedTaskFindings.flatMap(findingEvidenceReferences)}
+                    />
+                  ) : null}
                 </div>
               </div>
 
               <div className="detail-grid">
                 <div>
                   <h3>{t(locale, "artifacts")}</h3>
-                  <div className="stack-list">
-                    {selectedTaskArtifacts.map((artifact) => (
-                      <div className="stack-row stack-row--dense" key={artifact.id}>
-                        <div>
-                          <strong>{displayArtifactLabel(locale, artifact.artifactType)}</strong>
-                          <p>{artifact.summary ?? artifact.uri}</p>
-                        </div>
-                        <span>{displayStatus(locale, artifact.redactionStatus)}</span>
-                      </div>
-                    ))}
-                    {selectedTaskArtifacts.length === 0 ? <p className="empty-copy">{t(locale, "noTaskArtifacts")}</p> : null}
-                  </div>
+                  <EvidenceReferenceList
+                    emptyLabel={t(locale, "noTaskArtifacts")}
+                    locale={locale}
+                    maxVisible={5}
+                    refs={selectedTaskArtifacts.map((artifact) => ({
+                      type: artifact.artifactType || "artifact",
+                      ref: artifact.redactedUri ?? artifact.uri,
+                      id: artifact.id,
+                      title: displayArtifactLabel(locale, artifact.artifactType),
+                      summary: artifact.summary,
+                      redactionStatus: artifact.redactionStatus,
+                    }))}
+                  />
                 </div>
 
                 <div>

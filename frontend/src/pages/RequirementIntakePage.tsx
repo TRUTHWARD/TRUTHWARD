@@ -1,15 +1,21 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
-import { Locale, t } from "../i18n";
+import { EvidenceReferenceList, type EvidenceReferenceLike } from "../components/EvidenceReferenceList";
+import { readRouteSelection } from "../lib/routeSelection";
+import { Locale, t, userFacingError } from "../i18n";
 import {
+  ApiRequestError,
   confirmRequirementIntakeBatch,
   confirmRequirementIntakePreview,
   createRequirementIntakeBatch,
   createRequirementIntakeDraft,
+  createRequirementLibraryPipeline,
   createRequirementIntakePreview,
   fetchRequirementPipeline,
   fetchRequirementIntakeBatches,
+  fetchRequirementIntakeDraft,
+  fetchRequirementIntakePreview,
   fetchRequirementLibrary,
   retryRequirementIntakeBatchSource,
   uploadRequirementIntakeBatchSources,
@@ -90,18 +96,21 @@ function compactJson(value: unknown) {
 export function RequirementIntakePage({ connectorBindings, currentUser, environments, locale, onPipelineConfirmed, onViewPipeline, projects }: RequirementIntakePageProps) {
   const canManageRequirements = currentUser?.capabilities.includes("requirements.manage") ?? false;
   const canReadRequirements = currentUser?.capabilities.includes("requirements.read") ?? false;
+  const riskOptions = currentUser?.edition === "community" ? RISK_OPTIONS.filter((risk) => risk !== "high") : RISK_OPTIONS;
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const ocrUploadInputRef = useRef<HTMLInputElement | null>(null);
   const batchUploadInputRef = useRef<HTMLInputElement | null>(null);
   const [sourceMode, setSourceMode] = useState<SourceMode>("paste");
-  const [activeWorkbenchView, setActiveWorkbenchView] = useState<WorkbenchView>("sources");
+  const [activeWorkbenchView, setActiveWorkbenchView] = useState<WorkbenchView>(readRouteSelection("requirementVersionId") ? "requirement_items" : "sources");
   const [libraryProjection, setLibraryProjection] = useState<RequirementLibraryProjection | null>(null);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
+  const [selectedLibraryItemId, setSelectedLibraryItemId] = useState<string | null>(null);
   const [libraryFilters, setLibraryFilters] = useState({
-    projectId: "",
+    projectId: readRouteSelection("projectId") ?? "",
     environmentId: "",
+    requirementVersionId: readRouteSelection("requirementVersionId") ?? "",
     sourceType: "",
     status: "",
     keyword: "",
@@ -199,6 +208,7 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
     void fetchRequirementLibrary({
       projectId: libraryFilters.projectId || null,
       environmentId: libraryFilters.environmentId || null,
+      requirementVersionId: libraryFilters.requirementVersionId || null,
       sourceType: libraryFilters.sourceType || null,
       status: libraryFilters.status || null,
       keyword: libraryFilters.keyword || null,
@@ -213,7 +223,7 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
       .catch((loadError) => {
         if (!cancelled) {
           setLibraryProjection(null);
-          setLibraryError(loadError instanceof Error ? loadError.message : t(locale, "requirementLibraryLoadFailed"));
+          setLibraryError(userFacingError(locale, loadError, "requirementLibraryLoadFailed"));
         }
       })
       .finally(() => {
@@ -231,6 +241,7 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
     libraryFilters.environmentId,
     libraryFilters.keyword,
     libraryFilters.projectId,
+    libraryFilters.requirementVersionId,
     libraryFilters.sourceType,
     libraryFilters.status,
     libraryRefreshToken,
@@ -261,6 +272,56 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
     };
   }, [canManageRequirements, currentUser, libraryRefreshToken]);
 
+  function loadDraftIntoWorkbench(loadedDraft: RequirementIntakeDraft) {
+    setDraft(loadedDraft);
+    setSourceMode(loadedDraft.sourceType);
+    setForm((current) => ({
+      ...current,
+      name: loadedDraft.name,
+      sourceRef: loadedDraft.sourceRef,
+      sourceUri: loadedDraft.sourceUri ?? "",
+      rawContent: loadedDraft.rawContent,
+      environment: loadedDraft.environment,
+      projectId: loadedDraft.projectId ?? "",
+      environmentId: loadedDraft.environmentId ?? "",
+      domains: loadedDraft.domains,
+      riskLevel: loadedDraft.riskLevel,
+    }));
+  }
+
+  async function restoreDuplicateFromError(actionError: unknown) {
+    if (!(actionError instanceof ApiRequestError) || actionError.code !== "REQUIREMENT_INTAKE_DUPLICATE") {
+      return;
+    }
+    setLibraryRefreshToken((current) => current + 1);
+    const detail = actionError.detail && typeof actionError.detail === "object" && !Array.isArray(actionError.detail)
+      ? actionError.detail as Record<string, unknown>
+      : {};
+    const draftId = typeof detail.draftId === "string" ? detail.draftId : null;
+    const previewId = typeof detail.previewId === "string" ? detail.previewId : null;
+    const pipelineId = typeof detail.linkedPipelineId === "string" ? detail.linkedPipelineId : null;
+    if (draftId) {
+      loadDraftIntoWorkbench(await fetchRequirementIntakeDraft(draftId));
+      setSelectedLibraryItemId(`requirement-intake-draft:${draftId}`);
+    }
+    if (previewId) {
+      const loadedPreview = await fetchRequirementIntakePreview(previewId);
+      setPreview(loadedPreview);
+      setSelectedRequirementItemIds(
+        loadedPreview.requirementItems.filter((item) => item.selectedByDefault).map((item) => item.itemId),
+      );
+      setSelectedLibraryItemId(`requirement-intake-preview:${previewId}`);
+    } else {
+      setPreview(null);
+      setSelectedRequirementItemIds([]);
+    }
+    if (pipelineId) {
+      setConfirmedPipeline(await fetchRequirementPipeline(pipelineId));
+    } else {
+      setConfirmedPipeline(null);
+    }
+  }
+
   async function runAction(action: () => Promise<void>, successKey: Parameters<typeof t>[1]) {
     setSubmitting(true);
     setError(null);
@@ -270,11 +331,98 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
       setLibraryRefreshToken((current) => current + 1);
       setMessage(t(locale, successKey));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : t(locale, "requirementIntakeActionFailed"));
+      try {
+        await restoreDuplicateFromError(actionError);
+      } catch {
+        // The duplicate response remains actionable through the refreshed library even if detail loading fails.
+      }
+      setError(userFacingError(locale, actionError, "requirementIntakeActionFailed"));
     } finally {
       setSubmitting(false);
     }
   }
+
+  const selectLibraryItem = (item: RequirementLibraryItem) => {
+    if (!canReadRequirements || submitting) {
+      return;
+    }
+    setSelectedLibraryItemId(item.itemId);
+    if (item.linkedPipelineId) {
+      onViewPipeline(item.linkedPipelineId);
+      return;
+    }
+    if (!canManageRequirements) {
+      return;
+    }
+    void runAction(async () => {
+      if (item.itemType === "requirement_intake_draft" && item.intakeDraftId) {
+        const loadedDraft = await fetchRequirementIntakeDraft(item.intakeDraftId);
+        loadDraftIntoWorkbench(loadedDraft);
+        const previewItem = libraryItems
+          .filter((candidate) => (
+            candidate.itemType === "requirement_intake_preview"
+            && candidate.intakeDraftId === item.intakeDraftId
+            && candidate.status !== "superseded"
+            && candidate.intakePreviewId
+          ))
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+        if (previewItem?.intakePreviewId) {
+          const loadedPreview = await fetchRequirementIntakePreview(previewItem.intakePreviewId);
+          setPreview(loadedPreview);
+          setSelectedRequirementItemIds(
+            loadedPreview.requirementItems.filter((candidate) => candidate.selectedByDefault).map((candidate) => candidate.itemId),
+          );
+          if (loadedPreview.linkedPipelineId) {
+            const pipeline = await fetchRequirementPipeline(loadedPreview.linkedPipelineId);
+            setConfirmedPipeline(pipeline);
+            await onPipelineConfirmed(pipeline);
+          } else {
+            setConfirmedPipeline(null);
+          }
+        } else {
+          setPreview(null);
+          setSelectedRequirementItemIds([]);
+          setConfirmedPipeline(null);
+        }
+        return;
+      }
+      if (item.itemType === "requirement_intake_preview" && item.intakePreviewId) {
+        const loadedPreview = await fetchRequirementIntakePreview(item.intakePreviewId);
+        const loadedDraft = await fetchRequirementIntakeDraft(loadedPreview.draftId);
+        loadDraftIntoWorkbench(loadedDraft);
+        setPreview(loadedPreview);
+        setSelectedRequirementItemIds(
+          loadedPreview.requirementItems.filter((candidate) => candidate.selectedByDefault).map((candidate) => candidate.itemId),
+        );
+        setConfirmedPipeline(null);
+        return;
+      }
+      if (item.itemType === "requirement_version" && item.requirementVersionId) {
+        const pipeline = await createRequirementLibraryPipeline({
+          selectionMode: "requirement_version",
+          requirementVersionId: item.requirementVersionId,
+          metadata: { source: "requirement-library-workbench" },
+        });
+        setConfirmedPipeline(pipeline);
+        await onPipelineConfirmed(pipeline);
+        onViewPipeline(pipeline.orchestrationId);
+        return;
+      }
+      if (item.itemType === "requirement_item" && item.requirementVersionId && item.requirementItemId) {
+        const pipeline = await createRequirementLibraryPipeline({
+          selectionMode: "requirement_items",
+          requirementVersionId: item.requirementVersionId,
+          requirementItemIds: [item.requirementItemId],
+          metadata: { source: "requirement-library-workbench" },
+        });
+        setConfirmedPipeline(pipeline);
+        await onPipelineConfirmed(pipeline);
+        onViewPipeline(pipeline.orchestrationId);
+      }
+    }, item.itemType === "requirement_intake_draft" || item.itemType === "requirement_intake_preview"
+      ? "requirementLibraryItemLoaded"
+      : "requirementLibraryPipelineStarted");
+  };
 
   const submitDraft = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -391,7 +539,7 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
   };
 
   const generatePreview = () => {
-    if (!draft || !canManageRequirements) {
+    if (!draft || !canManageRequirements || draft.status === "confirmed") {
       return;
     }
     void runAction(async () => {
@@ -437,7 +585,7 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
         setMessage(t(locale, "requirementPipelineRefreshed"));
       })
       .catch((refreshError) => {
-        setError(refreshError instanceof Error ? refreshError.message : t(locale, "requirementIntakeActionFailed"));
+        setError(userFacingError(locale, refreshError, "requirementIntakeActionFailed"));
       })
       .finally(() => {
         setSubmitting(false);
@@ -711,7 +859,7 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
                           <td>{source.ordinal}. {source.sourceType}</td>
                           <td><span className="status-pill">{source.status}</span></td>
                           <td>{source.evidenceRefs.length} / {source.artifactRefs.length}</td>
-                          <td>{source.errorMessage ?? "-"}</td>
+                          <td>{source.errorMessage ? <span className="error-copy">{userFacingError(locale, new Error(source.errorMessage), "requirementIntakeActionFailed")}</span> : "-"}</td>
                           <td>
                             {source.status === "failed" ? (
                               <button className="secondary-button" disabled={!canManageRequirements || submitting || source.sourceType === "upload"} onClick={() => retryBatchSource(source.batchSourceId)} type="button">
@@ -751,7 +899,7 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
               <label className="form-field">
                 {t(locale, "project")}
                 <select
-                  onChange={(event) => setLibraryFilters((current) => ({ ...current, projectId: event.target.value, environmentId: "" }))}
+                  onChange={(event) => setLibraryFilters((current) => ({ ...current, projectId: event.target.value, environmentId: "", requirementVersionId: "" }))}
                   value={libraryFilters.projectId}
                 >
                   <option value="">{t(locale, "allProjects")}</option>
@@ -802,6 +950,11 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
               </button>
             </div>
 
+            {libraryFilters.requirementVersionId ? <div className="notice notice--info">
+              {t(locale, "requirementVersionId")}: <code>{libraryFilters.requirementVersionId}</code>{" "}
+              <button className="secondary-button" onClick={() => setLibraryFilters((current) => ({ ...current, requirementVersionId: "" }))} type="button">{t(locale, "changeSetClearVersionFilter")}</button>
+            </div> : null}
+
             <div className="stats-grid stats-grid--compact">
               <Metric label={t(locale, "sources")} value={String(libraryProjection?.summary.returnedCount ?? 0)} />
               <Metric label={t(locale, "draftsPreviews")} value={String((libraryProjection?.summary.intakeDraftCount ?? 0) + (libraryProjection?.summary.intakePreviewCount ?? 0))} />
@@ -829,7 +982,14 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
             {libraryLoading ? <div className="empty-state">{t(locale, "requirementLibraryLoading")}</div> : null}
             {libraryError ? <div className="error-banner"><strong>{t(locale, "errorState")}</strong><p>{libraryError}</p></div> : null}
             {!libraryLoading && !libraryError ? (
-              <WorkbenchTable items={workbenchItems} locale={locale} />
+              <WorkbenchTable
+                canManageRequirements={canManageRequirements}
+                items={workbenchItems}
+                locale={locale}
+                onSelectItem={selectLibraryItem}
+                selectedItemId={selectedLibraryItemId}
+                submitting={submitting}
+              />
             ) : null}
           </>
         ) : null}
@@ -935,7 +1095,7 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
                 onChange={(event) => setForm((current) => ({ ...current, riskLevel: event.target.value }))}
                 value={form.riskLevel}
               >
-                {RISK_OPTIONS.map((risk) => (
+                {riskOptions.map((risk) => (
                   <option key={risk} value={risk}>{risk}</option>
                 ))}
               </select>
@@ -1035,7 +1195,7 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
               </button>
               <button
                 className="secondary-button"
-                disabled={!canManageRequirements || submitting || !draft || draft.sourceType === "upload" || draft.sourceType === "ocr_upload"}
+                disabled={!canManageRequirements || submitting || !draft || draft.status === "confirmed"}
                 onClick={generatePreview}
                 type="button"
               >
@@ -1053,19 +1213,22 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
           {!preview ? <div className="empty-state">{t(locale, "noRequirementPreview")}</div> : null}
           {preview ? (
             <div className="detail-stack">
-              <ReadonlyRow label={t(locale, "sourceRef")} value={preview.sourceRef} />
-              {preview.sourceUri ? <ReadonlyRow label={t(locale, "sourceUri")} value={preview.sourceUri} /> : null}
               <ReadonlyRow label={t(locale, "sourceType")} value={t(locale, preview.sourceType)} />
               {preview.mimeType ? <ReadonlyRow label={t(locale, "mimeType")} value={preview.mimeType} /> : null}
               {preview.byteSize !== null ? <ReadonlyRow label={t(locale, "byteSize")} value={String(preview.byteSize)} /> : null}
-              <ReadonlyRow label={t(locale, "evidenceRefs")} value={String(preview.evidenceRefs.length)} />
               {preview.skillInvocationId ? <ReadonlyRow label={t(locale, "skillInvocation")} value={preview.skillInvocationId} /> : null}
               {preview.connectorCallRefs.length > 0 ? <ReadonlyRow label={t(locale, "connectorCalls")} value={String(preview.connectorCallRefs.length)} /> : null}
               <ReadonlyRow label={t(locale, "redactionStatus")} value={preview.redactionStatus} />
               {preview.ocr ? <ReadonlyRow label={t(locale, "ocrConfidence")} value={`${(preview.ocr.confidence * 100).toFixed(1)}%`} /> : null}
               {preview.ocr ? <ReadonlyRow label={t(locale, "ocrReviewStatus")} value={t(locale, preview.ocr.status as Parameters<typeof t>[1])} /> : null}
               {preview.ocr ? <ReadonlyRow label={t(locale, "ocrPagesAndLines")} value={`${preview.ocr.pageCount} / ${preview.ocr.lineCount}`} /> : null}
-              {preview.ocr?.traceRefs.length ? <ReadonlyRow label={t(locale, "traceRefs")} value={preview.ocr.traceRefs.join(", ")} /> : null}
+              <EvidenceReferenceList
+                emptyLabel={t(locale, "none")}
+                label={t(locale, "evidenceRefs")}
+                locale={locale}
+                maxVisible={6}
+                refs={requirementPreviewEvidence(preview)}
+              />
               {preview.ocr?.reviewRequired ? <div className="warning-banner">{t(locale, "ocrReviewRequiredNotice")}</div> : null}
               {preview.ocr?.blocked ? <div className="error-banner">{t(locale, "ocrBlockedNotice")}</div> : null}
               <ReadonlyRow label={t(locale, "requirementsList")} value={String(preview.requirements.length)} />
@@ -1125,7 +1288,7 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
               <ReadonlyRow label={t(locale, "requirementVersion")} value={confirmedPipeline.requirementVersionId ?? t(locale, "none")} />
               <ReadonlyRow label={t(locale, "plan")} value={confirmedPipeline.planId ?? t(locale, "none")} />
               <ReadonlyRow label={t(locale, "execution")} value={confirmedPipeline.executionId ?? t(locale, "none")} />
-              {confirmedPipeline.errorMessage ? <ReadonlyRow label={t(locale, "errorState")} value={confirmedPipeline.errorMessage} /> : null}
+              {confirmedPipeline.errorMessage ? <ReadonlyRow label={t(locale, "errorState")} tone="error" value={userFacingError(locale, new Error(confirmedPipeline.errorMessage), "requirementIntakeActionFailed")} /> : null}
             </div>
             <div className="button-row">
               <button className="secondary-button" disabled={submitting} onClick={refreshConfirmedPipeline} type="button">
@@ -1155,9 +1318,9 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ReadonlyRow({ label, value }: { label: string; value: string }) {
+function ReadonlyRow({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "error" }) {
   return (
-    <div className="inline-status">
+    <div className={tone === "error" ? "inline-status notice--error" : "inline-status"} role={tone === "error" ? "alert" : undefined}>
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
@@ -1229,7 +1392,21 @@ function PreviewRequirementSelection({
   );
 }
 
-function WorkbenchTable({ items, locale }: { items: RequirementLibraryItem[]; locale: Locale }) {
+function WorkbenchTable({
+  canManageRequirements,
+  items,
+  locale,
+  onSelectItem,
+  selectedItemId,
+  submitting,
+}: {
+  canManageRequirements: boolean;
+  items: RequirementLibraryItem[];
+  locale: Locale;
+  onSelectItem: (item: RequirementLibraryItem) => void;
+  selectedItemId: string | null;
+  submitting: boolean;
+}) {
   if (items.length === 0) {
     return <div className="empty-state">{t(locale, "noRequirementLibraryItems")}</div>;
   }
@@ -1245,11 +1422,12 @@ function WorkbenchTable({ items, locale }: { items: RequirementLibraryItem[]; lo
             <th>{t(locale, "linkedRequirementVersionId")}</th>
             <th>{t(locale, "evidenceRefs")}</th>
             <th>{t(locale, "created")}</th>
+            <th>{t(locale, "actions")}</th>
           </tr>
         </thead>
         <tbody>
           {items.map((item) => (
-            <tr key={item.itemId}>
+            <tr className={selectedItemId === item.itemId ? "data-table__row--selected" : ""} key={item.itemId}>
               <td>
                 <span className="status-pill">{libraryItemTypeLabel(locale, item.itemType)}</span>
               </td>
@@ -1268,12 +1446,32 @@ function WorkbenchTable({ items, locale }: { items: RequirementLibraryItem[]; lo
               <td>{item.linkedRequirementVersionId ?? t(locale, "none")}</td>
               <td>{evidenceRefsSummary(item.evidenceRefs, locale)}</td>
               <td>{new Date(item.createdAt).toLocaleString()}</td>
+              <td>
+                <button
+                  className="secondary-button"
+                  disabled={submitting || (!canManageRequirements && !item.linkedPipelineId)}
+                  onClick={() => onSelectItem(item)}
+                  type="button"
+                >
+                  {libraryItemActionLabel(locale, item)}
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
   );
+}
+
+function libraryItemActionLabel(locale: Locale, item: RequirementLibraryItem) {
+  if (item.linkedPipelineId) {
+    return t(locale, "viewInWorkflow");
+  }
+  if (item.itemType === "requirement_version" || item.itemType === "requirement_item") {
+    return t(locale, "enterPipeline");
+  }
+  return t(locale, "continueProcessing");
 }
 
 function libraryItemsForView(items: RequirementLibraryItem[], view: WorkbenchView) {
@@ -1330,6 +1528,38 @@ function evidenceRefsSummary(evidenceRefs: Array<Record<string, unknown>>, local
   const refId = String(firstRef.id ?? firstRef.ref ?? firstRef.storageRef ?? "");
   const firstLabel = refId ? `${refType}:${refId.slice(0, 12)}` : refType;
   return evidenceRefs.length === 1 ? firstLabel : `${firstLabel} +${evidenceRefs.length - 1}`;
+}
+
+function requirementPreviewEvidence(preview: RequirementIntakePreview): EvidenceReferenceLike[] {
+  const source = {
+    type: "requirement_source",
+    ref: preview.sourceRef,
+    contentHash: preview.contentHash,
+    redactionStatus: preview.redactionStatus,
+  };
+  const refs: EvidenceReferenceLike[] = [
+    source,
+    ...preview.evidenceRefs.map((item) => intakeReference(item, "evidence")),
+    ...preview.artifactRefs.map((item) => intakeReference(item, "artifact")),
+    ...preview.connectorCallRefs.map((item) => intakeReference(item, "connector_call")),
+    ...(preview.storageRef ? [{ type: "artifact", ref: preview.storageRef, contentHash: preview.contentHash }] : []),
+    ...(preview.traceId ? [{ type: "trace", ref: preview.traceId }] : []),
+    ...(preview.ocr?.traceRefs ?? []).map((ref) => ({ type: "trace", ref })),
+  ].filter((item): item is EvidenceReferenceLike => item !== null);
+  const seen = new Set<string>();
+  return refs.filter((item) => {
+    const ref = typeof item.ref === "string" ? item.ref : typeof item.id === "string" ? item.id : "";
+    if (!ref || seen.has(ref)) return false;
+    seen.add(ref);
+    return true;
+  });
+}
+
+function intakeReference(item: Record<string, unknown>, defaultType: string): EvidenceReferenceLike | null {
+  const ref = [item.ref, item.id, item.uri, item.artifactId, item.connectorCallId]
+    .find((value): value is string => typeof value === "string" && value.trim().length > 0);
+  if (!ref) return null;
+  return { ...item, type: typeof item.type === "string" ? item.type : defaultType, ref };
 }
 
 function draftModeTitle(locale: Locale, sourceMode: SourceMode) {

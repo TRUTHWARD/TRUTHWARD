@@ -79,11 +79,11 @@ import {
   type CurrentUser,
   type EnvironmentMutationPayload,
   type EnvironmentItem,
+  type ExecutionFinding,
   type ExecutionTaskArtifact,
   type ExecutionTaskLog,
   type ExecutionTaskMetric,
   type ExecutionTaskRecord,
-  type ExternalIssueLink,
   type ProjectMemberMutationPayload,
   type ProjectMutationPayload,
   type ProjectItem,
@@ -107,13 +107,17 @@ import {
   type WorkItemCreatePayload,
   type WorkItemStatus,
 } from "./lib/api";
-import { Locale, t } from "./i18n";
+import { Locale, t, userFacingError } from "./i18n";
+import { readRouteSelection } from "./lib/routeSelection";
 import {
   IS_OSS_PROFILE,
   isSectionIncludedInProductProfile,
   isSectionVisibleInProductProfile,
+  shouldLoadCoverageData,
+  shouldLoadCoverageProof,
 } from "./productProfile";
 import { ProjectSwitcher, type ProjectOption } from "./components/ProjectSwitcher";
+import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import {
   AccessControlPage,
   AdvancedVisualizationPage,
@@ -162,6 +166,7 @@ import { WorkflowPage } from "./pages/WorkflowPage";
 import { WorkflowRunsPage } from "./pages/WorkflowRunsPage";
 import { WorkItemsPage } from "./pages/WorkItemsPage";
 import { type ExecutionItem, type PlanItem, usePlatformStore } from "./store/platform";
+import { ALL_PROJECTS_ID, resolveAvailableProjectId } from "./lib/projectScope";
 
 type AppSection =
   | "workspace"
@@ -319,8 +324,6 @@ function navigationGroupForSection(sectionId: AppSection) {
   return navigationGroups.find((group) => group.sectionIds.includes(sectionId))?.id ?? "workspace";
 }
 
-const ALL_PROJECTS_ID = "all-projects";
-
 function hasUserCapability(user: CurrentUser | null, capability: string) {
   return user?.capabilities.includes(capability) ?? false;
 }
@@ -395,9 +398,9 @@ async function loadStructuredLogsForUser(
     return { accessState: "ready", projection: data, items: data.items, error: null };
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 403) {
-      return { accessState: "access-restricted", projection: null, items: [], error: error.message };
+      return { accessState: "access-restricted", projection: null, items: [], error: userFacingError(locale, error, "auditLogsLoadFailed") };
     }
-    return { accessState: "error", projection: null, items: [], error: error instanceof Error ? error.message : t(locale, "auditLogsLoadFailed") };
+    return { accessState: "error", projection: null, items: [], error: userFacingError(locale, error, "auditLogsLoadFailed") };
   }
 }
 
@@ -414,9 +417,9 @@ async function loadAuditLogProjectionForUser(
     return { accessState: "ready", projection: data, items: data.items, error: null };
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 403) {
-      return { accessState: "access-restricted", projection: null, items: [], error: error.message };
+      return { accessState: "access-restricted", projection: null, items: [], error: userFacingError(locale, error, "auditLogsLoadFailed") };
     }
-    return { accessState: "error", projection: null, items: [], error: error instanceof Error ? error.message : t(locale, "auditLogsLoadFailed") };
+    return { accessState: "error", projection: null, items: [], error: userFacingError(locale, error, "auditLogsLoadFailed") };
   }
 }
 
@@ -567,6 +570,8 @@ function App() {
   const [workflowRunsError, setWorkflowRunsError] = useState<string | null>(null);
   const [requirementPipelines, setRequirementPipelines] = useState<RequirementPipelineState[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
+  const selectedPipelineStatus = requirementPipelines.find((item) => item.orchestrationId === selectedPipelineId)?.status;
+  const selectedPipelineBlocked = requirementPipelines.find((item) => item.orchestrationId === selectedPipelineId)?.blocked;
   const [requirementClarifications, setRequirementClarifications] = useState<RequirementClarification[]>([]);
   const [requirementPipelineReplay, setRequirementPipelineReplay] = useState<Record<string, unknown> | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
@@ -586,6 +591,9 @@ function App() {
     progress: number;
     currentTask: string | null;
     completedTasks: number;
+    failedTasks: number;
+    cancelledTasks: number;
+    terminalTasks: number;
     totalTasks: number;
   } | null>(null);
   const [executionTasks, setExecutionTasks] = useState<
@@ -598,20 +606,7 @@ function App() {
   const [executionTaskMetrics, setExecutionTaskMetrics] = useState<ExecutionTaskMetric[]>([]);
   const [executionTaskDetailLoading, setExecutionTaskDetailLoading] = useState(false);
   const [executionTaskDetailError, setExecutionTaskDetailError] = useState<string | null>(null);
-  const [executionFindings, setExecutionFindings] = useState<
-    Array<{
-      id: string;
-      executionId: string;
-      taskId: string | null;
-      domain: string;
-      severity: string;
-      source: string;
-      title: string;
-      summary: string;
-      confidence: number | null;
-      externalIssueLink: ExternalIssueLink | null;
-    }>
-  >([]);
+  const [executionFindings, setExecutionFindings] = useState<ExecutionFinding[]>([]);
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [syncingIssueFindingId, setSyncingIssueFindingId] = useState<string | null>(null);
   const [executionHealing, setExecutionHealing] = useState<
@@ -861,7 +856,7 @@ function App() {
         setSelectedExecutionId(executionId);
       }
     } catch (projectionError) {
-      setWorkflowRunsError(projectionError instanceof Error ? projectionError.message : t(locale, "workflowRunsLoadFailed"));
+      setWorkflowRunsError(userFacingError(locale, projectionError, "workflowRunsLoadFailed"));
     } finally {
       setWorkflowRunsLoading(false);
     }
@@ -881,6 +876,11 @@ function App() {
       if (pipeline.executionId) {
         setSelectedExecutionId(pipeline.executionId);
       }
+      if (["queued", "running"].includes(pipeline.status) && !pipeline.blocked) {
+        setRequirementClarifications([]);
+        setRequirementPipelineReplay(null);
+        return;
+      }
       const clarificationsData = pipeline.requirementVersionId
         ? await fetchRequirementClarifications(runId).catch(() => ({ items: [] }))
         : { items: [] };
@@ -898,7 +898,7 @@ function App() {
         })
         .catch(() => undefined);
     } catch (pipelineError) {
-      setWorkflowError(pipelineError instanceof Error ? pipelineError.message : t(locale, "workflowActionFailed"));
+      setWorkflowError(userFacingError(locale, pipelineError, "workflowActionFailed"));
     } finally {
       setWorkflowLoading(false);
     }
@@ -990,7 +990,7 @@ function App() {
       await refreshWorkflowCollections();
       await loadRequirementPipelineDetails(pipeline.orchestrationId);
     } catch (actionError) {
-      setWorkflowError(actionError instanceof Error ? actionError.message : t(locale, "workflowActionFailed"));
+      setWorkflowError(userFacingError(locale, actionError, "workflowActionFailed"));
       throw actionError;
     }
   };
@@ -1009,7 +1009,7 @@ function App() {
       await refreshWorkflowCollections();
       await loadRequirementPipelineDetails(pipeline.orchestrationId);
     } catch (actionError) {
-      setWorkflowError(actionError instanceof Error ? actionError.message : t(locale, "workflowActionFailed"));
+      setWorkflowError(userFacingError(locale, actionError, "workflowActionFailed"));
       throw actionError;
     }
   };
@@ -1023,8 +1023,12 @@ function App() {
     if (pipeline.executionId) {
       setSelectedExecutionId(pipeline.executionId);
     }
-    await refreshWorkflowCollections();
-    await loadRequirementPipelineDetails(pipeline.orchestrationId);
+    if (!["queued", "running"].includes(pipeline.status) || pipeline.blocked) {
+      if (!["queued", "running"].includes(pipeline.status) || pipeline.blocked) {
+        await refreshWorkflowCollections();
+        await loadRequirementPipelineDetails(pipeline.orchestrationId);
+      }
+    }
   };
 
   const handleRequirementIntakeViewPipeline = (pipelineId: string) => {
@@ -1039,7 +1043,7 @@ function App() {
       await refreshWorkflowCollections();
       await loadRequirementPipelineDetails(pipeline.orchestrationId);
     } catch (actionError) {
-      setWorkflowError(actionError instanceof Error ? actionError.message : t(locale, "workflowActionFailed"));
+      setWorkflowError(userFacingError(locale, actionError, "workflowActionFailed"));
       throw actionError;
     }
   };
@@ -1200,6 +1204,58 @@ function App() {
     }
   };
 
+  useEffect(() => {
+    if (activeSection !== "workflow" || !selectedPipelineId || selectedPipelineBlocked || !["queued", "running"].includes(selectedPipelineStatus ?? "")) {
+      return;
+    }
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const pipeline = await fetchRequirementPipeline(selectedPipelineId);
+        if (cancelled) return;
+        if (pipeline.planId) setSelectedPlanId(pipeline.planId);
+        if (pipeline.executionId) setSelectedExecutionId(pipeline.executionId);
+        if (pipeline.blocked || !["queued", "running"].includes(pipeline.status)) {
+          const [plansData, executionsData, workflowRun] = await Promise.all([
+            fetchPlans().catch(() => null),
+            fetchExecutions().catch(() => null),
+            fetchWorkflowRun(selectedPipelineId).catch(() => null),
+          ]);
+          if (cancelled) return;
+          if (plansData) setPlans(plansData.items);
+          if (executionsData) setExecutions(executionsData.items);
+          upsertRequirementPipeline(pipeline);
+          if (workflowRun) {
+            setSelectedWorkflowRunId(workflowRun.runId);
+            setSelectedWorkflowRun(workflowRun);
+            setWorkflowRuns((current) => [workflowRun, ...current.filter((item) => item.runId !== workflowRun.runId)]);
+          }
+          return;
+        }
+        upsertRequirementPipeline(pipeline);
+      } catch (error) {
+        if (cancelled) return;
+        setWorkflowError(userFacingError(locale, error, "workflowActionFailed"));
+        if (error instanceof ApiRequestError && [401, 403, 404].includes(error.status)) return;
+      }
+      timer = setTimeout(() => void poll(), 3000);
+    };
+    timer = setTimeout(() => void poll(), 3000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [activeSection, selectedPipelineId, selectedPipelineStatus, selectedPipelineBlocked, locale, setExecutions, setPlans]);
+
+  const handleDeleteProjectMember = async (memberId: string) => {
+    await enterpriseApi.deleteProjectMember(memberId);
+    const projectId = projectMembers.find((member) => member.id === memberId)?.projectId;
+    if (projectId) {
+      await Promise.all([refreshProjectMembers(projectId), refreshProjectEnvironmentData()]);
+    }
+  };
+
   const handleCreateConnectorBinding = async (payload: ConnectorBindingMutationPayload) => {
     await enterpriseApi.createConnectorBinding(payload);
     await refreshConnectorBindings();
@@ -1262,9 +1318,11 @@ function App() {
         // Route-critical data is applied before the broad workspace shell.
         // Replay and explanation pages can select an execution immediately
         // instead of waiting for every administration projection to finish.
-        const executionsData = await fetchExecutions();
+        await Promise.all([
+          fetchExecutions().then((data) => { if (!cancelled) setExecutions(data.items); }),
+          fetchProjects().then((data) => { if (!cancelled) setProjects(data.items); }),
+        ]);
         if (cancelled) return;
-        setExecutions(executionsData.items);
         if (!requiresFullShell) {
           setLoadError(null);
           return;
@@ -1276,7 +1334,6 @@ function App() {
           healthData,
           runtimeReadinessData,
           modelsData,
-          projectsData,
           environmentsData,
           plansData,
           workflowRunsData,
@@ -1301,7 +1358,6 @@ function App() {
           fetchHealth(),
           fetchRuntimeReadiness(),
           enterpriseApi.fetchModels(),
-          fetchProjects(),
           fetchEnvironments(),
           fetchPlans(),
           fetchWorkflowRuns({ pageSize: 25 }),
@@ -1331,7 +1387,6 @@ function App() {
         setHealth(healthData.services);
         setRuntimeReadiness(runtimeReadinessData);
         setModels(modelsData.items);
-        setProjects(projectsData.items);
         setEnvironments(environmentsData.items);
         setPlans(plansData.items);
         applyWorkflowRunList(workflowRunsData.items);
@@ -1361,7 +1416,7 @@ function App() {
         setLoadError(null);
       } catch (error) {
         if (!cancelled) {
-          setLoadError(error instanceof Error ? error.message : t(locale, "workspaceLoadFailed"));
+          setLoadError(userFacingError(locale, error, "workspaceLoadFailed"));
         }
       }
     };
@@ -1395,8 +1450,9 @@ function App() {
   ]);
 
   useEffect(() => {
-    if (!projectOptions.some((project) => project.id === selectedProjectId)) {
-      setSelectedProjectId(ALL_PROJECTS_ID);
+    const nextProjectId = resolveAvailableProjectId(selectedProjectId, projectOptions, IS_OSS_PROFILE);
+    if (nextProjectId !== selectedProjectId) {
+      setSelectedProjectId(nextProjectId);
     }
   }, [projectOptions, selectedProjectId]);
 
@@ -1410,7 +1466,10 @@ function App() {
 
   useEffect(() => {
     if (visibleExecutions.length > 0 && !visibleExecutions.some((execution) => execution.id === selectedExecutionId)) {
-      setSelectedExecutionId(visibleExecutions[0].id);
+      const routeSelection = readRouteSelection("executionId");
+      setSelectedExecutionId(routeSelection && visibleExecutions.some((execution) => execution.id === routeSelection)
+        ? routeSelection
+        : visibleExecutions[0].id);
     } else if (visibleExecutions.length === 0 && selectedExecutionId !== null) {
       setSelectedExecutionId(null);
     }
@@ -1475,7 +1534,7 @@ function App() {
           setExecutionTaskArtifacts([]);
           setExecutionTaskLogs([]);
           setExecutionTaskMetrics([]);
-          setExecutionTaskDetailError(error instanceof Error ? error.message : t(locale, "executionTaskDetailLoadFailed"));
+          setExecutionTaskDetailError(userFacingError(locale, error, "executionTaskDetailLoadFailed"));
         }
       } finally {
         if (!cancelled) {
@@ -1498,7 +1557,12 @@ function App() {
     setCoverageProof(null);
     setProofError(null);
 
-    if (!currentUser || !selectedPlan?.requirementVersionId || !hasUserCapability(currentUser, "coverage.read")) {
+    if (
+      !shouldLoadCoverageData(activeSection)
+      || !currentUser
+      || !selectedPlan?.requirementVersionId
+      || !hasUserCapability(currentUser, "coverage.read")
+    ) {
       setCoverageSummary(null);
       setCoverageMatrix(null);
       setCoverageLoading(false);
@@ -1527,8 +1591,8 @@ function App() {
         if (!cancelled) {
           setCoverageSummary(null);
           setCoverageMatrix(null);
-          setCoverageError(error instanceof Error ? error.message : t(locale, "coverageMatrixLoadFailed"));
-          setLoadError(error instanceof Error ? error.message : t(locale, "coverageMatrixLoadFailed"));
+          setCoverageError(userFacingError(locale, error, "coverageMatrixLoadFailed"));
+          setLoadError(userFacingError(locale, error, "coverageMatrixLoadFailed"));
         }
       } finally {
         if (!cancelled) {
@@ -1542,13 +1606,19 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [currentUser, locale, selectedPlanId, setCoverageMatrix, setCoverageProof, setCoverageSummary, visiblePlans]);
+  }, [activeSection, currentUser, locale, selectedPlanId, setCoverageMatrix, setCoverageProof, setCoverageSummary, visiblePlans]);
 
   useEffect(() => {
     let cancelled = false;
     const selectedPlan = visiblePlans.find((plan) => plan.id === selectedPlanId) ?? null;
 
-    if (!currentUser || !selectedPlan?.requirementVersionId || !selectedRequirementItemId || !hasUserCapability(currentUser, "coverage.proof.read")) {
+    if (
+      !shouldLoadCoverageProof(activeSection)
+      || !currentUser
+      || !selectedPlan?.requirementVersionId
+      || !selectedRequirementItemId
+      || !hasUserCapability(currentUser, "coverage.proof.read")
+    ) {
       setCoverageProof(null);
       setProofLoading(false);
       return;
@@ -1569,7 +1639,7 @@ function App() {
       } catch (error) {
         if (!cancelled) {
           setCoverageProof(null);
-          setProofError(error instanceof Error ? error.message : t(locale, "coverageProofLoadFailed"));
+          setProofError(userFacingError(locale, error, "coverageProofLoadFailed"));
         }
       } finally {
         if (!cancelled) {
@@ -1583,7 +1653,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [currentUser, locale, selectedPlanId, selectedRequirementItemId, setCoverageProof, visiblePlans]);
+  }, [activeSection, currentUser, locale, selectedPlanId, selectedRequirementItemId, setCoverageProof, visiblePlans]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1708,8 +1778,8 @@ function App() {
         setLoadError(null);
       } catch (error) {
         if (!cancelled) {
-          setExecutionDetailError(error instanceof Error ? error.message : t(locale, "executionDetailLoadFailed"));
-          setLoadError(error instanceof Error ? error.message : t(locale, "executionDetailLoadFailed"));
+          setExecutionDetailError(userFacingError(locale, error, "executionDetailLoadFailed"));
+          setLoadError(userFacingError(locale, error, "executionDetailLoadFailed"));
         }
       } finally {
         if (!cancelled) {
@@ -2185,6 +2255,7 @@ function App() {
             onCreateMember={handleCreateProjectMember}
             onCreateProject={handleCreateProject}
             onLoadMembers={refreshProjectMembers}
+            onRemoveMember={handleDeleteProjectMember}
             onSelectProject={setSelectedProjectId}
             onUpdateMember={handleUpdateProjectMember}
             onUpdateProject={handleUpdateProject}
@@ -2330,7 +2401,9 @@ function App() {
 
         <main className="workspace" id="main-content" tabIndex={-1}>
           {currentUser?.edition === "basic" ? <div className="notice notice--info" role="status">{t(locale, "currentEditionReadOnly")}</div> : null}
-          {renderSection()}
+          <PageErrorBoundary key={activeSection} locale={locale}>
+            {renderSection()}
+          </PageErrorBoundary>
         </main>
       </div>
     </div>

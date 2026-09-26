@@ -16,6 +16,10 @@ from agentic_qa.domain.models import (
     CanonicalExecutionGraphPath,
     CanonicalExecutionGraphPathStep,
     CanonicalExecutionGraphVersion,
+    Execution,
+    ExecutionTask,
+    TestPlan,
+    VisualGroundingAttempt,
 )
 from agentic_qa.schemas.candidate_graph import CandidateBuildResult
 from agentic_qa.services.common import ServiceContext, paginate
@@ -104,7 +108,75 @@ class CandidateGraphQueryService:
             }
             for item in rows
         ]
-        return paginate(summaries, page, page_size)
+        result = paginate(summaries, page, page_size)
+        result["observationPolicy"] = self._community_observation_policy(
+            scope,
+            context,
+            rows,
+        )
+        return result
+
+    def _community_observation_policy(
+        self,
+        scope: Any,
+        context: ServiceContext,
+        rows: list[CandidateGraphBuildRun],
+    ) -> dict[str, Any]:
+        capabilities = set(context.user.capabilities)
+        enabled = (
+            context.user.edition == "community"
+            and "graph.candidate.observe" in capabilities
+        )
+        manual_scope_write = (
+            scope.membership_role in {"owner", "admin"}
+            or scope.access_source in {"platform_admin", "service_role"}
+        )
+        manual_refresh = (
+            enabled
+            and manual_scope_write
+            and "coverage.materialize" in capabilities
+        )
+        reason_code = "CANDIDATE_OBSERVATION_READY" if rows else None
+        if reason_code is None:
+            execution = self.db.scalar(
+                select(Execution)
+                .join(TestPlan, TestPlan.id == Execution.plan_id)
+                .join(ExecutionTask, ExecutionTask.execution_id == Execution.id)
+                .where(TestPlan.project_id == scope.project.id)
+                .order_by(Execution.created_at.desc(), Execution.id.desc())
+                .limit(1)
+            )
+            if execution is None:
+                reason_code = "CANDIDATE_EXECUTION_MISSING"
+            else:
+                has_visual_attempt = self.db.scalar(
+                    select(VisualGroundingAttempt.id)
+                    .where(VisualGroundingAttempt.execution_id == execution.id)
+                    .limit(1)
+                ) is not None
+                has_task_action = any(
+                    isinstance(task.config, dict)
+                    and isinstance(task.config.get("semanticAction"), dict)
+                    for task in self.db.scalars(
+                        select(ExecutionTask).where(
+                            ExecutionTask.execution_id == execution.id
+                        )
+                    )
+                )
+                reason_code = (
+                    "CANDIDATE_OBSERVATION_AVAILABLE"
+                    if has_visual_attempt or has_task_action
+                    else "CANDIDATE_SEMANTIC_TRACE_MISSING"
+                )
+        return {
+            "enabled": enabled,
+            "lifecycleEnabled": enabled and "coverage.materialize" in capabilities,
+            "manualRefreshAvailable": manual_refresh,
+            "reasonCode": reason_code,
+            "nonAuthoritative": True,
+            "promotionAvailable": False,
+            "modelEnabled": False,
+        }
 
     def _scope(self, project_id: UUID, context: ServiceContext):
         try:

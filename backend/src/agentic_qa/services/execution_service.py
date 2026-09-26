@@ -55,6 +55,7 @@ from agentic_qa.domain.models import (
     HealingSuggestion,
     ImpactResultRecord,
     Job,
+    ProjectEnvironment,
     RawFindingRecord,
     RequirementVersion,
     SelectiveReplayPlanRecord,
@@ -91,11 +92,18 @@ from agentic_qa.services.common import (
     acquire_transaction_advisory_lock,
     canonical_hash,
     canonical_json,
+    paginate_cursor_result,
+    paginate_keyset_query,
     paginate_query,
     paginate_result,
 )
 from agentic_qa.services.gate_evaluator import GATE_EVALUATOR_VERSION, GateEvaluator
 from agentic_qa.services.gate_input_assembler import GateInputAssembler
+from agentic_qa.services.executable_scenario_compiler import (
+    ExecutableScenarioError,
+    compile_confirmed_scenarios,
+    source_fingerprint,
+)
 from agentic_qa.services.impact_analysis_query_service import SelectiveReplayQueryService
 from agentic_qa.services.skill_execution_policy import SkillInvocationExecutionError
 from agentic_qa.services.skill_runtime import CapabilityGateway, ManagedSkillRuntimeRegistry
@@ -201,7 +209,9 @@ class ExecutionService(SelectiveReplayQueryService):
         )
         self.db.add(execution)
         self.db.flush()
-        self._create_tasks_for_plan(execution.id, plan.id, options, execution_plan_id=execution_plan_id)
+        self._create_tasks_for_plan(
+            execution.id, plan.id, options, execution_plan_id=execution_plan_id
+        )
         job = Job(
             id=uuid4(),
             job_type="execution.run",
@@ -210,7 +220,15 @@ class ExecutionService(SelectiveReplayQueryService):
             progress=0,
         )
         self.db.add(job)
-        write_audit_log(self.db, str(context.user.id), "execution.create", "execution", str(execution.id), context.request_id, context.trace_id)
+        write_audit_log(
+            self.db,
+            str(context.user.id),
+            "execution.create",
+            "execution",
+            str(execution.id),
+            context.request_id,
+            context.trace_id,
+        )
         self.db.flush()
         return execution, job
 
@@ -219,20 +237,38 @@ class ExecutionService(SelectiveReplayQueryService):
         page: int,
         page_size: int,
         context: ServiceContext,
+        *,
+        cursor: str | None = None,
     ) -> dict[str, Any]:
-        statement = select(Execution).order_by(Execution.created_at.desc())
+        statement = select(Execution).order_by(
+            Execution.created_at.desc(),
+            Execution.id.desc(),
+        )
         if not {"admin", "system"}.intersection(context.user.roles):
             project_ids = ScopeAuthorizationService(self.db).authorized_project_ids(context)
-            statement = (
-                statement.join(TestPlan, Execution.plan_id == TestPlan.id)
-                .where(TestPlan.project_id.in_(project_ids))
+            statement = statement.join(TestPlan, Execution.plan_id == TestPlan.id).where(
+                TestPlan.project_id.in_(project_ids)
             )
-        rows, total = paginate_query(self.db, statement, page, page_size)
+        if cursor is not None:
+            rows, next_cursor, has_more = paginate_keyset_query(
+                self.db,
+                statement,
+                created_at_column=Execution.created_at,
+                id_column=Execution.id,
+                cursor=cursor,
+                page_size=page_size,
+            )
+        else:
+            rows, total = paginate_query(self.db, statement, page, page_size)
         plan_ids = {item.plan_id for item in rows}
-        plans = {
-            item.id: item
-            for item in self.db.scalars(select(TestPlan).where(TestPlan.id.in_(plan_ids)))
-        } if plan_ids else {}
+        plans = (
+            {
+                item.id: item
+                for item in self.db.scalars(select(TestPlan).where(TestPlan.id.in_(plan_ids)))
+            }
+            if plan_ids
+            else {}
+        )
         runtime_by_execution = self._runtime_summary_projections(rows)
         items = [
             self.serialize_execution(
@@ -242,6 +278,13 @@ class ExecutionService(SelectiveReplayQueryService):
             )
             for item in rows
         ]
+        if cursor is not None:
+            return paginate_cursor_result(
+                items,
+                page_size=page_size,
+                next_cursor=next_cursor,
+                has_more=has_more,
+            )
         return paginate_result(items, total, page, page_size)
 
     def get_execution(self, execution_id: UUID, context: ServiceContext) -> dict[str, object]:
@@ -266,11 +309,7 @@ class ExecutionService(SelectiveReplayQueryService):
             raise ValueError("ref_limit must be >= 0")
 
         def ref_rows(model, order_by):
-            statement = (
-                select(model)
-                .where(model.execution_id == execution.id)
-                .order_by(*order_by)
-            )
+            statement = select(model).where(model.execution_id == execution.id).order_by(*order_by)
             if ref_limit is not None:
                 statement = statement.limit(ref_limit)
             return list(self.db.scalars(statement))
@@ -300,9 +339,7 @@ class ExecutionService(SelectiveReplayQueryService):
         )
         gate = self.db.scalar(select(GateDecision).where(GateDecision.execution_id == execution.id))
         latest_job = self.db.scalar(
-            select(Job)
-            .where(Job.result_ref == str(execution.id))
-            .order_by(Job.created_at.desc())
+            select(Job).where(Job.result_ref == str(execution.id)).order_by(Job.created_at.desc())
         )
         if ref_limit is None:
             statistics = self._runtime_statistics_from_rows(
@@ -375,6 +412,7 @@ class ExecutionService(SelectiveReplayQueryService):
                 "taskCount": 0,
                 "completedTaskCount": 0,
                 "failedTaskCount": 0,
+                "cancelledTaskCount": 0,
                 "terminalTaskCount": 0,
                 "artifactRefCount": 0,
                 "rawMetricRefCount": 0,
@@ -397,6 +435,8 @@ class ExecutionService(SelectiveReplayQueryService):
                 statistics[execution_id]["completedTaskCount"] = value
             if status == TaskStatus.FAILED:
                 statistics[execution_id]["failedTaskCount"] = value
+            if status == TaskStatus.CANCELLED:
+                statistics[execution_id]["cancelledTaskCount"] = value
             if status in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}:
                 statistics[execution_id]["terminalTaskCount"] += value
         for model, key in (
@@ -420,9 +460,7 @@ class ExecutionService(SelectiveReplayQueryService):
             .group_by(RawFindingRecord.execution_id)
         ):
             statistics[execution_id]["rawFindingRefCount"] = int(count)
-            statistics[execution_id]["normalizedRawFindingCount"] = int(
-                normalized_count
-            )
+            statistics[execution_id]["normalizedRawFindingCount"] = int(normalized_count)
         return statistics
 
     @staticmethod
@@ -440,10 +478,9 @@ class ExecutionService(SelectiveReplayQueryService):
         }
         return {
             "taskCount": len(tasks),
-            "completedTaskCount": sum(
-                task.status == TaskStatus.COMPLETED for task in tasks
-            ),
+            "completedTaskCount": sum(task.status == TaskStatus.COMPLETED for task in tasks),
             "failedTaskCount": sum(task.status == TaskStatus.FAILED for task in tasks),
+            "cancelledTaskCount": sum(task.status == TaskStatus.CANCELLED for task in tasks),
             "terminalTaskCount": sum(task.status in terminal_statuses for task in tasks),
             "artifactRefCount": len(artifacts),
             "rawMetricRefCount": len(metrics),
@@ -476,9 +513,7 @@ class ExecutionService(SelectiveReplayQueryService):
             ExecutionStage.GATE,
         } and (not raw_count or all_raw_findings_normalized)
         evidence_count = (
-            statistics["artifactRefCount"]
-            + statistics["rawMetricRefCount"]
-            + raw_count
+            statistics["artifactRefCount"] + statistics["rawMetricRefCount"] + raw_count
         )
         task_count = statistics["taskCount"]
         replay_consumable = (
@@ -495,8 +530,9 @@ class ExecutionService(SelectiveReplayQueryService):
             "counts": {
                 key: value
                 for key, value in statistics.items()
-                if key not in {"terminalTaskCount", "normalizedRawFindingCount"}
-            } | {
+                if key != "normalizedRawFindingCount"
+            }
+            | {
                 "gateDecisionCount": 1 if gate else 0,
             },
             "refs": {
@@ -506,7 +542,11 @@ class ExecutionService(SelectiveReplayQueryService):
                 "findingRefs": self._finding_refs_from_rows(findings),
                 "gateDecisionRef": str(gate.id) if gate else None,
                 "latestJobRef": (
-                    {"id": str(latest_job.id), "jobType": latest_job.job_type, "status": latest_job.status.value}
+                    {
+                        "id": str(latest_job.id),
+                        "jobType": latest_job.job_type,
+                        "status": latest_job.status.value,
+                    }
                     if latest_job
                     else None
                 ),
@@ -517,8 +557,7 @@ class ExecutionService(SelectiveReplayQueryService):
                     "artifactRefs": len(artifacts) < statistics["artifactRefCount"],
                     "rawMetricRefs": len(metrics) < statistics["rawMetricRefCount"],
                     "rawFindingRefs": len(raw_findings) < raw_count,
-                    "findingRefs": len(findings)
-                    < statistics["normalizedFindingRefCount"],
+                    "findingRefs": len(findings) < statistics["normalizedFindingRefCount"],
                 },
             },
             "readiness": {
@@ -526,16 +565,19 @@ class ExecutionService(SelectiveReplayQueryService):
                 "allTasksTerminal": bool(task_count)
                 and statistics["terminalTaskCount"] == task_count,
                 "normalizeCompleted": normalize_completed,
-                "allRawFindingsNormalized": all_raw_findings_normalized
-                if raw_count
-                else True,
+                "allRawFindingsNormalized": all_raw_findings_normalized if raw_count else True,
                 "gateReady": normalize_completed and bool(task_count),
                 "gateCompleted": gate is not None,
                 "replayConsumable": replay_consumable,
                 "replayExportConsumable": replay_consumable,
             },
             "consumerContract": {
-                "gateInputs": ["normalized_findings", "metrics", "approval_state", "policy_snapshot"],
+                "gateInputs": [
+                    "normalized_findings",
+                    "metrics",
+                    "approval_state",
+                    "policy_snapshot",
+                ],
                 "frontendCalculatesGate": False,
                 "frontendCalculatesReplayValidity": False,
                 "frontendCalculatesCoverage": False,
@@ -585,16 +627,24 @@ class ExecutionService(SelectiveReplayQueryService):
             "artifactRefs": self._artifact_refs_for_execution(execution.id),
             "findingRefs": self._finding_refs_for_execution(execution.id),
             "policySnapshot": policy_snapshot or self._policy_snapshot_from_tasks(tasks),
-            "memorySnapshot": memory_snapshot or {"memoryIds": [], "namespaces": [], "summaryRef": None},
+            "memorySnapshot": memory_snapshot
+            or {"memoryIds": [], "namespaces": [], "summaryRef": None},
         }
 
     def progress(self, execution_id: UUID) -> dict[str, object]:
         execution = self._require_execution(execution_id)
-        tasks = list(self.db.scalars(select(ExecutionTask).where(ExecutionTask.execution_id == execution_id)))
+        tasks = list(
+            self.db.scalars(select(ExecutionTask).where(ExecutionTask.execution_id == execution_id))
+        )
         total = len(tasks)
-        completed = len([task for task in tasks if task.status == TaskStatus.COMPLETED])
-        current_task = next((task.task_type for task in tasks if task.status == TaskStatus.RUNNING), None)
-        progress = int((completed / total) * 100) if total else 0
+        completed = sum(task.status == TaskStatus.COMPLETED for task in tasks)
+        failed = sum(task.status == TaskStatus.FAILED for task in tasks)
+        cancelled = sum(task.status == TaskStatus.CANCELLED for task in tasks)
+        terminal = completed + failed + cancelled
+        current_task = next(
+            (task.task_type for task in tasks if task.status == TaskStatus.RUNNING), None
+        )
+        progress = int((terminal / total) * 100) if total else 0
         return {
             "executionId": str(execution.id),
             "status": execution.status.value,
@@ -602,6 +652,9 @@ class ExecutionService(SelectiveReplayQueryService):
             "progress": progress,
             "currentTask": current_task,
             "completedTasks": completed,
+            "failedTasks": failed,
+            "cancelledTasks": cancelled,
+            "terminalTasks": terminal,
             "totalTasks": total,
         }
 
@@ -618,7 +671,9 @@ class ExecutionService(SelectiveReplayQueryService):
                 .order_by(ExecutionTask.priority.asc(), ExecutionTask.created_at.asc())
             )
         )
-        findings = list(self.db.scalars(select(Finding).where(Finding.execution_id == execution.id)))
+        findings = list(
+            self.db.scalars(select(Finding).where(Finding.execution_id == execution.id))
+        )
         finding_by_task: dict[UUID, list[Finding]] = {}
         for finding in findings:
             if finding.task_id:
@@ -636,7 +691,9 @@ class ExecutionService(SelectiveReplayQueryService):
                         "taskType": task.task_type,
                         "domain": task.domain.value,
                         "runner": task.runner,
-                        "reason": "failed task" if task.status == TaskStatus.FAILED else "open finding",
+                        "reason": "failed task"
+                        if task.status == TaskStatus.FAILED
+                        else "open finding",
                         "severity": severity,
                     }
                 )
@@ -646,7 +703,11 @@ class ExecutionService(SelectiveReplayQueryService):
         changed_asset_ids = set(requirement_change["changedAssetIds"])
         for task in tasks:
             asset_id = str(task.config.get("assetId") or "")
-            if not asset_id or asset_id not in changed_asset_ids or str(task.id) in affected_case_ids:
+            if (
+                not asset_id
+                or asset_id not in changed_asset_ids
+                or str(task.id) in affected_case_ids
+            ):
                 continue
             affected_cases.append(
                 {
@@ -705,7 +766,11 @@ class ExecutionService(SelectiveReplayQueryService):
                 "recommendedRegressionSuite": recommended_suite,
                 "riskBasedPriority": risk_priority,
                 "evidenceRefs": [
-                    {"type": "finding", "id": str(finding.id), "taskId": str(finding.task_id) if finding.task_id else None}
+                    {
+                        "type": "finding",
+                        "id": str(finding.id),
+                        "taskId": str(finding.task_id) if finding.task_id else None,
+                    }
                     for finding in findings
                 ]
                 + requirement_change["evidenceRefs"],
@@ -825,7 +890,37 @@ class ExecutionService(SelectiveReplayQueryService):
     ) -> dict[str, object]:
         """Freeze a graph-aware plan without creating an Execution, task, retry, or Tool call."""
 
-        scope = self._selective_replay_scope(project_id, context, "replay.plan.create")
+        return self._create_selective_replay_plan(
+            project_id,
+            payload,
+            context,
+            required_capability="replay.plan.create",
+        )
+
+    def materialize_community_selective_replay_plan(
+        self,
+        project_id: UUID,
+        payload: SelectiveReplayRequest,
+        context: ServiceContext,
+    ) -> dict[str, object]:
+        """Freeze a Community analysis plan without scheduling or running tests."""
+
+        return self._create_selective_replay_plan(
+            project_id,
+            payload,
+            context,
+            required_capability="coverage.materialize",
+        )
+
+    def _create_selective_replay_plan(
+        self,
+        project_id: UUID,
+        payload: SelectiveReplayRequest,
+        context: ServiceContext,
+        *,
+        required_capability: str,
+    ) -> dict[str, object]:
+        scope = self._selective_replay_scope(project_id, context, required_capability)
         impact = self.db.scalar(
             select(ImpactResultRecord).where(
                 ImpactResultRecord.id == payload.impactResultId,
@@ -859,9 +954,7 @@ class ExecutionService(SelectiveReplayQueryService):
         if not base_tasks:
             raise ValueError("SELECTIVE_REPLAY_CONSERVATIVE_BASELINE_UNAVAILABLE")
         conservative_plan = self.plan_regression(base_execution.id)
-        base_execution_fingerprint = self._base_execution_fingerprint(
-            base_execution, base_tasks
-        )
+        base_execution_fingerprint = self._base_execution_fingerprint(base_execution, base_tasks)
 
         coverage = self.db.scalar(
             select(GraphCoverageSnapshot).where(
@@ -910,8 +1003,7 @@ class ExecutionService(SelectiveReplayQueryService):
             "impactResultId": str(impact.id),
             "impactInputFingerprint": impact.input_fingerprint,
             "changeSets": [
-                {"id": str(item.id), "fingerprint": item.fingerprint}
-                for item in change_sets
+                {"id": str(item.id), "fingerprint": item.fingerprint} for item in change_sets
             ],
             "graph": {
                 "versionId": str(graph_version.id),
@@ -1175,9 +1267,7 @@ class ExecutionService(SelectiveReplayQueryService):
             raise ValueError("SELECTIVE_REPLAY_CONSERVATIVE_BASELINE_UNAVAILABLE")
         task_by_id = {str(task.id): task for task in tasks}
         task_by_asset = {
-            str(task.config.get("assetId")): task
-            for task in tasks
-            if task.config.get("assetId")
+            str(task.config.get("assetId")): task for task in tasks if task.config.get("assetId")
         }
         task_by_path: dict[str, ExecutionTask] = {}
         for task in tasks:
@@ -1245,10 +1335,21 @@ class ExecutionService(SelectiveReplayQueryService):
                 reasons.append("HIGH_RISK_NEIGHBORHOOD")
             asset_id = self._asset_id_from_test_ref(test_ref)
             asset = self.db.get(TestAsset, asset_id) if asset_id else None
-            if asset is None or asset.asset_type != "test_case" or asset.status in {
-                "invalidated", "disabled", "archived",
-            }:
-                code = "SELECTIVE_REPLAY_TEST_NOT_FOUND" if asset is None else "SELECTIVE_REPLAY_TEST_DISABLED"
+            if (
+                asset is None
+                or asset.asset_type != "test_case"
+                or asset.status
+                in {
+                    "invalidated",
+                    "disabled",
+                    "archived",
+                }
+            ):
+                code = (
+                    "SELECTIVE_REPLAY_TEST_NOT_FOUND"
+                    if asset is None
+                    else "SELECTIVE_REPLAY_TEST_DISABLED"
+                )
                 excluded[test_ref] = {
                     "testRef": test_ref,
                     "riskLevel": risk,
@@ -1353,7 +1454,9 @@ class ExecutionService(SelectiveReplayQueryService):
                     fallback_candidates,
                     self._task_replay_candidate(
                         conservative_task,
-                        risk=self._risk_from_regression_priority(str(case.get("priority") or "medium")),
+                        risk=self._risk_from_regression_priority(
+                            str(case.get("priority") or "medium")
+                        ),
                         confidence=1.0,
                         reasons=["CONSERVATIVE_FALLBACK"],
                         evidence_refs=self._legacy_regression_refs(
@@ -1377,16 +1480,15 @@ class ExecutionService(SelectiveReplayQueryService):
                                     "contentHash": None,
                                 }
                             ],
-                            ),
-                        )
+                        ),
+                    )
             for candidate in candidates.values():
                 if candidate["riskLevel"] != "high":
                     continue
                 preserved = {
                     **candidate,
                     "selectionReasonCodes": sorted(
-                        set(candidate["selectionReasonCodes"])
-                        | {"CONSERVATIVE_FALLBACK"},
+                        set(candidate["selectionReasonCodes"]) | {"CONSERVATIVE_FALLBACK"},
                         key=self._reason_priority,
                     ),
                 }
@@ -1407,7 +1509,8 @@ class ExecutionService(SelectiveReplayQueryService):
 
         selected_tests.sort(key=self._replay_test_sort_key)
         selected_path_values = sorted(
-            selected_paths.values(), key=lambda item: (-self._risk_score(str(item["riskLevel"])), str(item["pathRef"]))
+            selected_paths.values(),
+            key=lambda item: (-self._risk_score(str(item["riskLevel"])), str(item["pathRef"])),
         )
         estimated_seconds = sum(int(item["estimatedSeconds"]) for item in selected_tests)
         over_tests = max(0, len(selected_tests) - payload.budget.maxTests)
@@ -1448,8 +1551,7 @@ class ExecutionService(SelectiveReplayQueryService):
             "impactResultId": str(impact.id),
             "impactInputFingerprint": impact.input_fingerprint,
             "changeSets": [
-                {"id": str(item.id), "fingerprint": item.fingerprint}
-                for item in change_sets
+                {"id": str(item.id), "fingerprint": item.fingerprint} for item in change_sets
             ],
             "graph": {
                 "versionId": str(graph_version.id),
@@ -1506,12 +1608,18 @@ class ExecutionService(SelectiveReplayQueryService):
                 "contentHash": impact.input_fingerprint,
             },
             "changeSetRefs": [
-                {"type": "change_set", "ref": f"change-set://{item.id}", "contentHash": item.fingerprint}
+                {
+                    "type": "change_set",
+                    "ref": f"change-set://{item.id}",
+                    "contentHash": item.fingerprint,
+                }
                 for item in change_sets
             ],
             "graphRef": dict(result["graphRef"]),
             "graphVersionRef": dict(result["graphVersionRef"]),
-            "graphAssessmentRef": dict(result["graphAssessmentRef"]) if result.get("graphAssessmentRef") else None,
+            "graphAssessmentRef": dict(result["graphAssessmentRef"])
+            if result.get("graphAssessmentRef")
+            else None,
             "coverageSnapshotRef": {
                 "type": "graph_coverage_snapshot",
                 "ref": coverage.snapshot_ref,
@@ -1529,7 +1637,8 @@ class ExecutionService(SelectiveReplayQueryService):
                     "ref": f"environment://{payload.environmentId}",
                     "contentHash": None,
                 }
-                if payload.environmentId else None
+                if payload.environmentId
+                else None
             ),
             "algorithmVersion": SELECTIVE_REPLAY_ALGORITHM_VERSION,
             "inputFingerprint": input_fingerprint,
@@ -1543,7 +1652,9 @@ class ExecutionService(SelectiveReplayQueryService):
                     for risk in ("low", "medium", "high")
                 },
                 "highRiskOmitted": False,
-                "approvalRequiredForExecution": overall_risk == "high" or over_tests > 0 or over_seconds > 0,
+                "approvalRequiredForExecution": overall_risk == "high"
+                or over_tests > 0
+                or over_seconds > 0,
             },
             "coverageSummary": coverage_summary,
             "excludedTests": sorted(excluded.values(), key=lambda item: str(item["testRef"])),
@@ -1812,7 +1923,8 @@ class ExecutionService(SelectiveReplayQueryService):
             str(task.config.get("assetId")) if task.config.get("assetId") else None
         )
         return {
-            "testRef": test_ref or (
+            "testRef": test_ref
+            or (
                 f"test://assets/{normalized_asset_id}"
                 if normalized_asset_id
                 else f"execution-task://{task.id}"
@@ -1846,7 +1958,9 @@ class ExecutionService(SelectiveReplayQueryService):
             return
         current_risk = self._risk_score(str(current["riskLevel"]))
         incoming_risk = self._risk_score(str(candidate["riskLevel"]))
-        current["riskLevel"] = candidate["riskLevel"] if incoming_risk > current_risk else current["riskLevel"]
+        current["riskLevel"] = (
+            candidate["riskLevel"] if incoming_risk > current_risk else current["riskLevel"]
+        )
         current["confidence"] = max(float(current["confidence"]), float(candidate["confidence"]))
         current["selectionReasonCodes"] = sorted(
             set(current["selectionReasonCodes"]) | set(candidate["selectionReasonCodes"]),
@@ -1867,8 +1981,14 @@ class ExecutionService(SelectiveReplayQueryService):
         seconds = 0
         for candidate in ordered:
             cost = int(candidate["estimatedSeconds"])
-            required = candidate["riskLevel"] == "high" or "SMOKE_BASELINE" in candidate["selectionReasonCodes"]
-            fits = len(selected) < payload.budget.maxTests and seconds + cost <= payload.budget.maxEstimatedSeconds
+            required = (
+                candidate["riskLevel"] == "high"
+                or "SMOKE_BASELINE" in candidate["selectionReasonCodes"]
+            )
+            fits = (
+                len(selected) < payload.budget.maxTests
+                and seconds + cost <= payload.budget.maxEstimatedSeconds
+            )
             if fits or required:
                 selected.append(candidate)
                 seconds += cost
@@ -1956,9 +2076,7 @@ class ExecutionService(SelectiveReplayQueryService):
         }
 
     @staticmethod
-    def _base_execution_fingerprint(
-        execution: Execution, tasks: list[ExecutionTask]
-    ) -> str:
+    def _base_execution_fingerprint(execution: Execution, tasks: list[ExecutionTask]) -> str:
         return canonical_hash(
             {
                 "executionId": str(execution.id),
@@ -1983,7 +2101,11 @@ class ExecutionService(SelectiveReplayQueryService):
     ) -> dict[str, object]:
         plan = self.db.get(TestPlan, execution.plan_id)
         if plan is None or plan.requirement_version_id is None:
-            return {"changedAssetIds": [], "evidenceRefs": [], "metadata": {"status": "not_applicable"}}
+            return {
+                "changedAssetIds": [],
+                "evidenceRefs": [],
+                "metadata": {"status": "not_applicable"},
+            }
         current = self.db.get(RequirementVersion, plan.requirement_version_id)
         if current is None:
             return {"changedAssetIds": [], "evidenceRefs": [], "metadata": {"status": "pending"}}
@@ -2016,13 +2138,13 @@ class ExecutionService(SelectiveReplayQueryService):
             != (previous_requirements[index] if index < len(previous_requirements) else None)
         }
         asset_ids = {
-            str(task.config.get("assetId"))
-            for task in tasks
-            if task.config.get("assetId")
+            str(task.config.get("assetId")) for task in tasks if task.config.get("assetId")
         }
         changed_asset_ids: list[str] = []
         if changed_refs and asset_ids:
-            assets = self.db.scalars(select(TestAsset).where(TestAsset.id.in_([UUID(item) for item in asset_ids])))
+            assets = self.db.scalars(
+                select(TestAsset).where(TestAsset.id.in_([UUID(item) for item in asset_ids]))
+            )
             changed_asset_ids = [
                 str(asset.id)
                 for asset in assets
@@ -2053,16 +2175,22 @@ class ExecutionService(SelectiveReplayQueryService):
         execution.status = TaskStatus.CANCELLED
         execution.ended_at = datetime.now(timezone.utc)
         tasks = list(
-            self.db.scalars(
-                select(ExecutionTask).where(ExecutionTask.execution_id == execution.id)
-            )
+            self.db.scalars(select(ExecutionTask).where(ExecutionTask.execution_id == execution.id))
         )
         for task in tasks:
             if task.status in {TaskStatus.QUEUED, TaskStatus.RUNNING}:
                 task.status = TaskStatus.CANCELLED
                 task.error_message = "execution cancelled"
                 task.ended_at = execution.ended_at
-        write_audit_log(self.db, str(context.user.id), "execution.cancel", "execution", str(execution.id), context.request_id, context.trace_id)
+        write_audit_log(
+            self.db,
+            str(context.user.id),
+            "execution.cancel",
+            "execution",
+            str(execution.id),
+            context.request_id,
+            context.trace_id,
+        )
         self.db.commit()
         return {"id": str(execution.id), "status": execution.status.value}
 
@@ -2099,11 +2227,21 @@ class ExecutionService(SelectiveReplayQueryService):
     def gate(self, execution_id: UUID, context: ServiceContext) -> dict[str, object]:
         execution = self._require_execution(execution_id)
         self.authorize_execution_scope(execution.id, context, write=True)
-        decision = self.db.scalar(select(GateDecision).where(GateDecision.execution_id == execution.id))
+        decision = self.db.scalar(
+            select(GateDecision).where(GateDecision.execution_id == execution.id)
+        )
         if decision is not None:
             gate_inputs = self._collect_gate_inputs(execution.id)
             self._persist_gate_input_snapshot(decision, gate_inputs, context)
-            write_audit_log(self.db, str(context.user.id), "execution.gate", "execution", str(execution.id), context.request_id, context.trace_id)
+            write_audit_log(
+                self.db,
+                str(context.user.id),
+                "execution.gate",
+                "execution",
+                str(execution.id),
+                context.request_id,
+                context.trace_id,
+            )
             self.db.commit()
             return {
                 **self._serialize_gate_decision(execution.id, decision),
@@ -2135,7 +2273,9 @@ class ExecutionService(SelectiveReplayQueryService):
         job.payload = {**job.payload, "queueTaskId": str(queue_task.id)}
         self.db.commit()
         self.db.expire_all()
-        decision = self.db.scalar(select(GateDecision).where(GateDecision.execution_id == execution.id))
+        decision = self.db.scalar(
+            select(GateDecision).where(GateDecision.execution_id == execution.id)
+        )
         if decision is not None:
             return {
                 **self._serialize_gate_decision(execution.id, decision),
@@ -2166,7 +2306,15 @@ class ExecutionService(SelectiveReplayQueryService):
             idempotency_key=idempotency_key,
         )
         self.db.add(job)
-        write_audit_log(self.db, str(context.user.id), "execution.gate", "execution", str(execution.id), context.request_id, context.trace_id)
+        write_audit_log(
+            self.db,
+            str(context.user.id),
+            "execution.gate",
+            "execution",
+            str(execution.id),
+            context.request_id,
+            context.trace_id,
+        )
         self.db.flush()
         return job
 
@@ -2283,9 +2431,32 @@ class ExecutionService(SelectiveReplayQueryService):
             if execution.status != TaskStatus.COMPLETED:
                 job.error_message = self._execution_terminal_error(execution.id)
             job.ended_at = execution.ended_at
-            write_audit_log(self.db, str(context.user.id), "execution.run", "execution", str(execution.id), context.request_id, context.trace_id)
+            write_audit_log(
+                self.db,
+                str(context.user.id),
+                "execution.run",
+                "execution",
+                str(execution.id),
+                context.request_id,
+                context.trace_id,
+            )
             self.db.commit()
-            return {"jobId": str(job.id), "executionId": str(execution.id), "status": job.status.value}
+            community_analysis = self._materialize_community_analysis_after_execution(
+                execution.id,
+                context,
+            )
+            if community_analysis is not None:
+                job = self._require_job(job_id)
+                job.result_payload = {
+                    **dict(job.result_payload or {}),
+                    "communityAnalysis": community_analysis,
+                }
+                self.db.commit()
+            return {
+                "jobId": str(job.id),
+                "executionId": str(execution.id),
+                "status": job.status.value,
+            }
         except Exception as exc:
             self.db.rollback()
             recovered = self._recover_committed_job(job_id, execution_id)
@@ -2302,6 +2473,379 @@ class ExecutionService(SelectiveReplayQueryService):
             self._fail_nonterminal_tasks(execution.id, str(exc), ended_at=execution.ended_at)
             self.db.commit()
             raise
+
+    def prepare_parallel_execution_job(
+        self,
+        job_id: UUID,
+        execution_id: UUID,
+        context: ServiceContext,
+    ) -> dict[str, object]:
+        """Freeze one execution fan-out before Celery dispatches bounded task batches."""
+
+        acquire_transaction_advisory_lock(
+            self.db,
+            "execution-parallel-prepare",
+            str(job_id),
+        )
+        job = self._require_job(job_id)
+        execution = self._require_execution(execution_id)
+        if job.status in {JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED}:
+            return {
+                "jobId": str(job.id),
+                "executionId": str(execution.id),
+                "status": job.status.value,
+                "deduplicated": True,
+                "taskIds": [],
+            }
+        if execution.status == TaskStatus.CANCELLED:
+            job.status = JobStatus.CANCELLED
+            job.progress = 100
+            job.result_ref = str(execution.id)
+            job.ended_at = execution.ended_at or datetime.now(timezone.utc)
+            self.db.commit()
+            return {
+                "jobId": str(job.id),
+                "executionId": str(execution.id),
+                "status": job.status.value,
+                "taskIds": [],
+            }
+
+        if job.status == JobStatus.QUEUED:
+            started_at = datetime.now(timezone.utc)
+            job.status = JobStatus.RUNNING
+            job.progress = 10
+            job.started_at = started_at
+            execution.status = TaskStatus.RUNNING
+            execution.stage = ExecutionStage.PREPARE
+            execution.started_at = execution.started_at or started_at
+            execution.ended_at = None
+            with traced_operation(
+                self.db,
+                trace_id=context.trace_id,
+                execution_id=execution.id,
+                root_span_name="execution.run",
+                span_name="execution.prepare",
+                service_name="execution-service",
+                attributes={"executionId": str(execution.id), "fanout": True},
+            ):
+                self._prepare_tasks_for_run(execution.id)
+
+        tasks = list(
+            self.db.scalars(
+                select(ExecutionTask)
+                .where(ExecutionTask.execution_id == execution.id)
+                .order_by(ExecutionTask.priority.asc(), ExecutionTask.created_at.asc())
+            )
+        )
+        task_ids = [str(task.id) for task in tasks]
+        parallelism = max(1, min(int(execution.options.get("parallelism", 1)), len(tasks) or 1))
+        execution.stage = ExecutionStage.EXECUTE
+        job.progress = 20
+        job.payload = {
+            **dict(job.payload or {}),
+            "executionId": str(execution.id),
+            "executionMode": "celery_task_fanout",
+            "fanoutTaskIds": task_ids,
+            "parallelism": parallelism,
+        }
+        self.db.commit()
+        return {
+            "jobId": str(job.id),
+            "executionId": str(execution.id),
+            "status": job.status.value,
+            "taskIds": task_ids,
+            "parallelism": parallelism,
+        }
+
+    def run_parallel_execution_task_job(
+        self,
+        job_id: UUID,
+        execution_id: UUID,
+        task_id: UUID,
+        context: ServiceContext,
+    ) -> dict[str, object]:
+        """Run one immutable fan-out member with a transaction-scoped task lock."""
+
+        acquire_transaction_advisory_lock(
+            self.db,
+            "execution-parallel-task",
+            str(task_id),
+        )
+        job = self._require_job(job_id)
+        execution = self._require_execution(execution_id)
+        task = self.db.scalar(
+            select(ExecutionTask)
+            .where(
+                ExecutionTask.id == task_id,
+                ExecutionTask.execution_id == execution.id,
+            )
+            .with_for_update()
+        )
+        if task is None:
+            raise ValueError("execution task not found")
+        if task.status in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}:
+            return {
+                "jobId": str(job.id),
+                "executionId": str(execution.id),
+                "taskId": str(task.id),
+                "status": task.status.value,
+                "deduplicated": True,
+            }
+        if job.status == JobStatus.CANCELLED or execution.status == TaskStatus.CANCELLED:
+            task.status = TaskStatus.CANCELLED
+            task.stage = ExecutionStage.EXECUTE
+            task.ended_at = datetime.now(timezone.utc)
+            task.error_message = "execution cancelled before fan-out task dispatch"
+            self.db.commit()
+            return {
+                "jobId": str(job.id),
+                "executionId": str(execution.id),
+                "taskId": str(task.id),
+                "status": task.status.value,
+            }
+        try:
+            with traced_operation(
+                self.db,
+                trace_id=context.trace_id,
+                execution_id=execution.id,
+                root_span_name="execution.run",
+                span_name="execution.execute.task",
+                service_name="execution-service",
+                attributes={
+                    "executionId": str(execution.id),
+                    "taskId": str(task.id),
+                    "fanout": True,
+                },
+            ):
+                self._run_tasks(execution.id, context=context, task_ids=[task.id])
+            self.db.commit()
+            self.db.refresh(task)
+            return {
+                "jobId": str(job.id),
+                "executionId": str(execution.id),
+                "taskId": str(task.id),
+                "status": task.status.value,
+            }
+        except Exception as exc:
+            self.db.rollback()
+            task = self.db.get(ExecutionTask, task_id)
+            if task is not None and task.status not in {
+                TaskStatus.COMPLETED,
+                TaskStatus.FAILED,
+                TaskStatus.CANCELLED,
+            }:
+                task.status = TaskStatus.FAILED
+                task.stage = ExecutionStage.EXECUTE
+                task.error_message = redact_sensitive_text(str(exc))
+                task.ended_at = datetime.now(timezone.utc)
+                self.db.commit()
+            return {
+                "jobId": str(job_id),
+                "executionId": str(execution_id),
+                "taskId": str(task_id),
+                "status": TaskStatus.FAILED.value,
+                "reasonCode": "EXECUTION_FANOUT_TASK_FAILED",
+            }
+
+    def finalize_parallel_execution_job(
+        self,
+        job_id: UUID,
+        execution_id: UUID,
+        context: ServiceContext,
+    ) -> dict[str, object]:
+        """Run the single authoritative OBSERVE/ANALYZE/NORMALIZE reducer."""
+
+        acquire_transaction_advisory_lock(
+            self.db,
+            "execution-parallel-finalize",
+            str(job_id),
+        )
+        job = self._require_job(job_id)
+        execution = self._require_execution(execution_id)
+        if job.status in {JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED}:
+            return {
+                "jobId": str(job.id),
+                "executionId": str(execution.id),
+                "status": job.status.value,
+                "deduplicated": True,
+            }
+        if execution.status == TaskStatus.CANCELLED:
+            job.status = JobStatus.CANCELLED
+            job.progress = 100
+            job.result_ref = str(execution.id)
+            job.ended_at = execution.ended_at or datetime.now(timezone.utc)
+            self.db.commit()
+            return {
+                "jobId": str(job.id),
+                "executionId": str(execution.id),
+                "status": job.status.value,
+            }
+        try:
+            nonterminal = list(
+                self.db.scalars(
+                    select(ExecutionTask).where(
+                        ExecutionTask.execution_id == execution.id,
+                        ExecutionTask.status.not_in(
+                            [
+                                TaskStatus.COMPLETED,
+                                TaskStatus.FAILED,
+                                TaskStatus.CANCELLED,
+                            ]
+                        ),
+                    )
+                )
+            )
+            if nonterminal:
+                self._fail_nonterminal_tasks(
+                    execution.id,
+                    "fan-out task did not reach a terminal state",
+                    ended_at=datetime.now(timezone.utc),
+                )
+
+            execution.stage = ExecutionStage.OBSERVE
+            job.progress = 70
+            with traced_operation(
+                self.db,
+                trace_id=context.trace_id,
+                execution_id=execution.id,
+                root_span_name="execution.run",
+                span_name="execution.observe",
+                service_name="execution-service",
+                attributes={"executionId": str(execution.id), "fanout": True},
+            ):
+                self._record_execution_observations(execution.id)
+
+            execution.stage = ExecutionStage.ANALYZE
+            job.progress = 80
+            with traced_operation(
+                self.db,
+                trace_id=context.trace_id,
+                execution_id=execution.id,
+                root_span_name="execution.run",
+                span_name="execution.analyze",
+                service_name="agent-service",
+                attributes={"executionId": str(execution.id), "fanout": True},
+            ):
+                AnalysisService(self.db).analyze_execution(execution.id, context, reset=True)
+            self.normalize_execution(execution.id, context)
+
+            execution.status = self._execution_terminal_status(execution.id)
+            execution.ended_at = datetime.now(timezone.utc)
+            job.status = self._job_status_for_execution(execution.status)
+            job.progress = 100
+            job.result_ref = str(execution.id)
+            job.result_payload = {
+                "executionId": str(execution.id),
+                "status": execution.status.value,
+                "stage": execution.stage.value,
+                "summary": execution.summary,
+                "runtime": self.runtime_projection(execution.id),
+                "executionMode": "celery_task_fanout",
+            }
+            if execution.status != TaskStatus.COMPLETED:
+                job.error_message = self._execution_terminal_error(execution.id)
+            job.ended_at = execution.ended_at
+            write_audit_log(
+                self.db,
+                str(context.user.id),
+                "execution.run",
+                "execution",
+                str(execution.id),
+                context.request_id,
+                context.trace_id,
+                {"executionMode": "celery_task_fanout"},
+            )
+            self.db.commit()
+            community_analysis = self._materialize_community_analysis_after_execution(
+                execution.id,
+                context,
+            )
+            if community_analysis is not None:
+                job = self._require_job(job_id)
+                job.result_payload = {
+                    **dict(job.result_payload or {}),
+                    "communityAnalysis": community_analysis,
+                }
+                self.db.commit()
+            return {
+                "jobId": str(job.id),
+                "executionId": str(execution.id),
+                "status": job.status.value,
+            }
+        except Exception as exc:
+            self.db.rollback()
+            recovered = self._recover_committed_job(job_id, execution_id)
+            if recovered is not None:
+                return recovered
+            execution = self._require_execution(execution_id)
+            job = self._require_job(job_id)
+            execution.status = TaskStatus.FAILED
+            execution.ended_at = datetime.now(timezone.utc)
+            job.status = JobStatus.FAILED
+            job.progress = 100
+            job.error_message = redact_sensitive_text(str(exc))
+            job.ended_at = execution.ended_at
+            self._fail_nonterminal_tasks(
+                execution.id,
+                redact_sensitive_text(str(exc)),
+                ended_at=execution.ended_at,
+            )
+            self.db.commit()
+            raise
+
+    def _materialize_community_analysis_after_execution(
+        self,
+        execution_id: UUID,
+        context: ServiceContext,
+    ) -> dict[str, object] | None:
+        if (
+            get_settings().deployment_profile != "oss"
+            or context.user.edition != "community"
+            or "coverage.materialize" not in set(context.user.capabilities)
+        ):
+            return None
+        execution = self.db.get(Execution, execution_id)
+        plan = self.db.get(TestPlan, execution.plan_id) if execution else None
+        if execution is None or plan is None or plan.project_id is None:
+            return None
+        from agentic_qa.schemas.community_analysis import CommunityAnalysisMaterializeRequest
+        from agentic_qa.services.community_analysis_materialization_service import (
+            CommunityAnalysisMaterializationService,
+        )
+
+        try:
+            result = CommunityAnalysisMaterializationService(self.db).materialize(
+                plan.project_id,
+                CommunityAnalysisMaterializeRequest(
+                    requirementVersionId=plan.requirement_version_id,
+                    executionId=execution.id,
+                ),
+                context,
+                lifecycle_trigger=True,
+            )
+        except Exception:
+            # Analysis materialization is a non-authoritative side effect.  Its
+            # failure must not rewrite a truthful terminal Execution result.
+            self.db.rollback()
+            return {
+                "schemaVersion": "community.analysis-materialization-status.v1",
+                "complete": False,
+                "reasonCode": "COMMUNITY_ANALYSIS_MATERIALIZATION_FAILED",
+                "nonAuthoritative": True,
+            }
+        return {
+            "schemaVersion": "community.analysis-materialization-status.v1",
+            "complete": bool(result["complete"]),
+            "auditRef": result["auditRef"],
+            "stageStatus": {str(item["id"]): str(item["status"]) for item in result["stages"]},
+            "candidateObservation": {
+                "status": str(result["candidateObservation"]["status"]),
+                "buildId": result["candidateObservation"]["buildId"],
+                "reasonCode": result["candidateObservation"]["reasonCode"],
+                "nonAuthoritative": True,
+            },
+            "nonAuthoritative": True,
+        }
 
     def normalize_execution(
         self,
@@ -2337,7 +2881,9 @@ class ExecutionService(SelectiveReplayQueryService):
             "runtime": self.runtime_projection(execution.id),
         }
 
-    def run_retry_job(self, job_id: UUID, execution_id: UUID, scope: str, context: ServiceContext) -> dict[str, object]:
+    def run_retry_job(
+        self, job_id: UUID, execution_id: UUID, scope: str, context: ServiceContext
+    ) -> dict[str, object]:
         job = self._require_job(job_id)
         execution = self._require_execution(execution_id)
         if job.status == JobStatus.COMPLETED:
@@ -2382,7 +2928,9 @@ class ExecutionService(SelectiveReplayQueryService):
                 service_name="execution-service",
                 attributes={"executionId": str(execution.id), "scope": scope},
             ):
-                self._run_tasks(execution.id, context=context, task_ids=[task.id for task in target_tasks])
+                self._run_tasks(
+                    execution.id, context=context, task_ids=[task.id for task in target_tasks]
+                )
 
             execution.stage = ExecutionStage.OBSERVE
             job.progress = 70
@@ -2395,7 +2943,9 @@ class ExecutionService(SelectiveReplayQueryService):
                 service_name="execution-service",
                 attributes={"executionId": str(execution.id), "scope": scope},
             ):
-                self._record_execution_observations(execution.id, task_ids=[task.id for task in target_tasks])
+                self._record_execution_observations(
+                    execution.id, task_ids=[task.id for task in target_tasks]
+                )
 
             execution.stage = ExecutionStage.ANALYZE
             job.progress = 80
@@ -2450,7 +3000,11 @@ class ExecutionService(SelectiveReplayQueryService):
                 {"scope": scope, "retriedTaskCount": len(target_tasks)},
             )
             self.db.commit()
-            return {"jobId": str(job.id), "executionId": str(execution.id), "status": job.status.value}
+            return {
+                "jobId": str(job.id),
+                "executionId": str(execution.id),
+                "status": job.status.value,
+            }
         except Exception as exc:
             self.db.rollback()
             recovered = self._recover_committed_job(job_id, execution_id)
@@ -2468,7 +3022,9 @@ class ExecutionService(SelectiveReplayQueryService):
             self.db.commit()
             raise
 
-    def run_heal_job(self, job_id: UUID, execution_id: UUID, mode: str, context: ServiceContext) -> dict[str, object]:
+    def run_heal_job(
+        self, job_id: UUID, execution_id: UUID, mode: str, context: ServiceContext
+    ) -> dict[str, object]:
         job = self._require_job(job_id)
         execution = self._require_execution(execution_id)
         if job.status == JobStatus.COMPLETED:
@@ -2496,7 +3052,9 @@ class ExecutionService(SelectiveReplayQueryService):
                 service_name="agent-service",
                 attributes={"executionId": str(execution.id), "mode": mode},
             ):
-                suggestion_count = analysis_service.generate_healing(execution.id, context=context, reset=True)
+                suggestion_count = analysis_service.generate_healing(
+                    execution.id, context=context, reset=True
+                )
 
             execution.stage = original_stage
             job.status = JobStatus.COMPLETED
@@ -2519,7 +3077,11 @@ class ExecutionService(SelectiveReplayQueryService):
                 {"mode": mode, "suggestionCount": suggestion_count},
             )
             self.db.commit()
-            return {"jobId": str(job.id), "executionId": str(execution.id), "status": job.status.value}
+            return {
+                "jobId": str(job.id),
+                "executionId": str(execution.id),
+                "status": job.status.value,
+            }
         except Exception as exc:
             self.db.rollback()
             recovered = self._recover_committed_job(job_id, execution_id)
@@ -2535,11 +3097,15 @@ class ExecutionService(SelectiveReplayQueryService):
             self.db.commit()
             raise
 
-    def run_gate_job(self, job_id: UUID, execution_id: UUID, context: ServiceContext) -> dict[str, object]:
+    def run_gate_job(
+        self, job_id: UUID, execution_id: UUID, context: ServiceContext
+    ) -> dict[str, object]:
         job = self._require_job(job_id)
         execution = self._require_execution(execution_id)
         if job.status == JobStatus.COMPLETED:
-            decision = self.db.scalar(select(GateDecision).where(GateDecision.execution_id == execution.id))
+            decision = self.db.scalar(
+                select(GateDecision).where(GateDecision.execution_id == execution.id)
+            )
             if decision is not None:
                 gate_inputs = self._collect_gate_inputs(execution.id)
                 self._persist_gate_input_snapshot(decision, gate_inputs, context)
@@ -2552,7 +3118,9 @@ class ExecutionService(SelectiveReplayQueryService):
             }
         try:
             acquire_transaction_advisory_lock(self.db, "gate-evaluation", str(execution.id))
-            decision = self.db.scalar(select(GateDecision).where(GateDecision.execution_id == execution.id))
+            decision = self.db.scalar(
+                select(GateDecision).where(GateDecision.execution_id == execution.id)
+            )
             job.status = JobStatus.RUNNING
             job.progress = 20
             job.started_at = datetime.now(timezone.utc)
@@ -2586,7 +3154,9 @@ class ExecutionService(SelectiveReplayQueryService):
                 execution.ended_at = execution.ended_at or datetime.now(timezone.utc)
             elif (
                 self.db.scalar(
-                    select(GateInputSnapshot).where(GateInputSnapshot.gate_decision_id == decision.id)
+                    select(GateInputSnapshot).where(
+                        GateInputSnapshot.gate_decision_id == decision.id
+                    )
                 )
                 is None
             ):
@@ -2658,7 +3228,11 @@ class ExecutionService(SelectiveReplayQueryService):
                     execution_id=execution.id,
                 )
                 self.db.commit()
-            return {"jobId": str(job.id), "executionId": str(execution.id), "status": job.status.value}
+            return {
+                "jobId": str(job.id),
+                "executionId": str(execution.id),
+                "status": job.status.value,
+            }
         except Exception as exc:
             self.db.rollback()
             recovered = self._recover_committed_job(job_id, execution_id)
@@ -2673,22 +3247,40 @@ class ExecutionService(SelectiveReplayQueryService):
             raise
 
     def list_tasks(self, execution_id: UUID) -> dict[str, object]:
-        rows = [self.serialize_task(row) for row in self.db.scalars(select(ExecutionTask).where(ExecutionTask.execution_id == execution_id))]
+        rows = [
+            self.serialize_task(row)
+            for row in self.db.scalars(
+                select(ExecutionTask).where(ExecutionTask.execution_id == execution_id)
+            )
+        ]
         return {"items": rows, "total": len(rows)}
 
     def get_task(self, task_id: UUID) -> dict[str, object]:
         return self.serialize_task(self._require_task(task_id))
 
     def list_artifacts(self, task_id: UUID) -> dict[str, object]:
-        rows = [self.serialize_artifact(row) for row in self.db.scalars(select(ExecutionArtifact).where(ExecutionArtifact.task_id == task_id))]
+        rows = [
+            self.serialize_artifact(row)
+            for row in self.db.scalars(
+                select(ExecutionArtifact).where(ExecutionArtifact.task_id == task_id)
+            )
+        ]
         return {"items": rows, "total": len(rows)}
 
     def list_logs(self, task_id: UUID) -> dict[str, object]:
-        rows = [self.serialize_log(row) for row in self.db.scalars(select(ExecutionLog).where(ExecutionLog.task_id == task_id))]
+        rows = [
+            self.serialize_log(row)
+            for row in self.db.scalars(select(ExecutionLog).where(ExecutionLog.task_id == task_id))
+        ]
         return {"items": rows, "total": len(rows)}
 
     def list_metrics(self, task_id: UUID) -> dict[str, object]:
-        rows = [self.serialize_metric(row) for row in self.db.scalars(select(ExecutionMetric).where(ExecutionMetric.task_id == task_id))]
+        rows = [
+            self.serialize_metric(row)
+            for row in self.db.scalars(
+                select(ExecutionMetric).where(ExecutionMetric.task_id == task_id)
+            )
+        ]
         return {"items": rows, "total": len(rows)}
 
     def list_findings(
@@ -2699,28 +3291,49 @@ class ExecutionService(SelectiveReplayQueryService):
         *,
         page: int = 1,
         page_size: int = 100,
+        cursor: str | None = None,
     ) -> dict[str, object]:
         statement = select(Finding).where(Finding.execution_id == execution_id)
         if domain is not None:
             try:
                 statement = statement.where(Finding.domain == TestDomain(domain))
             except ValueError:
+                if cursor is not None:
+                    return paginate_cursor_result(
+                        [],
+                        page_size=page_size,
+                        next_cursor=None,
+                        has_more=False,
+                    )
                 return paginate_result([], 0, page, page_size)
         if severity is not None:
             try:
-                statement = statement.where(
-                    Finding.severity == FindingSeverity(severity)
-                )
+                statement = statement.where(Finding.severity == FindingSeverity(severity))
             except ValueError:
+                if cursor is not None:
+                    return paginate_cursor_result(
+                        [],
+                        page_size=page_size,
+                        next_cursor=None,
+                        has_more=False,
+                    )
                 return paginate_result([], 0, page, page_size)
         statement = statement.order_by(
             Finding.created_at.desc(),
             Finding.id.desc(),
         )
-        rows, total = paginate_query(self.db, statement, page, page_size)
-        links_by_finding = self._latest_external_issue_links(
-            [finding.id for finding in rows]
-        )
+        if cursor is not None:
+            rows, next_cursor, has_more = paginate_keyset_query(
+                self.db,
+                statement,
+                created_at_column=Finding.created_at,
+                id_column=Finding.id,
+                cursor=cursor,
+                page_size=page_size,
+            )
+        else:
+            rows, total = paginate_query(self.db, statement, page, page_size)
+        links_by_finding = self._latest_external_issue_links([finding.id for finding in rows])
         items = [
             self._serialize_finding(
                 finding,
@@ -2728,6 +3341,13 @@ class ExecutionService(SelectiveReplayQueryService):
             )
             for finding in rows
         ]
+        if cursor is not None:
+            return paginate_cursor_result(
+                items,
+                page_size=page_size,
+                next_cursor=next_cursor,
+                has_more=has_more,
+            )
         return paginate_result(items, total, page, page_size)
 
     def list_visual_grounding_attempts(self, execution_id: UUID) -> dict[str, object]:
@@ -2738,7 +3358,10 @@ class ExecutionService(SelectiveReplayQueryService):
                 .order_by(VisualGroundingAttempt.created_at.asc())
             )
         )
-        return {"items": [self.serialize_visual_grounding_attempt(row) for row in rows], "total": len(rows)}
+        return {
+            "items": [self.serialize_visual_grounding_attempt(row) for row in rows],
+            "total": len(rows),
+        }
 
     def list_verification_results(self, execution_id: UUID) -> dict[str, object]:
         rows = list(
@@ -2748,19 +3371,32 @@ class ExecutionService(SelectiveReplayQueryService):
                 .order_by(VerificationResult.created_at.asc())
             )
         )
-        return {"items": [self.serialize_verification_result(row) for row in rows], "total": len(rows)}
+        return {
+            "items": [self.serialize_verification_result(row) for row in rows],
+            "total": len(rows),
+        }
 
     def get_finding(self, finding_id: UUID) -> dict[str, object]:
         return self.serialize_finding(self._require_finding(finding_id))
 
-    def update_finding(self, finding_id: UUID, status, comment: str | None, context: ServiceContext) -> dict[str, object]:
+    def update_finding(
+        self, finding_id: UUID, status, comment: str | None, context: ServiceContext
+    ) -> dict[str, object]:
         if status == FindingStatus.ACCEPTED_RISK:
             from agentic_qa.services.approval_service import ApprovalService
 
             return ApprovalService(self.db).request_accepted_risk(finding_id, comment, context)
-        return self.execute_approved_finding_update(finding_id, status.value if isinstance(status, FindingStatus) else str(status), comment, context, approval_id=None)
+        return self.execute_approved_finding_update(
+            finding_id,
+            status.value if isinstance(status, FindingStatus) else str(status),
+            comment,
+            context,
+            approval_id=None,
+        )
 
-    def execute_approved_retry(self, execution_id: UUID, scope: str, context: ServiceContext, approval_id: UUID | None) -> dict[str, object]:
+    def execute_approved_retry(
+        self, execution_id: UUID, scope: str, context: ServiceContext, approval_id: UUID | None
+    ) -> dict[str, object]:
         execution = self._require_execution(execution_id)
         self.authorize_execution_scope(execution.id, context, write=True)
         admission_run = (
@@ -2770,7 +3406,9 @@ class ExecutionService(SelectiveReplayQueryService):
             if execution.trigger_source == "pr_admission"
             else None
         )
-        queue_trace_id = str(admission_run.trace_id) if admission_run is not None else context.trace_id
+        queue_trace_id = (
+            str(admission_run.trace_id) if admission_run is not None else context.trace_id
+        )
         job = Job(
             id=uuid4(),
             job_type="execution.retry",
@@ -2833,7 +3471,9 @@ class ExecutionService(SelectiveReplayQueryService):
             "stage": refreshed_execution.stage.value,
         }
 
-    def execute_approved_heal(self, execution_id: UUID, mode: str, context: ServiceContext, approval_id: UUID | None) -> dict[str, object]:
+    def execute_approved_heal(
+        self, execution_id: UUID, mode: str, context: ServiceContext, approval_id: UUID | None
+    ) -> dict[str, object]:
         execution = self._require_execution(execution_id)
         self.authorize_execution_scope(execution.id, context, write=True)
         job = Job(
@@ -2914,7 +3554,10 @@ class ExecutionService(SelectiveReplayQueryService):
             str(finding.id),
             context.request_id,
             context.trace_id,
-            {"status": finding.status.value, "approvalId": str(approval_id) if approval_id else None},
+            {
+                "status": finding.status.value,
+                "approvalId": str(approval_id) if approval_id else None,
+            },
         )
         self.db.commit()
         return {
@@ -2996,7 +3639,9 @@ class ExecutionService(SelectiveReplayQueryService):
             "startedAt": execution.started_at.isoformat() if execution.started_at else None,
             "endedAt": execution.ended_at.isoformat() if execution.ended_at else None,
             "summary": execution.summary,
-            "requirementScope": dict(plan.requirement_scope) if plan and plan.requirement_scope else {},
+            "requirementScope": dict(plan.requirement_scope)
+            if plan and plan.requirement_scope
+            else {},
             "runtime": runtime or self.runtime_projection(execution.id),
         }
 
@@ -3022,7 +3667,7 @@ class ExecutionService(SelectiveReplayQueryService):
             "id": str(artifact.id),
             "taskId": str(artifact.task_id) if artifact.task_id else None,
             "artifactType": artifact.artifact_type.value,
-            "uri": artifact.uri,
+            "uri": artifact.redacted_uri or artifact.uri,
             "summary": artifact.summary,
             "redactionStatus": artifact.redaction_status,
             "redactedUri": artifact.redacted_uri,
@@ -3048,8 +3693,12 @@ class ExecutionService(SelectiveReplayQueryService):
             "metricName": metric.metric_name,
             "metricValue": float(metric.metric_value),
             "metricUnit": metric.metric_unit,
-            "thresholdValue": float(metric.threshold_value) if metric.threshold_value is not None else None,
-            "baselineValue": float(metric.baseline_value) if metric.baseline_value is not None else None,
+            "thresholdValue": float(metric.threshold_value)
+            if metric.threshold_value is not None
+            else None,
+            "baselineValue": float(metric.baseline_value)
+            if metric.baseline_value is not None
+            else None,
             "metadata": metric.metadata_json,
         }
 
@@ -3085,9 +3734,7 @@ class ExecutionService(SelectiveReplayQueryService):
             "evidence": finding.evidence,
             "comment": finding.comment,
             "metadata": finding.metadata_json,
-            "externalIssueLink": self._serialize_external_issue_link(
-                external_issue_link
-            ),
+            "externalIssueLink": self._serialize_external_issue_link(external_issue_link),
         }
 
     def _external_issue_link_for_finding(
@@ -3147,7 +3794,9 @@ class ExecutionService(SelectiveReplayQueryService):
             "externalStatus": link.external_status,
             "syncStatus": link.sync_status,
             "lastSyncedAt": link.last_synced_at.isoformat() if link.last_synced_at else None,
-            "lastStatusSyncedAt": link.last_status_synced_at.isoformat() if link.last_status_synced_at else None,
+            "lastStatusSyncedAt": link.last_status_synced_at.isoformat()
+            if link.last_status_synced_at
+            else None,
             "evidenceRefs": link.evidence_refs,
             "replayRefs": link.replay_refs,
             "traceRefs": link.trace_refs,
@@ -3172,7 +3821,9 @@ class ExecutionService(SelectiveReplayQueryService):
             },
         )
 
-    def serialize_visual_grounding_attempt(self, attempt: VisualGroundingAttempt) -> dict[str, object]:
+    def serialize_visual_grounding_attempt(
+        self, attempt: VisualGroundingAttempt
+    ) -> dict[str, object]:
         return {
             "id": str(attempt.id),
             "executionId": str(attempt.execution_id),
@@ -3188,7 +3839,9 @@ class ExecutionService(SelectiveReplayQueryService):
             "threshold": float(attempt.threshold) if attempt.threshold is not None else None,
             "coordinateClickAllowed": attempt.coordinate_click_allowed,
             "riskLevel": attempt.risk_level.value,
-            "guardrailDecision": attempt.guardrail_decision.value if attempt.guardrail_decision else None,
+            "guardrailDecision": attempt.guardrail_decision.value
+            if attempt.guardrail_decision
+            else None,
             "verificationStatus": attempt.verification_status,
             "verificationResult": attempt.verification_result,
             "artifactRefs": attempt.artifact_refs,
@@ -3210,7 +3863,9 @@ class ExecutionService(SelectiveReplayQueryService):
             "evidence": result.evidence,
             "artifactRefs": result.artifact_refs,
             "resultPayload": result.result_payload,
-            "normalizedFindingId": str(result.normalized_finding_id) if result.normalized_finding_id else None,
+            "normalizedFindingId": str(result.normalized_finding_id)
+            if result.normalized_finding_id
+            else None,
             "createdAt": result.created_at.isoformat(),
         }
 
@@ -3222,44 +3877,182 @@ class ExecutionService(SelectiveReplayQueryService):
         *,
         execution_plan_id: UUID | None = None,
     ) -> None:
+        plan = self.db.get(TestPlan, plan_id)
+        environment_base_url: str | None = None
+        if plan is not None and plan.environment_id is not None:
+            project_environment = self.db.get(ProjectEnvironment, plan.environment_id)
+            if (
+                project_environment is not None
+                and project_environment.status == "active"
+                and (plan.project_id is None or project_environment.project_id == plan.project_id)
+            ):
+                environment_base_url = str(project_environment.base_url or "").strip() or None
+        raw_selected_scenario_ids = options.get("selectedScenarioIds")
+        selection_provided = raw_selected_scenario_ids is not None
+        selected_scenario_ids = [
+            str(item)
+            for item in (raw_selected_scenario_ids or [])
+            if str(item).strip()
+        ]
+        plan_source_fingerprint = (
+            source_fingerprint(
+                dict(plan.input_payload or {}),
+                plan.requirement_version_id,
+                dict(plan.requirement_scope or {}),
+            )
+            if plan is not None
+            else None
+        )
+
+        def build_task_config(
+            domain: TestDomain,
+            runner: str,
+            config: dict[str, object],
+        ) -> dict[str, object]:
+            task_config = dict(config)
+            if (
+                domain == TestDomain.SECURITY
+                and runner == "zap"
+                and environment_base_url
+                and not str(task_config.get("target") or "").strip()
+            ):
+                task_config["target"] = environment_base_url
+                task_config["targetSource"] = "project_environment.base_url"
+            return task_config
+
         if execution_plan_id is not None:
             execution_plan = self.db.get(ExecutionPlan, execution_plan_id)
             if execution_plan is None or execution_plan.test_plan_id != plan_id:
                 raise ValueError("approved execution plan not found for test plan")
             if execution_plan.status != "approved":
                 raise ValueError("execution plan is not approved")
+            if selection_provided:
+                available_scenario_ids = {
+                    str(scenario.get("scenarioId"))
+                    for task_spec in execution_plan.tasks
+                    for scenario in [task_spec.get("executableScenario")]
+                    if isinstance(scenario, dict) and scenario.get("scenarioId")
+                }
+                if set(selected_scenario_ids) - available_scenario_ids:
+                    raise ExecutableScenarioError("EXECUTABLE_SCENARIO_SELECTION_INVALID")
             for index, task_spec in enumerate(execution_plan.tasks):
                 domain = TestDomain(str(task_spec["domain"]))
                 should_run = options.get(f"run{domain.value.capitalize()}", True)
                 if not should_run:
                     continue
+                if (
+                    domain == TestDomain.FUNCTIONAL
+                    and selection_provided
+                    and not selected_scenario_ids
+                    and isinstance(task_spec.get("executableScenario"), dict)
+                ):
+                    continue
+                runner = str(task_spec["runner"])
+                task_config: dict[str, object] = {
+                    "assetId": task_spec.get("assetId"),
+                    "objective": task_spec.get("objective"),
+                    "executionPlanId": str(execution_plan_id),
+                    "requirementRefs": task_spec.get("requirementRefs", []),
+                    "requirementScope": task_spec.get(
+                        "requirementScope",
+                        execution_plan.requirement_scope,
+                    ),
+                }
+                if domain == TestDomain.FUNCTIONAL and isinstance(
+                    task_spec.get("executableScenario"), dict
+                ):
+                    scenario = dict(task_spec["executableScenario"])
+                    scenario_id = str(scenario.get("scenarioId") or "")
+                    if selected_scenario_ids and scenario_id not in selected_scenario_ids:
+                        continue
+                    if not selection_provided and scenario.get("selected", True) is False:
+                        continue
+                    task_config = {
+                        **task_config,
+                        **self._compile_execution_plan_scenario(
+                            scenario,
+                            plan=plan,
+                            environment_base_url=environment_base_url,
+                        ),
+                    }
                 self.db.add(
                     ExecutionTask(
                         id=uuid4(),
                         execution_id=execution_id,
                         domain=domain,
                         task_type=str(task_spec.get("taskType") or f"{domain.value}.generated"),
-                        runner=str(task_spec["runner"]),
+                        runner=runner,
                         status=TaskStatus.QUEUED,
                         stage=ExecutionStage.PREPARE,
                         priority=index + 1,
-                        config={
-                            "assetId": task_spec.get("assetId"),
-                            "objective": task_spec.get("objective"),
-                            "executionPlanId": str(execution_plan_id),
-                            "requirementRefs": task_spec.get("requirementRefs", []),
-                            "requirementScope": task_spec.get("requirementScope", execution_plan.requirement_scope),
-                        },
+                        config=build_task_config(
+                            domain,
+                            runner,
+                            task_config,
+                        ),
                         result_payload={"enabled": True},
                     )
                 )
             return
-        domains = list(self.db.scalars(select(TestPlanDomain).where(TestPlanDomain.plan_id == plan_id)))
+        domains = list(
+            self.db.scalars(select(TestPlanDomain).where(TestPlanDomain.plan_id == plan_id))
+        )
         for domain in domains:
             should_run = options.get(f"run{domain.domain.value.capitalize()}", True)
             if not should_run:
                 continue
             runner = self.runner_registry.default_runner_for_domain(domain.domain, domain.config)
+            if domain.domain == TestDomain.FUNCTIONAL:
+                if selection_provided and not selected_scenario_ids and isinstance(
+                    domain.config.get("executableScenarios"), dict
+                ):
+                    continue
+                scenarios = compile_confirmed_scenarios(
+                    dict(domain.config or {}),
+                    risk_level=plan.risk_level.value if plan is not None else "low",
+                    selected_scenario_ids=selected_scenario_ids,
+                    current_source_fingerprint=plan_source_fingerprint,
+                    environment_base_url=environment_base_url,
+                )
+                if scenarios:
+                    base_config = {
+                        key: value
+                        for key, value in dict(domain.config or {}).items()
+                        if key
+                        not in {
+                            "actualExecution",
+                            "executableScenarios",
+                            "semanticAction",
+                            "semanticActions",
+                            "targetUrl",
+                        }
+                    }
+                    for scenario_index, scenario in enumerate(scenarios):
+                        self.db.add(
+                            ExecutionTask(
+                                id=uuid4(),
+                                execution_id=execution_id,
+                                domain=domain.domain,
+                                task_type="functional.browser_scenario",
+                                runner=runner,
+                                status=TaskStatus.QUEUED,
+                                stage=ExecutionStage.PREPARE,
+                                priority=scenario_index + 1,
+                                config=build_task_config(
+                                    domain.domain,
+                                    runner,
+                                    {
+                                        **base_config,
+                                        **self._compiled_scenario_task_config(scenario),
+                                    },
+                                ),
+                                result_payload={"enabled": domain.enabled},
+                            )
+                        )
+                    continue
+                if selected_scenario_ids:
+                    raise ExecutableScenarioError("EXECUTABLE_SCENARIO_SELECTION_INVALID")
+            task_config = build_task_config(domain.domain, runner, domain.config)
             self.db.add(
                 ExecutionTask(
                     id=uuid4(),
@@ -3269,13 +4062,82 @@ class ExecutionService(SelectiveReplayQueryService):
                     runner=runner,
                     status=TaskStatus.QUEUED,
                     stage=ExecutionStage.PREPARE,
-                    config=domain.config,
+                    config=task_config,
                     result_payload={"enabled": domain.enabled},
                 )
             )
 
+    def _compile_execution_plan_scenario(
+        self,
+        scenario: dict[str, object],
+        *,
+        plan: TestPlan | None,
+        environment_base_url: str | None,
+    ) -> dict[str, object]:
+        expected_scenario_hash = str(scenario.get("contentHash") or "")
+        expected_collection_hash = str(scenario.get("collectionContentHash") or "")
+        collection = {
+            "schemaVersion": "community.executable-scenarios.v1",
+            "revision": scenario.get("collectionRevision") or 1,
+            "sourceFingerprint": scenario.get("collectionSourceFingerprint") or "",
+            "sourceChanged": bool(scenario.get("collectionSourceChanged", False)),
+            "scenarios": [
+                {
+                    key: value
+                    for key, value in scenario.items()
+                    if not str(key).startswith("collection")
+                }
+            ],
+        }
+        compiled = compile_confirmed_scenarios(
+            {"executableScenarios": collection},
+            risk_level=plan.risk_level.value if plan is not None else "low",
+            selected_scenario_ids=[str(scenario.get("scenarioId") or "")],
+            current_source_fingerprint=(
+                source_fingerprint(
+                    dict(plan.input_payload or {}),
+                    plan.requirement_version_id,
+                    dict(plan.requirement_scope or {}),
+                )
+                if plan is not None
+                else None
+            ),
+            environment_base_url=environment_base_url,
+        )
+        if not compiled:
+            raise ExecutableScenarioError("EXECUTABLE_SCENARIOS_CONFIRMATION_REQUIRED")
+        if (
+            expected_scenario_hash
+            and compiled[0]["scenarioContentHash"] != expected_scenario_hash
+        ):
+            raise ExecutableScenarioError("EXECUTABLE_SCENARIO_FROZEN_HASH_MISMATCH")
+        task_config = self._compiled_scenario_task_config(compiled[0])
+        if expected_collection_hash:
+            task_config["scenarioCollectionContentHash"] = expected_collection_hash
+        return task_config
+
+    @staticmethod
+    def _compiled_scenario_task_config(scenario: dict[str, object]) -> dict[str, object]:
+        return {
+            "actualExecution": True,
+            "scenarioId": scenario["scenarioId"],
+            "scenarioName": scenario["name"],
+            "scenarioGoal": scenario["goal"],
+            "targetUrl": scenario["targetUrl"],
+            "semanticActions": scenario["semanticActions"],
+            "scenarioSourceRefs": scenario["sourceRefs"],
+            "scenarioSourceFingerprint": scenario["sourceFingerprint"],
+            "scenarioContentHash": scenario["scenarioContentHash"],
+            "scenarioCollectionContentHash": scenario["collectionContentHash"],
+            "scenarioRevision": scenario["revision"],
+            "scenarioConfidence": scenario["confidence"],
+            "scenarioLimitations": scenario["limitations"],
+        }
+
     def _prepare_tasks_for_run(self, execution_id: UUID) -> None:
-        tasks = list(self.db.scalars(select(ExecutionTask).where(ExecutionTask.execution_id == execution_id)))
+        tasks = list(
+            self.db.scalars(select(ExecutionTask).where(ExecutionTask.execution_id == execution_id))
+        )
         for task in tasks:
             task.status = TaskStatus.QUEUED
             task.stage = ExecutionStage.PREPARE
@@ -3292,7 +4154,9 @@ class ExecutionService(SelectiveReplayQueryService):
             task.ended_at = None
             task.retry_count += 1
 
-    def _run_tasks(self, execution_id: UUID, context: ServiceContext, task_ids: list[UUID] | None = None) -> None:
+    def _run_tasks(
+        self, execution_id: UUID, context: ServiceContext, task_ids: list[UUID] | None = None
+    ) -> None:
         execution = self._require_execution(execution_id)
         statement = select(ExecutionTask).where(ExecutionTask.execution_id == execution_id)
         if task_ids:
@@ -3324,7 +4188,10 @@ class ExecutionService(SelectiveReplayQueryService):
                     resource_type="execution_task",
                     resource_id=str(task.id),
                     execution_id=execution.id,
-                    payload={"agentName": self.runner_agent.name, "agentResult": runner_agent_result},
+                    payload={
+                        "agentName": self.runner_agent.name,
+                        "agentResult": runner_agent_result,
+                    },
                 ),
                 [AgentOutputGuard()],
             )
@@ -3354,9 +4221,15 @@ class ExecutionService(SelectiveReplayQueryService):
             task.error_message = None
             self.db.flush()
 
-            extension_point_id = "EXECUTE.manual_simulation" if task.config.get("manualSimulation") else "EXECUTE.automated_execution"
+            extension_point_id = (
+                "EXECUTE.manual_simulation"
+                if task.config.get("manualSimulation")
+                else "EXECUTE.automated_execution"
+            )
             extension_request = {
-                "operation": "execute_task" if extension_point_id == "EXECUTE.automated_execution" else "propose_semantic_actions",
+                "operation": "execute_task"
+                if extension_point_id == "EXECUTE.automated_execution"
+                else "propose_semantic_actions",
                 "payload": {
                     "executionId": str(execution.id),
                     "taskId": str(task.id),
@@ -3378,12 +4251,15 @@ class ExecutionService(SelectiveReplayQueryService):
                 "requirementScope": task.config.get("requirementScope", {}),
             }
             if extension_point_id == "EXECUTE.manual_simulation":
+
                 def accept_manual_result(
                     runtime_result: object,
                     invocation: SkillInvocation,
                 ) -> ExtensionInvocationCompletion:
                     if not isinstance(runtime_result, dict):
-                        raise ValueError("manual simulation Skill runtime returned an incompatible result")
+                        raise ValueError(
+                            "manual simulation Skill runtime returned an incompatible result"
+                        )
                     task.status = TaskStatus.COMPLETED
                     task.result_payload = {
                         **task.result_payload,
@@ -3403,10 +4279,12 @@ class ExecutionService(SelectiveReplayQueryService):
                         scope=extension_scope,
                         policy_snapshot=extension_policy,
                         capabilities={
-                            "execute": lambda selected_context, _runtime_request: self.capability_gateway.propose_manual_simulation(
-                                selected_context,
-                                task,
-                                runner_agent_result.payload,
+                            "execute": lambda selected_context, _runtime_request: (
+                                self.capability_gateway.propose_manual_simulation(
+                                    selected_context,
+                                    task,
+                                    runner_agent_result.payload,
+                                )
                             ),
                         },
                         deadline_at=self._runner_deadline_at(task),
@@ -3453,7 +4331,9 @@ class ExecutionService(SelectiveReplayQueryService):
                     if not can_execute_runner:
                         visual_grounding_blocked = True
                         task.status = TaskStatus.FAILED
-                        task.error_message = "visual grounding blocked execution or requires approval-backed review"
+                        task.error_message = (
+                            "visual grounding blocked execution or requires approval-backed review"
+                        )
                         task.ended_at = datetime.now(timezone.utc)
                         raise ValueError(task.error_message)
                 request = self._build_runner_request(execution, task, context)
@@ -3467,7 +4347,9 @@ class ExecutionService(SelectiveReplayQueryService):
                 invocation: SkillInvocation,
             ) -> ExtensionInvocationCompletion:
                 if not isinstance(runtime_result, RunnerExecutionResult):
-                    raise ValueError("automated execution Skill runtime returned an incompatible runner result")
+                    raise ValueError(
+                        "automated execution Skill runtime returned an incompatible runner result"
+                    )
                 persisted_refs = self._persist_runner_result(task, runtime_result)
                 task.result_payload = {
                     **task.result_payload,
@@ -3494,8 +4376,7 @@ class ExecutionService(SelectiveReplayQueryService):
                         else "cancelled"
                         if runtime_result.status == "cancelled"
                         else "timed_out"
-                        if runtime_result.timed_out
-                        or runtime_result.tool_status == "timeout"
+                        if runtime_result.timed_out or runtime_result.tool_status == "timeout"
                         else "failed"
                     ),
                     error_message=runtime_result.error,
@@ -3545,11 +4426,7 @@ class ExecutionService(SelectiveReplayQueryService):
             return False
         tool_status = "cancelled" if error.status == "cancelled" else "timeout"
         runner_status = "cancelled" if error.status == "cancelled" else "failed"
-        task.status = (
-            TaskStatus.CANCELLED
-            if error.status == "cancelled"
-            else TaskStatus.FAILED
-        )
+        task.status = TaskStatus.CANCELLED if error.status == "cancelled" else TaskStatus.FAILED
         task.error_message = redact_sensitive_text(str(error))
         task.ended_at = datetime.now(timezone.utc)
         existing_payload = dict(task.result_payload or {})
@@ -3628,7 +4505,11 @@ class ExecutionService(SelectiveReplayQueryService):
             root_span_name="admission.execute",
             span_name="admission.execute.sandbox",
             service_name="execution-service",
-            attributes={"executionId": str(execution.id), "gateDecisionCreated": False, "nonAuthoritative": True},
+            attributes={
+                "executionId": str(execution.id),
+                "gateDecisionCreated": False,
+                "nonAuthoritative": True,
+            },
         ):
             self._run_tasks(execution.id, context=context)
 
@@ -3683,8 +4564,13 @@ class ExecutionService(SelectiveReplayQueryService):
         execution = self._require_execution(execution_id)
         if execution.trigger_source != "pr_admission":
             raise ValueError("Admission shadow Gate requires trigger_source=pr_admission")
-        if self.db.scalar(select(GateDecision).where(GateDecision.execution_id == execution.id)) is not None:
-            raise ValueError("Admission shadow Gate refuses an execution with an authoritative GateDecision")
+        if (
+            self.db.scalar(select(GateDecision).where(GateDecision.execution_id == execution.id))
+            is not None
+        ):
+            raise ValueError(
+                "Admission shadow Gate refuses an execution with an authoritative GateDecision"
+            )
         runtime = self.runtime_projection(execution.id)
         readiness = dict(runtime.get("readiness") or {})
         if not readiness.get("normalizeCompleted"):
@@ -3752,7 +4638,9 @@ class ExecutionService(SelectiveReplayQueryService):
         execution = self._require_execution(execution_id)
         if execution.trigger_source != "pr_admission":
             raise ValueError("Admission Enforce Gate requires trigger_source=pr_admission")
-        existing = self.db.scalar(select(GateDecision).where(GateDecision.execution_id == execution.id))
+        existing = self.db.scalar(
+            select(GateDecision).where(GateDecision.execution_id == execution.id)
+        )
         if existing is not None:
             return {
                 "schemaVersion": "phase8.admission-enforce-gate.v1",
@@ -3797,7 +4685,9 @@ class ExecutionService(SelectiveReplayQueryService):
             },
             execution_id=execution.id,
         )
-        gate_snapshot.audit_refs = [{"type": "audit_log", "id": str(audit.id), "action": audit.action}]
+        gate_snapshot.audit_refs = [
+            {"type": "audit_log", "id": str(audit.id), "action": audit.action}
+        ]
         self.db.flush()
         return {
             "schemaVersion": "phase8.admission-enforce-gate.v1",
@@ -3840,7 +4730,20 @@ class ExecutionService(SelectiveReplayQueryService):
         )
 
     def _task_requires_visual_grounding(self, task: ExecutionTask) -> bool:
-        return bool(task.config.get("requiresVision") or task.config.get("requires_vision") or task.config.get("semanticAction"))
+        configured_actions = task.config.get("semanticActions")
+        return bool(
+            task.config.get("requiresVision")
+            or task.config.get("requires_vision")
+            or task.config.get("semanticAction")
+            or (
+                isinstance(configured_actions, list)
+                and any(
+                    isinstance(action, dict)
+                    and str(action.get("actionType") or "assert_visible") != "navigate"
+                    for action in configured_actions
+                )
+            )
+        )
 
     def _run_visual_grounding_for_task(
         self,
@@ -3851,13 +4754,64 @@ class ExecutionService(SelectiveReplayQueryService):
         runner: object,
         trace_span_id: UUID | None,
     ) -> bool:
-        semantic_action = self._semantic_action_from_task(task)
+        semantic_actions = self._visual_grounding_actions_from_task(task)
+        if not semantic_actions:
+            return True
+        redaction_results = [
+            self._visual_redaction_result(task, semantic_action, execution, context)
+            for semantic_action in semantic_actions
+        ]
+        blocked_index = next(
+            (
+                index
+                for index, result in enumerate(redaction_results)
+                if result.decision == GuardrailDecision.BLOCK
+            ),
+            None,
+        )
+        if blocked_index is not None:
+            return self._run_visual_grounding_action(
+                execution,
+                task,
+                context,
+                semantic_action=semantic_actions[blocked_index],
+                redaction_result=redaction_results[blocked_index],
+                capture_artifacts=[],
+                trace_span_id=trace_span_id,
+            )
+        capture_artifacts = self._capture_visual_artifacts_for_task(
+            execution, task, runner, context
+        )
+        return all(
+            self._run_visual_grounding_action(
+                execution,
+                task,
+                context,
+                semantic_action=semantic_action,
+                redaction_result=redaction_result,
+                capture_artifacts=capture_artifacts,
+                trace_span_id=trace_span_id,
+            )
+            for semantic_action, redaction_result in zip(
+                semantic_actions, redaction_results, strict=True
+            )
+        )
+
+    def _run_visual_grounding_action(
+        self,
+        execution: Execution,
+        task: ExecutionTask,
+        context: ServiceContext,
+        *,
+        semantic_action: dict[str, object],
+        redaction_result: GuardrailResult,
+        capture_artifacts: list[ExecutionArtifact],
+        trace_span_id: UUID | None,
+    ) -> bool:
         policy = self._visual_policy_snapshot(task)
         risk_level = self._visual_risk_level(semantic_action, execution.environment)
         threshold = Decimal(str(policy["visionFallbackThreshold"]))
         review_threshold = Decimal(str(policy["reviewThreshold"]))
-        redaction_result = self._visual_redaction_result(task, semantic_action, execution, context)
-
         if redaction_result.decision == GuardrailDecision.BLOCK:
             raw_finding = self._create_visual_grounding_raw_finding(
                 task,
@@ -3917,7 +4871,6 @@ class ExecutionService(SelectiveReplayQueryService):
             self._attach_visual_result_to_task(task, semantic_action, attempt, approval_id=None)
             return False
 
-        capture_artifacts = self._capture_visual_artifacts_for_task(execution, task, runner, context)
         artifact_refs = self._visual_artifact_refs(capture_artifacts)
         missing_types = self._missing_visual_artifact_types(capture_artifacts)
         if missing_types:
@@ -3977,11 +4930,19 @@ class ExecutionService(SelectiveReplayQueryService):
             self._link_visual_raw_to_verification(raw_finding, verification)
             self._attach_visual_result_to_task(task, semantic_action, attempt, approval_id=None)
             return False
-        vision_output = self._invoke_visual_resolver_if_needed(execution, task, context, semantic_action, artifact_refs)
-        visual_result_artifacts = self._create_visual_result_artifacts(execution, task, semantic_action, vision_output)
+        vision_output = self._invoke_visual_resolver_if_needed(
+            execution, task, context, semantic_action, artifact_refs
+        )
+        visual_result_artifacts = self._create_visual_result_artifacts(
+            execution, task, semantic_action, vision_output
+        )
         artifact_refs.extend(self._visual_artifact_refs(visual_result_artifacts))
-        candidate_locators = self._visual_candidate_locators(semantic_action, vision_output=vision_output, artifact_refs=artifact_refs)
-        chosen_locator, confidence, fusion_reason = self._fuse_locator_candidates(candidate_locators)
+        candidate_locators = self._visual_candidate_locators(
+            semantic_action, vision_output=vision_output, artifact_refs=artifact_refs
+        )
+        chosen_locator, confidence, fusion_reason = self._fuse_locator_candidates(
+            candidate_locators
+        )
         coordinate_click_allowed, coordinate_click_denials = self._coordinate_click_evaluation(
             semantic_action,
             confidence=confidence,
@@ -3992,7 +4953,9 @@ class ExecutionService(SelectiveReplayQueryService):
             guardrail_blocked=False,
         )
         verified = confidence >= threshold and bool(chosen_locator) and risk_level != RiskLevel.HIGH
-        review_required = not verified and (confidence < review_threshold or risk_level == RiskLevel.HIGH)
+        review_required = not verified and (
+            confidence < review_threshold or risk_level == RiskLevel.HIGH
+        )
         guardrail_result = self._record_visual_action_guardrail(
             execution,
             task,
@@ -4008,7 +4971,10 @@ class ExecutionService(SelectiveReplayQueryService):
         if guardrail_decision == GuardrailDecisionType.BLOCK:
             coordinate_click_allowed = False
             if "guardrail blocked visual action" not in coordinate_click_denials:
-                coordinate_click_denials = [*coordinate_click_denials, "guardrail blocked visual action"]
+                coordinate_click_denials = [
+                    *coordinate_click_denials,
+                    "guardrail blocked visual action",
+                ]
         verified = verified and guardrail_decision != GuardrailDecisionType.BLOCK
         review_required = guardrail_decision != GuardrailDecisionType.BLOCK and (
             review_required or guardrail_decision == GuardrailDecisionType.WARN
@@ -4043,7 +5009,9 @@ class ExecutionService(SelectiveReplayQueryService):
                 semantic_action,
                 artifact_refs,
                 confidence=confidence,
-                severity=FindingSeverity.HIGH if risk_level == RiskLevel.HIGH else FindingSeverity.MEDIUM,
+                severity=FindingSeverity.HIGH
+                if risk_level == RiskLevel.HIGH
+                else FindingSeverity.MEDIUM,
                 summary="Visual grounding could not verify a safe locator for the semantic action.",
             )
 
@@ -4098,7 +5066,9 @@ class ExecutionService(SelectiveReplayQueryService):
             status=verification_status,
             confidence=confidence,
             evidence=[
-                *self._artifact_refs_by_type(artifact_refs, {"dom_snapshot", "accessibility_tree", "screenshot"}),
+                *self._artifact_refs_by_type(
+                    artifact_refs, {"dom_snapshot", "accessibility_tree", "screenshot"}
+                ),
                 {"type": "semantic_target", "ref": str(semantic_action["actionId"])},
             ],
             artifact_refs=artifact_refs,
@@ -4112,7 +5082,29 @@ class ExecutionService(SelectiveReplayQueryService):
 
     def _semantic_action_from_task(self, task: ExecutionTask) -> dict[str, object]:
         configured = dict(task.config.get("semanticAction") or {})
-        action_id = str(configured.get("actionId") or f"{task.id}:default")
+        return self._normalized_semantic_action(task, configured, index=0)
+
+    def _visual_grounding_actions_from_task(
+        self, task: ExecutionTask
+    ) -> list[dict[str, object]]:
+        configured_actions = task.config.get("semanticActions")
+        if isinstance(configured_actions, list):
+            return [
+                self._normalized_semantic_action(task, action, index=index)
+                for index, action in enumerate(configured_actions)
+                if isinstance(action, dict)
+                and str(action.get("actionType") or "assert_visible") != "navigate"
+            ]
+        return [self._semantic_action_from_task(task)]
+
+    @staticmethod
+    def _normalized_semantic_action(
+        task: ExecutionTask,
+        configured: dict[str, object],
+        *,
+        index: int,
+    ) -> dict[str, object]:
+        action_id = str(configured.get("actionId") or f"{task.id}:action-{index + 1}")
         return {
             "schemaVersion": str(configured.get("schemaVersion") or "phase7.v1"),
             "actionId": action_id,
@@ -4123,7 +5115,9 @@ class ExecutionService(SelectiveReplayQueryService):
                 configured.get("locatorStrategy")
                 or {"primary": "dom", "fallback": ["accessibility", "vision", "ocr"]}
             ),
-            "fallbackPolicy": dict(configured.get("fallbackPolicy") or {"allowCoordinateClick": False}),
+            "fallbackPolicy": dict(
+                configured.get("fallbackPolicy") or {"allowCoordinateClick": False}
+            ),
             "assertionIntent": dict(configured.get("assertionIntent") or {}),
             "riskLevel": str(configured.get("riskLevel") or RiskLevel.MEDIUM.value),
             "policyRefs": list(configured.get("policyRefs") or []),
@@ -4144,9 +5138,21 @@ class ExecutionService(SelectiveReplayQueryService):
     def _visual_risk_level(self, semantic_action: dict[str, object], environment: str) -> RiskLevel:
         proposed = str(semantic_action.get("riskLevel") or RiskLevel.MEDIUM.value).lower()
         action_type = str(semantic_action.get("actionType") or "").lower()
-        target = semantic_action.get("semanticTarget") if isinstance(semantic_action.get("semanticTarget"), dict) else {}
+        target = (
+            semantic_action.get("semanticTarget")
+            if isinstance(semantic_action.get("semanticTarget"), dict)
+            else {}
+        )
         intent = str(target.get("intent", "")).lower() if isinstance(target, dict) else ""
-        high_risk_terms = {"delete", "payment", "purchase", "permission", "admin", "prod", "production"}
+        high_risk_terms = {
+            "delete",
+            "payment",
+            "purchase",
+            "permission",
+            "admin",
+            "prod",
+            "production",
+        }
         if action_type == "fill" and environment == "production":
             return RiskLevel.HIGH
         if any(term in intent for term in high_risk_terms):
@@ -4162,8 +5168,15 @@ class ExecutionService(SelectiveReplayQueryService):
         execution: Execution,
         context: ServiceContext,
     ) -> GuardrailResult:
-        redaction_config = task.config.get("visualRedaction") if isinstance(task.config.get("visualRedaction"), dict) else {}
-        blocked = bool(task.config.get("simulateVisualRedactionFailure") or redaction_config.get("status") == "blocked")
+        redaction_config = (
+            task.config.get("visualRedaction")
+            if isinstance(task.config.get("visualRedaction"), dict)
+            else {}
+        )
+        blocked = bool(
+            task.config.get("simulateVisualRedactionFailure")
+            or redaction_config.get("status") == "blocked"
+        )
         if blocked:
             result = GuardrailResult(
                 rule_id="data.visual_artifact_redaction",
@@ -4267,21 +5280,34 @@ class ExecutionService(SelectiveReplayQueryService):
             if source == "dom":
                 candidates.extend(self._dom_candidate_locators(semantic_action, artifact_refs))
             if source == "accessibility":
-                candidates.extend(self._accessibility_candidate_locators(semantic_action, artifact_refs))
+                candidates.extend(
+                    self._accessibility_candidate_locators(semantic_action, artifact_refs)
+                )
             if source == "vision":
-                candidates.extend(self._vision_candidate_locators(semantic_action, vision_output, artifact_refs))
+                candidates.extend(
+                    self._vision_candidate_locators(semantic_action, vision_output, artifact_refs)
+                )
             if source == "ocr":
-                candidates.extend(self._ocr_candidate_locators(semantic_action, vision_output, artifact_refs))
+                candidates.extend(
+                    self._ocr_candidate_locators(semantic_action, vision_output, artifact_refs)
+                )
         return self._dedupe_candidate_locators(candidates)
 
     def _ordered_locator_sources(self, semantic_action: dict[str, object]) -> list[str]:
-        strategy = semantic_action.get("locatorStrategy") if isinstance(semantic_action.get("locatorStrategy"), dict) else {}
+        strategy = (
+            semantic_action.get("locatorStrategy")
+            if isinstance(semantic_action.get("locatorStrategy"), dict)
+            else {}
+        )
         primary = str(strategy.get("primary") or "dom").lower()
         fallback = strategy.get("fallback") if isinstance(strategy.get("fallback"), list) else []
         ordered: list[str] = []
         for item in [primary, *fallback]:
             normalized = str(item).lower()
-            if normalized in {"dom", "accessibility", "vision", "ocr"} and normalized not in ordered:
+            if (
+                normalized in {"dom", "accessibility", "vision", "ocr"}
+                and normalized not in ordered
+            ):
                 ordered.append(normalized)
         return ordered or ["dom", "accessibility", "vision", "ocr"]
 
@@ -4290,11 +5316,19 @@ class ExecutionService(SelectiveReplayQueryService):
         semantic_action: dict[str, object],
         artifact_refs: list[dict[str, object]],
     ) -> list[dict[str, object]]:
-        hints = semantic_action.get("targetHints") if isinstance(semantic_action.get("targetHints"), dict) else {}
+        hints = (
+            semantic_action.get("targetHints")
+            if isinstance(semantic_action.get("targetHints"), dict)
+            else {}
+        )
         if isinstance(hints, dict):
             selector = hints.get("selector") or hints.get("css") or hints.get("testId")
             if selector:
-                value = f"[data-testid='{selector}']" if hints.get("testId") and not str(selector).startswith("[") else str(selector)
+                value = (
+                    f"[data-testid='{selector}']"
+                    if hints.get("testId") and not str(selector).startswith("[")
+                    else str(selector)
+                )
                 return [
                     {
                         "kind": "dom_selector",
@@ -4311,7 +5345,11 @@ class ExecutionService(SelectiveReplayQueryService):
         semantic_action: dict[str, object],
         artifact_refs: list[dict[str, object]],
     ) -> list[dict[str, object]]:
-        target = semantic_action.get("semanticTarget") if isinstance(semantic_action.get("semanticTarget"), dict) else {}
+        target = (
+            semantic_action.get("semanticTarget")
+            if isinstance(semantic_action.get("semanticTarget"), dict)
+            else {}
+        )
         if isinstance(target, dict) and target.get("role") and target.get("name"):
             return [
                 {
@@ -4331,7 +5369,11 @@ class ExecutionService(SelectiveReplayQueryService):
         vision_output: dict[str, object],
         artifact_refs: list[dict[str, object]],
     ) -> list[dict[str, object]]:
-        hints = semantic_action.get("targetHints") if isinstance(semantic_action.get("targetHints"), dict) else {}
+        hints = (
+            semantic_action.get("targetHints")
+            if isinstance(semantic_action.get("targetHints"), dict)
+            else {}
+        )
         candidates: list[dict[str, object]] = []
         hint_box = hints.get("boundingBox") if isinstance(hints, dict) else None
         if isinstance(hint_box, dict):
@@ -4344,7 +5386,9 @@ class ExecutionService(SelectiveReplayQueryService):
                     "evidence": self._artifact_refs_by_type(artifact_refs, {"screenshot"}),
                 }
             )
-        output_confidence = self._bounded_confidence(vision_output.get("targetMatchConfidence", 0.0))
+        output_confidence = self._bounded_confidence(
+            vision_output.get("targetMatchConfidence", 0.0)
+        )
         bounding_boxes = (
             vision_output.get("boundingBoxes", [])
             if isinstance(vision_output.get("boundingBoxes"), list)
@@ -4358,9 +5402,13 @@ class ExecutionService(SelectiveReplayQueryService):
                     "kind": "bounding_box",
                     "source": "model_gateway:vision",
                     "boundingBox": box,
-                    "confidence": self._bounded_confidence(box.get("confidence", output_confidence)),
+                    "confidence": self._bounded_confidence(
+                        box.get("confidence", output_confidence)
+                    ),
                     "rank": index,
-                    "evidence": self._artifact_refs_by_type(artifact_refs, {"screenshot", "vision_annotation"}),
+                    "evidence": self._artifact_refs_by_type(
+                        artifact_refs, {"screenshot", "vision_annotation"}
+                    ),
                 }
             )
         return candidates
@@ -4371,8 +5419,16 @@ class ExecutionService(SelectiveReplayQueryService):
         vision_output: dict[str, object],
         artifact_refs: list[dict[str, object]],
     ) -> list[dict[str, object]]:
-        hints = semantic_action.get("targetHints") if isinstance(semantic_action.get("targetHints"), dict) else {}
-        target = semantic_action.get("semanticTarget") if isinstance(semantic_action.get("semanticTarget"), dict) else {}
+        hints = (
+            semantic_action.get("targetHints")
+            if isinstance(semantic_action.get("targetHints"), dict)
+            else {}
+        )
+        target = (
+            semantic_action.get("semanticTarget")
+            if isinstance(semantic_action.get("semanticTarget"), dict)
+            else {}
+        )
         expected_text = hints.get("text") if isinstance(hints, dict) else None
         if expected_text is None and isinstance(target, dict):
             expected_text = target.get("name")
@@ -4381,13 +5437,21 @@ class ExecutionService(SelectiveReplayQueryService):
             candidates.append(
                 {
                     "kind": "ocr_text",
-                    "source": "targetHints" if isinstance(hints, dict) and hints.get("text") else "semanticTarget",
+                    "source": "targetHints"
+                    if isinstance(hints, dict) and hints.get("text")
+                    else "semanticTarget",
                     "text": str(expected_text),
                     "confidence": 0.66,
-                    "evidence": self._artifact_refs_by_type(artifact_refs, {"screenshot", "ocr_output"}),
+                    "evidence": self._artifact_refs_by_type(
+                        artifact_refs, {"screenshot", "ocr_output"}
+                    ),
                 }
             )
-        for item in vision_output.get("recognizedText", []) if isinstance(vision_output.get("recognizedText"), list) else []:
+        for item in (
+            vision_output.get("recognizedText", [])
+            if isinstance(vision_output.get("recognizedText"), list)
+            else []
+        ):
             if not isinstance(item, dict) or not item.get("text"):
                 continue
             candidates.append(
@@ -4397,12 +5461,16 @@ class ExecutionService(SelectiveReplayQueryService):
                     "text": str(item["text"]),
                     "boundingBox": item.get("boundingBox"),
                     "confidence": self._bounded_confidence(item.get("confidence", 0.64)),
-                    "evidence": self._artifact_refs_by_type(artifact_refs, {"screenshot", "ocr_output"}),
+                    "evidence": self._artifact_refs_by_type(
+                        artifact_refs, {"screenshot", "ocr_output"}
+                    ),
                 }
             )
         return candidates
 
-    def _dedupe_candidate_locators(self, candidates: list[dict[str, object]]) -> list[dict[str, object]]:
+    def _dedupe_candidate_locators(
+        self, candidates: list[dict[str, object]]
+    ) -> list[dict[str, object]]:
         seen: set[str] = set()
         deduped: list[dict[str, object]] = []
         for candidate in candidates:
@@ -4424,7 +5492,9 @@ class ExecutionService(SelectiveReplayQueryService):
             deduped.append(candidate)
         return deduped
 
-    def _fuse_locator_candidates(self, candidates: list[dict[str, object]]) -> tuple[dict[str, object], Decimal, str]:
+    def _fuse_locator_candidates(
+        self, candidates: list[dict[str, object]]
+    ) -> tuple[dict[str, object], Decimal, str]:
         if not candidates:
             return {}, Decimal("0.40"), "no candidate locator met the semantic target"
         priority = {
@@ -4443,7 +5513,9 @@ class ExecutionService(SelectiveReplayQueryService):
         confidence = Decimal(str(round(self._bounded_confidence(chosen.get("confidence", 0.0)), 4)))
         return chosen, confidence, f"selected {chosen.get('kind')} from {chosen.get('source')}"
 
-    def _visual_attempt_status(self, guardrail_decision: GuardrailDecisionType, review_required: bool, verified: bool) -> str:
+    def _visual_attempt_status(
+        self, guardrail_decision: GuardrailDecisionType, review_required: bool, verified: bool
+    ) -> str:
         if guardrail_decision == GuardrailDecisionType.BLOCK:
             return "blocked"
         if review_required:
@@ -4454,7 +5526,9 @@ class ExecutionService(SelectiveReplayQueryService):
 
     def _locator_has_verifiable_area(self, locator: dict[str, object]) -> bool:
         kind = str(locator.get("kind") or "")
-        return kind in {"bounding_box", "screen_coordinate"} and bool(locator.get("boundingBox") or locator.get("coordinate"))
+        return kind in {"bounding_box", "screen_coordinate"} and bool(
+            locator.get("boundingBox") or locator.get("coordinate")
+        )
 
     def _coordinate_click_evaluation(
         self,
@@ -4467,7 +5541,11 @@ class ExecutionService(SelectiveReplayQueryService):
         risk_level: RiskLevel,
         guardrail_blocked: bool,
     ) -> tuple[bool, list[str]]:
-        fallback_policy = semantic_action.get("fallbackPolicy") if isinstance(semantic_action.get("fallbackPolicy"), dict) else {}
+        fallback_policy = (
+            semantic_action.get("fallbackPolicy")
+            if isinstance(semantic_action.get("fallbackPolicy"), dict)
+            else {}
+        )
         denials: list[str] = []
         if fallback_policy.get("allowCoordinateClick") is not True:
             denials.append("allowCoordinateClick is false by default")
@@ -4496,7 +5574,11 @@ class ExecutionService(SelectiveReplayQueryService):
         coordinate_click_allowed: bool,
         coordinate_click_denials: list[str],
     ) -> GuardrailResult:
-        fallback_policy = semantic_action.get("fallbackPolicy") if isinstance(semantic_action.get("fallbackPolicy"), dict) else {}
+        fallback_policy = (
+            semantic_action.get("fallbackPolicy")
+            if isinstance(semantic_action.get("fallbackPolicy"), dict)
+            else {}
+        )
         coordinate_click_requested = fallback_policy.get("allowCoordinateClick") is True
         decision = (
             GuardrailDecision.WARN
@@ -4597,7 +5679,9 @@ class ExecutionService(SelectiveReplayQueryService):
         return {
             "boundingBoxes": self._safe_list(candidate.get("boundingBoxes")),
             "recognizedText": self._safe_list(candidate.get("recognizedText")),
-            "targetMatchConfidence": self._bounded_confidence(candidate.get("targetMatchConfidence")),
+            "targetMatchConfidence": self._bounded_confidence(
+                candidate.get("targetMatchConfidence")
+            ),
             "reasoningEvidenceRefs": self._safe_list(candidate.get("reasoningEvidenceRefs")),
             "riskSignals": self._safe_list(candidate.get("riskSignals")),
         }
@@ -4629,7 +5713,11 @@ class ExecutionService(SelectiveReplayQueryService):
         vision_output: dict[str, object],
     ) -> list[ExecutionArtifact]:
         artifacts: list[ExecutionArtifact] = []
-        if vision_output.get("boundingBoxes") or vision_output.get("riskSignals") or vision_output.get("reasoningEvidenceRefs"):
+        if (
+            vision_output.get("boundingBoxes")
+            or vision_output.get("riskSignals")
+            or vision_output.get("reasoningEvidenceRefs")
+        ):
             artifacts.append(
                 self._create_visual_artifact(
                     execution,
@@ -4659,7 +5747,9 @@ class ExecutionService(SelectiveReplayQueryService):
             )
         return artifacts
 
-    def _artifact_refs_by_type(self, artifact_refs: list[dict[str, object]], artifact_types: set[str]) -> list[dict[str, object]]:
+    def _artifact_refs_by_type(
+        self, artifact_refs: list[dict[str, object]], artifact_types: set[str]
+    ) -> list[dict[str, object]]:
         return [
             {"type": item["artifactType"], "ref": item["artifactId"]}
             for item in artifact_refs
@@ -4741,15 +5831,18 @@ class ExecutionService(SelectiveReplayQueryService):
         *,
         approval_id: str | None,
     ) -> None:
+        result = {
+            "actionId": semantic_action["actionId"],
+            "status": attempt.status,
+            "confidence": float(attempt.confidence) if attempt.confidence is not None else None,
+            "verificationStatus": attempt.verification_status,
+            "approvalId": approval_id,
+        }
+        previous_attempts = list(task.result_payload.get("visualGroundingAttempts") or [])
         task.result_payload = {
             **task.result_payload,
-            "visualGrounding": {
-                "actionId": semantic_action["actionId"],
-                "status": attempt.status,
-                "confidence": float(attempt.confidence) if attempt.confidence is not None else None,
-                "verificationStatus": attempt.verification_status,
-                "approvalId": approval_id,
-            },
+            "visualGrounding": result,
+            "visualGroundingAttempts": [*previous_attempts, result],
         }
 
     def _create_visual_artifact(
@@ -4844,8 +5937,14 @@ class ExecutionService(SelectiveReplayQueryService):
         self.db.flush()
         return raw_finding
 
-    def _build_runner_request(self, execution: Execution, task: ExecutionTask, context: ServiceContext) -> RunnerExecutionRequest:
-        timeout_seconds = int(task.config.get("timeoutSeconds", self.capability_gateway.default_timeout_seconds(task.runner)))
+    def _build_runner_request(
+        self, execution: Execution, task: ExecutionTask, context: ServiceContext
+    ) -> RunnerExecutionRequest:
+        timeout_seconds = int(
+            task.config.get(
+                "timeoutSeconds", self.capability_gateway.default_timeout_seconds(task.runner)
+            )
+        )
         deadline_at = self._runner_deadline_at(task)
         if deadline_at is not None:
             remaining_seconds = (deadline_at - datetime.now(timezone.utc)).total_seconds()
@@ -4875,14 +5974,18 @@ class ExecutionService(SelectiveReplayQueryService):
             try:
                 parsed = datetime.fromisoformat(raw_deadline.replace("Z", "+00:00"))
             except ValueError as exc:
-                raise ValueError("invalid runner deadlineAt; expected an ISO-8601 timestamp") from exc
+                raise ValueError(
+                    "invalid runner deadlineAt; expected an ISO-8601 timestamp"
+                ) from exc
         else:
             raise ValueError("invalid runner deadlineAt; expected an ISO-8601 timestamp")
         if parsed.tzinfo is None:
             raise ValueError("invalid runner deadlineAt; timezone is required")
         return parsed.astimezone(timezone.utc)
 
-    def _build_execution_envelope(self, execution: Execution, task: ExecutionTask, context: ServiceContext) -> dict[str, object]:
+    def _build_execution_envelope(
+        self, execution: Execution, task: ExecutionTask, context: ServiceContext
+    ) -> dict[str, object]:
         return {
             "runContext": {
                 "runId": str(execution.id),
@@ -4917,11 +6020,13 @@ class ExecutionService(SelectiveReplayQueryService):
         }
 
     def _artifact_refs_for_execution(self, execution_id: UUID) -> list[dict[str, object]]:
-        rows = list(self.db.scalars(
-            select(ExecutionArtifact)
-            .where(ExecutionArtifact.execution_id == execution_id)
-            .order_by(ExecutionArtifact.created_at.asc())
-        ))
+        rows = list(
+            self.db.scalars(
+                select(ExecutionArtifact)
+                .where(ExecutionArtifact.execution_id == execution_id)
+                .order_by(ExecutionArtifact.created_at.asc())
+            )
+        )
         return self._artifact_refs_from_rows(rows)
 
     def _artifact_refs_from_rows(self, rows: list[ExecutionArtifact]) -> list[dict[str, object]]:
@@ -4930,17 +6035,19 @@ class ExecutionService(SelectiveReplayQueryService):
                 "id": str(row.id),
                 "taskId": str(row.task_id) if row.task_id else None,
                 "artifactType": row.artifact_type.value,
-                "uri": row.uri,
+                "uri": row.redacted_uri or row.uri,
             }
             for row in rows
         ]
 
     def _finding_refs_for_execution(self, execution_id: UUID) -> list[dict[str, object]]:
-        rows = list(self.db.scalars(
-            select(Finding)
-            .where(Finding.execution_id == execution_id)
-            .order_by(Finding.created_at.asc())
-        ))
+        rows = list(
+            self.db.scalars(
+                select(Finding)
+                .where(Finding.execution_id == execution_id)
+                .order_by(Finding.created_at.asc())
+            )
+        )
         return self._finding_refs_from_rows(rows)
 
     def _finding_refs_from_rows(self, rows: list[Finding]) -> list[dict[str, object]]:
@@ -4976,7 +6083,9 @@ class ExecutionService(SelectiveReplayQueryService):
                 "rawRef": row.raw_ref,
                 "dedupeKey": row.dedupe_key,
                 "severity": row.severity,
-                "normalizedFindingId": str(row.normalized_finding_id) if row.normalized_finding_id else None,
+                "normalizedFindingId": str(row.normalized_finding_id)
+                if row.normalized_finding_id
+                else None,
             }
             for row in rows
         ]
@@ -4987,7 +6096,9 @@ class ExecutionService(SelectiveReplayQueryService):
         gate_policy_versions: list[str] = []
         for task in sorted(tasks, key=lambda item: (item.domain.value, str(item.id))):
             routing_policy_ids.extend(str(item) for item in task.config.get("routingPolicyIds", []))
-            guardrail_policy_ids.extend(str(item) for item in task.config.get("guardrailPolicyIds", []))
+            guardrail_policy_ids.extend(
+                str(item) for item in task.config.get("guardrailPolicyIds", [])
+            )
             if task.config.get("gatePolicyVersion"):
                 gate_policy_versions.append(str(task.config["gatePolicyVersion"]))
         gate_policy_version = (
@@ -5031,19 +6142,29 @@ class ExecutionService(SelectiveReplayQueryService):
                 {"type": "execution_task", "ref": str(task.id)},
                 {"type": "runner", "ref": result.runner_id},
             ],
-            "artifactRefs": list((persisted_refs or {}).get("artifactRefs") or [
-                {"type": artifact.artifact_type.value, "uri": artifact.uri, "summary": artifact.summary}
-                for artifact in result.artifact_refs
-            ]),
-            "rawFindingRefs": list((persisted_refs or {}).get("rawFindingRefs") or [
-                {
-                    "source": finding.source,
-                    "rawRef": finding.raw_ref,
-                    "dedupeKey": finding.dedupe_key,
-                    "severity": finding.severity,
-                }
-                for finding in result.raw_findings
-            ]),
+            "artifactRefs": list(
+                (persisted_refs or {}).get("artifactRefs")
+                or [
+                    {
+                        "type": artifact.artifact_type.value,
+                        "uri": artifact.uri,
+                        "summary": artifact.summary,
+                    }
+                    for artifact in result.artifact_refs
+                ]
+            ),
+            "rawFindingRefs": list(
+                (persisted_refs or {}).get("rawFindingRefs")
+                or [
+                    {
+                        "source": finding.source,
+                        "rawRef": finding.raw_ref,
+                        "dedupeKey": finding.dedupe_key,
+                        "severity": finding.severity,
+                    }
+                    for finding in result.raw_findings
+                ]
+            ),
             "findingCandidates": [],
             "metadata": {
                 **result.metadata,
@@ -5054,9 +6175,13 @@ class ExecutionService(SelectiveReplayQueryService):
             },
         }
 
-    def _persist_runner_result(self, task: ExecutionTask, result: RunnerExecutionResult) -> dict[str, list[dict[str, object]]]:
+    def _persist_runner_result(
+        self, task: ExecutionTask, result: RunnerExecutionResult
+    ) -> dict[str, list[dict[str, object]]]:
         attempt = task.retry_count + 1
-        persisted_artifacts = self._persist_runner_artifact_refs(task, result.artifact_refs, result=result)
+        persisted_artifacts = self._persist_runner_artifact_refs(
+            task, result.artifact_refs, result=result
+        )
         artifact_ids_by_uri: dict[str, UUID] = {}
         artifact_uri_remap: dict[str, str] = {}
         for source, persisted in zip(result.artifact_refs, persisted_artifacts, strict=True):
@@ -5086,9 +6211,7 @@ class ExecutionService(SelectiveReplayQueryService):
                     metric_name=redact_sensitive_text(metric.name),
                     metric_value=metric.value,
                     metric_unit=(
-                        redact_sensitive_text(metric.unit)
-                        if metric.unit is not None
-                        else None
+                        redact_sensitive_text(metric.unit) if metric.unit is not None else None
                     ),
                     threshold_value=metric.threshold_value,
                     baseline_value=metric.baseline_value,
@@ -5107,7 +6230,9 @@ class ExecutionService(SelectiveReplayQueryService):
 
         for finding in result.raw_findings:
             persisted_raw_ref = artifact_uri_remap.get(str(finding.raw_ref), str(finding.raw_ref))
-            persisted_evidence = self._remap_runner_artifact_refs(finding.evidence, artifact_uri_remap)
+            persisted_evidence = self._remap_runner_artifact_refs(
+                finding.evidence, artifact_uri_remap
+            )
             self.db.add(
                 RawFindingRecord(
                     id=uuid4(),
@@ -5140,9 +6265,7 @@ class ExecutionService(SelectiveReplayQueryService):
 
         task.status, task.error_message = self._derive_task_status(task, result)
         task.error_message = (
-            redact_sensitive_text(task.error_message)
-            if task.error_message is not None
-            else None
+            redact_sensitive_text(task.error_message) if task.error_message is not None else None
         )
         existing_payload = dict(task.result_payload or {})
         attempts = list(existing_payload.get("attempts") or [])
@@ -5185,6 +6308,7 @@ class ExecutionService(SelectiveReplayQueryService):
                         "binaryVersion",
                         "pinnedVersion",
                         "pinnedBinary",
+                        "reasonCode",
                         "vus",
                         "duration",
                         "rawMetricRef",
@@ -5238,10 +6362,14 @@ class ExecutionService(SelectiveReplayQueryService):
         if isinstance(value, list):
             return [cls._remap_runner_artifact_refs(item, uri_map) for item in value]
         if isinstance(value, dict):
-            return {key: cls._remap_runner_artifact_refs(item, uri_map) for key, item in value.items()}
+            return {
+                key: cls._remap_runner_artifact_refs(item, uri_map) for key, item in value.items()
+            }
         return value
 
-    def _normalize_raw_findings(self, execution_id: UUID, task_ids: list[UUID] | None = None) -> None:
+    def _normalize_raw_findings(
+        self, execution_id: UUID, task_ids: list[UUID] | None = None
+    ) -> None:
         statement = select(RawFindingRecord).where(
             RawFindingRecord.execution_id == execution_id,
             RawFindingRecord.normalized_finding_id.is_(None),
@@ -5319,7 +6447,9 @@ class ExecutionService(SelectiveReplayQueryService):
                 if existing_signature != raw_signature:
                     raise ContractValidationError(
                         "finding",
-                        [f"dedupe collision conflicts with persisted canonical finding: {raw.dedupe_key}"],
+                        [
+                            f"dedupe collision conflicts with persisted canonical finding: {raw.dedupe_key}"
+                        ],
                     )
                 raw.normalized_finding_id = existing.id
                 self._link_normalized_raw_dependencies(raw, existing.id)
@@ -5328,7 +6458,9 @@ class ExecutionService(SelectiveReplayQueryService):
                 str(uri): UUID(str(artifact_id))
                 for uri, artifact_id in dict(raw.metadata_json.get("artifactIdsByUri", {})).items()
             }
-            evidence_ref = self._resolve_evidence_ref(raw.evidence, artifact_ids_by_uri) or artifact_ids_by_uri.get(raw.raw_ref)
+            evidence_ref = self._resolve_evidence_ref(
+                raw.evidence, artifact_ids_by_uri
+            ) or artifact_ids_by_uri.get(raw.raw_ref)
             finding = Finding(
                 id=uuid4(),
                 execution_id=execution_id,
@@ -5534,7 +6666,9 @@ class ExecutionService(SelectiveReplayQueryService):
             )
         )
 
-    def _resolve_evidence_ref(self, evidence: list[dict[str, object]], artifact_ids_by_uri: dict[str, UUID]) -> UUID | None:
+    def _resolve_evidence_ref(
+        self, evidence: list[dict[str, object]], artifact_ids_by_uri: dict[str, UUID]
+    ) -> UUID | None:
         for item in evidence:
             if item.get("type") != "artifact_ref":
                 continue
@@ -5543,7 +6677,9 @@ class ExecutionService(SelectiveReplayQueryService):
                 return artifact_ids_by_uri[ref]
         return None
 
-    def _derive_task_status(self, task: ExecutionTask, result: RunnerExecutionResult) -> tuple[TaskStatus, str | None]:
+    def _derive_task_status(
+        self, task: ExecutionTask, result: RunnerExecutionResult
+    ) -> tuple[TaskStatus, str | None]:
         if result.status == "queued":
             return TaskStatus.QUEUED, None
         if result.status == "running":
@@ -5555,7 +6691,10 @@ class ExecutionService(SelectiveReplayQueryService):
         if task.domain == TestDomain.PERFORMANCE:
             return TaskStatus.COMPLETED, None
         blocking_findings = [
-            finding for finding in result.raw_findings if self._map_finding_severity(finding.severity) in {FindingSeverity.HIGH, FindingSeverity.CRITICAL}
+            finding
+            for finding in result.raw_findings
+            if self._map_finding_severity(finding.severity)
+            in {FindingSeverity.HIGH, FindingSeverity.CRITICAL}
         ]
         if blocking_findings:
             return TaskStatus.FAILED, blocking_findings[0].title
@@ -5587,13 +6726,19 @@ class ExecutionService(SelectiveReplayQueryService):
             return FindingCategory(normalized)
         return FindingCategory.OTHER
 
-    def _record_execution_observations(self, execution_id: UUID, task_ids: list[UUID] | None = None) -> None:
+    def _record_execution_observations(
+        self, execution_id: UUID, task_ids: list[UUID] | None = None
+    ) -> None:
         statement = select(ExecutionTask).where(ExecutionTask.execution_id == execution_id)
         if task_ids:
             statement = statement.where(ExecutionTask.id.in_(task_ids))
         tasks = list(self.db.scalars(statement))
         for task in tasks:
-            observation = "task completed" if task.status == TaskStatus.COMPLETED else "task requires follow-up"
+            observation = (
+                "task completed"
+                if task.status == TaskStatus.COMPLETED
+                else "task requires follow-up"
+            )
             self._add_execution_log(
                 task=task,
                 level="info" if task.status == TaskStatus.COMPLETED else "warning",
@@ -5610,7 +6755,9 @@ class ExecutionService(SelectiveReplayQueryService):
             "performance": "queued",
             "security": "queued",
         }
-        tasks = list(self.db.scalars(select(ExecutionTask).where(ExecutionTask.execution_id == execution_id)))
+        tasks = list(
+            self.db.scalars(select(ExecutionTask).where(ExecutionTask.execution_id == execution_id))
+        )
         for task in tasks:
             summary[task.domain.value] = self._summary_status_for_task(task)
         return summary
@@ -5627,7 +6774,9 @@ class ExecutionService(SelectiveReplayQueryService):
         return "queued"
 
     def _tasks_for_retry_scope(self, execution_id: UUID, scope: str) -> list[ExecutionTask]:
-        tasks = list(self.db.scalars(select(ExecutionTask).where(ExecutionTask.execution_id == execution_id)))
+        tasks = list(
+            self.db.scalars(select(ExecutionTask).where(ExecutionTask.execution_id == execution_id))
+        )
         if scope == "all":
             return tasks
         if scope == "failed_only":
@@ -5647,15 +6796,15 @@ class ExecutionService(SelectiveReplayQueryService):
         # normalized finding lineage, visual attempts, or verification evidence
         # from an earlier attempt.
         self.db.execute(delete(TriageResult).where(TriageResult.execution_id == execution_id))
-        self.db.execute(delete(HealingSuggestion).where(HealingSuggestion.execution_id == execution_id))
+        self.db.execute(
+            delete(HealingSuggestion).where(HealingSuggestion.execution_id == execution_id)
+        )
         self.db.execute(delete(GateDecision).where(GateDecision.execution_id == execution_id))
         self.db.flush()
 
     def _execution_terminal_status(self, execution_id: UUID) -> TaskStatus:
         tasks = list(
-            self.db.scalars(
-                select(ExecutionTask).where(ExecutionTask.execution_id == execution_id)
-            )
+            self.db.scalars(select(ExecutionTask).where(ExecutionTask.execution_id == execution_id))
         )
         if any(task.status == TaskStatus.CANCELLED for task in tasks):
             return TaskStatus.CANCELLED
@@ -5665,8 +6814,7 @@ class ExecutionService(SelectiveReplayQueryService):
             for task in tasks
         )
         if protocol_failed or any(
-            task.status in {TaskStatus.QUEUED, TaskStatus.RUNNING}
-            for task in tasks
+            task.status in {TaskStatus.QUEUED, TaskStatus.RUNNING} for task in tasks
         ):
             return TaskStatus.FAILED
         return TaskStatus.COMPLETED
@@ -5680,9 +6828,7 @@ class ExecutionService(SelectiveReplayQueryService):
 
     def _execution_terminal_error(self, execution_id: UUID) -> str:
         tasks = list(
-            self.db.scalars(
-                select(ExecutionTask).where(ExecutionTask.execution_id == execution_id)
-            )
+            self.db.scalars(select(ExecutionTask).where(ExecutionTask.execution_id == execution_id))
         )
         messages = [
             str(task.error_message)
@@ -5703,9 +6849,7 @@ class ExecutionService(SelectiveReplayQueryService):
         ended_at: datetime,
     ) -> None:
         tasks = list(
-            self.db.scalars(
-                select(ExecutionTask).where(ExecutionTask.execution_id == execution_id)
-            )
+            self.db.scalars(select(ExecutionTask).where(ExecutionTask.execution_id == execution_id))
         )
         for task in tasks:
             if task.status in {TaskStatus.QUEUED, TaskStatus.RUNNING}:
@@ -5723,7 +6867,9 @@ class ExecutionService(SelectiveReplayQueryService):
     def _heal_requires_approval(self, mode: str) -> bool:
         return mode == "generate_patch"
 
-    def _serialize_gate_decision(self, execution_id: UUID, decision: GateDecision) -> dict[str, object]:
+    def _serialize_gate_decision(
+        self, execution_id: UUID, decision: GateDecision
+    ) -> dict[str, object]:
         return {
             "executionId": str(execution_id),
             "functional": decision.functional.value,
@@ -5745,7 +6891,9 @@ class ExecutionService(SelectiveReplayQueryService):
         }
 
     def _evaluate_gate(self, execution_id: UUID) -> GateDecision:
-        return self._evaluate_gate_from_inputs(execution_id, self._collect_gate_inputs(execution_id))
+        return self._evaluate_gate_from_inputs(
+            execution_id, self._collect_gate_inputs(execution_id)
+        )
 
     def _collect_gate_inputs(self, execution_id: UUID) -> _GateInputs:
         raw_findings = list(
@@ -5778,9 +6926,7 @@ class ExecutionService(SelectiveReplayQueryService):
                         "evidence": finding.evidence,
                         "location": finding.location,
                         "confidence": (
-                            float(finding.confidence)
-                            if finding.confidence is not None
-                            else 0.0
+                            float(finding.confidence) if finding.confidence is not None else 0.0
                         ),
                         "dedupeKey": finding.dedupe_key,
                         "rawRef": finding.raw_ref,
@@ -5788,8 +6934,7 @@ class ExecutionService(SelectiveReplayQueryService):
                 )
             except ContractValidationError as exc:
                 evidence_only_missing = bool(exc.issues) and all(
-                    issue.startswith("evidence has fewer than minItems")
-                    for issue in exc.issues
+                    issue.startswith("evidence has fewer than minItems") for issue in exc.issues
                 )
                 integrity_issues.append(
                     {
@@ -5805,10 +6950,12 @@ class ExecutionService(SelectiveReplayQueryService):
             else:
                 valid_findings.append(finding)
 
-        integrity_issues.extend(self._unresolved_skill_finding_output_refs(
-            execution_id,
-            raw_findings=raw_findings,
-        ))
+        integrity_issues.extend(
+            self._unresolved_skill_finding_output_refs(
+                execution_id,
+                raw_findings=raw_findings,
+            )
+        )
         metrics = tuple(
             self.db.scalars(
                 select(ExecutionMetric)
@@ -5816,9 +6963,9 @@ class ExecutionService(SelectiveReplayQueryService):
                 .order_by(ExecutionMetric.metric_name.asc(), ExecutionMetric.id.asc())
             )
         )
-        finding_resource_ids = select(
-            func.replace(cast(Finding.id, String), "-", "")
-        ).where(Finding.execution_id == execution_id)
+        finding_resource_ids = select(func.replace(cast(Finding.id, String), "-", "")).where(
+            Finding.execution_id == execution_id
+        )
         approvals = tuple(
             self.db.scalars(
                 select(Approval)
@@ -5892,9 +7039,8 @@ class ExecutionService(SelectiveReplayQueryService):
                 if not isinstance(candidate, dict):
                     unresolved_outputs.append(f"{invocation.id}:findingCandidates")
                     continue
-                raw = (
-                    raw_by_ref.get(str(candidate.get("rawRef")))
-                    or raw_by_dedupe.get(str(candidate.get("dedupeKey")))
+                raw = raw_by_ref.get(str(candidate.get("rawRef"))) or raw_by_dedupe.get(
+                    str(candidate.get("dedupeKey"))
                 )
                 if raw is None or raw.normalized_finding_id is None:
                     unresolved_outputs.append(f"{invocation.id}:findingCandidates")
@@ -5910,8 +7056,14 @@ class ExecutionService(SelectiveReplayQueryService):
         *,
         context: ServiceContext | None = None,
     ) -> GateDecision:
-        trace_id = context.trace_id if context is not None else "00000000-0000-0000-0000-000000000000"
-        request_id = context.request_id if context is not None else f"internal-gate-evaluation:{execution_id}"
+        trace_id = (
+            context.trace_id if context is not None else "00000000-0000-0000-0000-000000000000"
+        )
+        request_id = (
+            context.request_id
+            if context is not None
+            else f"internal-gate-evaluation:{execution_id}"
+        )
         assembled = self.gate_input_assembler.assemble(
             execution_id,
             findings=gate_inputs.findings,
@@ -6064,9 +7216,8 @@ class ExecutionService(SelectiveReplayQueryService):
         if len(payload) != int(stored.get("byteSize") or -1):
             raise ValueError("Gate input snapshot storage byte size mismatch")
         content_hash = "sha256:" + hashlib.sha256(payload).hexdigest()
-        if (
-            content_hash != snapshot.gate_input_snapshot_hash
-            or content_hash != stored.get("contentHash")
+        if content_hash != snapshot.gate_input_snapshot_hash or content_hash != stored.get(
+            "contentHash"
         ):
             raise ValueError("Gate input snapshot storage hash mismatch")
         resolved = json.loads(payload.decode("utf-8"))
@@ -6182,10 +7333,7 @@ class ExecutionService(SelectiveReplayQueryService):
         """
 
         job = self._require_job(job_id)
-        if (
-            job.status != JobStatus.COMPLETED
-            or job.result_ref != str(execution_id)
-        ):
+        if job.status != JobStatus.COMPLETED or job.result_ref != str(execution_id):
             return None
         execution = self._require_execution(execution_id)
         return {
@@ -6233,11 +7381,7 @@ class ExecutionService(SelectiveReplayQueryService):
             {
                 "jobId": str(job.id),
                 "jobType": job.job_type,
-                "approvalId": (
-                    str(approval_id)
-                    if approval_id is not None
-                    else None
-                ),
+                "approvalId": (str(approval_id) if approval_id is not None else None),
                 "retryAutomatically": False,
             },
         )

@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 
 import { SafeJsonViewer } from "../components/SafeJsonViewer";
-import { t, type Locale } from "../i18n";
+import { t, userFacingError, type Locale } from "../i18n";
 import {
   ApiRequestError,
   fetchEvidenceIndexEntry,
@@ -107,7 +107,7 @@ export function EvidenceSearchPage({
         return;
       }
       setState("error");
-      setError(requestError instanceof Error ? requestError.message : null);
+      setError(userFacingError(locale, requestError, "evidenceQueryFailed"));
     }
   };
 

@@ -54,11 +54,12 @@ execution using the returned `planId` with only functional execution enabled.
 Stop the target with Ctrl+C after the execution finishes.
 
 In the UI, open **Workflow → Test plan management**, select your project and environment,
-choose **Element is visible**, enter `http://127.0.0.1:8765`, role `button`, and name
-`Submit`. Select low risk for this local visibility check and save the plan. In
-**Execution control**, select that plan and start its functional execution. Open
-**View execution details and artifacts** to inspect the result. The **Element text matches**
-template can additionally check that the button text equals `Submit`.
+choose **Scenario collection**, and create a scenario whose first action is **Element is
+visible**. Enter `http://127.0.0.1:8765`, role `button`, and name `Submit`, then mark the
+scenario **Reviewed and confirmed**. Select low risk and save the plan. In **Execution
+control**, select that plan and the scenario, then start its functional execution. Open
+**View execution details and artifacts** to inspect the result. Add an **Element text
+matches** action when the button text must also equal `Submit`.
 
 ## 简体中文
 
@@ -104,7 +105,8 @@ python examples/community-browser/target.py --port 8765
 向 `/api/v1/test-plans` 提交计划，再用返回的 `planId` 创建只启用 functional 的执行。
 执行完成后按 Ctrl+C 关闭目标页面服务。
 
-使用 UI 时，打开 **工作流 → 测试计划管理**，选择项目与环境，选择“元素可见”，
-填写目标 `http://127.0.0.1:8765`、角色 `button`、名称 `Submit`。对此本地可见性检查
-选择低风险并保存计划。在“执行控制”中选择该计划，启动功能测试，点击
-“查看执行详情与产物”核对结果。“元素文本匹配”模板还可检查按钮文本是否等于 `Submit`。
+使用 UI 时，打开 **工作流 → 测试计划管理**，选择项目与环境及“场景集合”，新建场景并把
+第一个动作设为“元素可见”。填写目标 `http://127.0.0.1:8765`、角色 `button`、名称
+`Submit`，勾选“已检查并确认”，选择低风险并保存计划。在“执行控制”中选择该计划和场景，
+启动功能测试，点击“查看执行详情与产物”核对结果。还可在同一场景添加“元素文本匹配”动作，
+检查按钮文本是否等于 `Submit`。

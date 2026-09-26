@@ -2,7 +2,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 
 import { SectionCard } from "../components/SectionCard";
-import { Locale, t } from "../i18n";
+import { Locale, t, userFacingError } from "../i18n";
 import type { CurrentUser, WorkItem, WorkItemCreatePayload, WorkItemPriority, WorkItemStatus } from "../lib/api";
 import { displayFindingTitle, displayStatus } from "../lib/presentation";
 import type { ExecutionItem, PlanItem } from "../store/platform";
@@ -62,6 +62,7 @@ export function WorkItemsPage({
   const projectOptions = selectedProjectId === "all-projects" ? projects : projects.filter((project) => project.id === selectedProjectId);
   const initialProjectId = projectOptions[0]?.id ?? "";
   const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(workItems[0]?.id ?? null);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<WorkItemPriority>("medium");
@@ -116,7 +117,7 @@ export function WorkItemsPage({
       await action();
       setActionMessage(t(locale, messageKey));
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : t(locale, "workItemActionFailed"));
+      setActionError(userFacingError(locale, error, "workItemActionFailed"));
     }
   };
 
@@ -146,7 +147,29 @@ export function WorkItemsPage({
       setRequirementItemId("");
       setEvidenceArtifactId("");
       setAssigneeId("");
+      setExecutionId("");
+      setFindingId("");
+      setPriority("medium");
+      setIsCreateOpen(false);
     }, "workItemCreated");
+  };
+
+  const openCreate = () => {
+    setActionError(null);
+    setActionMessage(null);
+    setIsCreateOpen(true);
+  };
+
+  const closeCreate = () => {
+    setTitle("");
+    setDescription("");
+    setPriority("medium");
+    setExecutionId("");
+    setFindingId("");
+    setRequirementItemId("");
+    setEvidenceArtifactId("");
+    setAssigneeId("");
+    setIsCreateOpen(false);
   };
 
   const handleExecutionChange = (value: string) => {
@@ -159,14 +182,39 @@ export function WorkItemsPage({
 
   return (
     <div className="page-shell" data-route="/tasks">
+      <div className="page-toolbar">
+        <div>
+          <span className="eyebrow">{t(locale, "humanTasks")}</span>
+          <h1>{t(locale, "workItems")}</h1>
+        </div>
+        {isCreateOpen ? (
+          <button className="secondary-button" onClick={closeCreate} type="button">
+            {t(locale, "cancel")}
+          </button>
+        ) : (
+          <button
+            aria-controls="new-work-item-form"
+            aria-expanded="false"
+            className="primary-button"
+            disabled={!canManage}
+            onClick={openCreate}
+            type="button"
+          >
+            {t(locale, "newWorkItem")}
+          </button>
+        )}
+      </div>
       <div className="page-columns">
-        <SectionCard title={t(locale, "workItems")} eyebrow={t(locale, "humanTasks")}>
+        <SectionCard title={t(locale, "createdWorkItems")}>
           <div className="stack-list">
             {workItems.map((item) => (
               <button
                 className={`stack-row stack-row--button ${item.id === selectedWorkItem?.id ? "stack-row--selected" : ""}`}
                 key={item.id}
-                onClick={() => setSelectedWorkItemId(item.id)}
+                onClick={() => {
+                  setSelectedWorkItemId(item.id);
+                  setIsCreateOpen(false);
+                }}
                 type="button"
               >
                 <div>
@@ -180,7 +228,7 @@ export function WorkItemsPage({
           </div>
         </SectionCard>
 
-        <SectionCard title={t(locale, "workItemDetail")}>
+        <SectionCard title={t(locale, isCreateOpen ? "newWorkItem" : "workItemDetail")}>
           <div className="detail-stack">
             {!canManage ? (
               <div className="warning-banner">
@@ -191,7 +239,7 @@ export function WorkItemsPage({
             {actionError ? <p className="error-copy">{actionError}</p> : null}
             {actionMessage ? <p className="success-copy">{actionMessage}</p> : null}
 
-            {selectedWorkItem ? (
+            {!isCreateOpen && selectedWorkItem ? (
               <div className="detail-banner">
                 <div>
                   <strong>{selectedWorkItem.title}</strong>
@@ -205,129 +253,136 @@ export function WorkItemsPage({
               </div>
             ) : null}
 
-            {selectedWorkItem ? (
-              <div className="detail-grid">
-                <div>
-                  <h3>{t(locale, "linkedResources")}</h3>
-                  <dl className="definition-list">
-                    <dt>{t(locale, "requirementItem")}</dt>
-                    <dd>{selectedWorkItem.requirementItemId ?? t(locale, "none")}</dd>
-                    <dt>{t(locale, "evidenceArtifact")}</dt>
-                    <dd>{selectedWorkItem.evidenceArtifactId ?? t(locale, "none")}</dd>
-                    <dt>{t(locale, "traceability")}</dt>
-                    <dd>{selectedWorkItem.traceId ? selectedWorkItem.traceId.slice(0, 8) : t(locale, "none")}</dd>
-                  </dl>
-                </div>
-                <div>
-                  <h3>{t(locale, "actions")}</h3>
-                  <div className="form-stack">
-                    <label>
-                      {t(locale, "assigneeId")}
-                      <input disabled={!canManage} onChange={(event) => setActionAssigneeId(event.target.value)} value={actionAssigneeId} />
-                    </label>
-                    <div className="button-row">
-                      <button
-                        className="secondary-button"
-                        disabled={!canManage}
-                        onClick={() => void runAction(() => onAssign(selectedWorkItem.id, actionAssigneeId.trim() || null), "workItemUpdated")}
-                        type="button"
-                      >
-                        {t(locale, "assign")}
-                      </button>
-                      <button
-                        className="secondary-button"
-                        disabled={!canManage}
-                        onClick={() => void runAction(() => onClaim(selectedWorkItem.id), "workItemUpdated")}
-                        type="button"
-                      >
-                        {t(locale, "claim")}
-                      </button>
-                      <button
-                        className="secondary-button"
-                        disabled={!canManage}
-                        onClick={() => void runAction(() => onTransition(selectedWorkItem.id, "completed"), "workItemUpdated")}
-                        type="button"
-                      >
-                        {t(locale, "complete")}
-                      </button>
-                      <button
-                        className="secondary-button"
-                        disabled={!canManage}
-                        onClick={() => void runAction(() => onTransition(selectedWorkItem.id, "cancelled"), "workItemUpdated")}
-                        type="button"
-                      >
-                        {t(locale, "cancelWorkItem")}
-                      </button>
+            {!isCreateOpen && selectedWorkItem ? (
+              <>
+                <section className="work-item-description" aria-label={t(locale, "workItemDescription")}>
+                  <h3>{t(locale, "workItemDescription")}</h3>
+                  <p>{selectedWorkItem.description?.trim() || t(locale, "none")}</p>
+                </section>
+                <div className="detail-grid">
+                  <div>
+                    <h3>{t(locale, "linkedResources")}</h3>
+                    <dl className="definition-list">
+                      <dt>{t(locale, "requirementItem")}</dt>
+                      <dd>{selectedWorkItem.requirementItemId ?? t(locale, "none")}</dd>
+                      <dt>{t(locale, "evidenceArtifact")}</dt>
+                      <dd>{selectedWorkItem.evidenceArtifactId ?? t(locale, "none")}</dd>
+                      <dt>{t(locale, "traceability")}</dt>
+                      <dd>{selectedWorkItem.traceId ? selectedWorkItem.traceId.slice(0, 8) : t(locale, "none")}</dd>
+                    </dl>
+                  </div>
+                  <div>
+                    <h3>{t(locale, "actions")}</h3>
+                    <div className="form-stack">
+                      <label>
+                        {t(locale, "assigneeId")}
+                        <input disabled={!canManage} onChange={(event) => setActionAssigneeId(event.target.value)} value={actionAssigneeId} />
+                      </label>
+                      <div className="button-row">
+                        <button
+                          className="secondary-button"
+                          disabled={!canManage}
+                          onClick={() => void runAction(() => onAssign(selectedWorkItem.id, actionAssigneeId.trim() || null), "workItemUpdated")}
+                          type="button"
+                        >
+                          {t(locale, "assign")}
+                        </button>
+                        <button
+                          className="secondary-button"
+                          disabled={!canManage}
+                          onClick={() => void runAction(() => onClaim(selectedWorkItem.id), "workItemUpdated")}
+                          type="button"
+                        >
+                          {t(locale, "claim")}
+                        </button>
+                        <button
+                          className="secondary-button"
+                          disabled={!canManage}
+                          onClick={() => void runAction(() => onTransition(selectedWorkItem.id, "completed"), "workItemUpdated")}
+                          type="button"
+                        >
+                          {t(locale, "complete")}
+                        </button>
+                        <button
+                          className="secondary-button"
+                          disabled={!canManage}
+                          onClick={() => void runAction(() => onTransition(selectedWorkItem.id, "cancelled"), "workItemUpdated")}
+                          type="button"
+                        >
+                          {t(locale, "cancelWorkItem")}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              </>
             ) : null}
 
-            <form className="form-stack" onSubmit={(event) => void submitCreate(event)}>
-              <h3>{t(locale, "newWorkItem")}</h3>
-              <label>
-                {t(locale, "project")}
-                <select disabled={!canManage} onChange={(event) => setProjectId(event.target.value)} value={projectId}>
-                  {projectOptions.map((project) => (
-                    <option key={project.id} value={project.id}>{project.key} {t(locale, "valueSeparator")} {project.name}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                {t(locale, "workItemTitle")}
-                <input disabled={!canManage} onChange={(event) => setTitle(event.target.value)} required value={title} />
-              </label>
-              <label>
-                {t(locale, "workItemDescription")}
-                <textarea disabled={!canManage} onChange={(event) => setDescription(event.target.value)} value={description} />
-              </label>
-              <div className="form-grid">
+            {isCreateOpen ? (
+              <form className="form-stack" id="new-work-item-form" onSubmit={(event) => void submitCreate(event)}>
                 <label>
-                  {t(locale, "priority")}
-                  <select disabled={!canManage} onChange={(event) => setPriority(event.target.value as WorkItemPriority)} value={priority}>
-                    {priorities.map((item) => <option key={item} value={item}>{displayStatus(locale, item)}</option>)}
-                  </select>
-                </label>
-                <label>
-                  {t(locale, "assigneeId")}
-                  <input disabled={!canManage} onChange={(event) => setAssigneeId(event.target.value)} value={assigneeId} />
-                </label>
-              </div>
-              <div className="form-grid">
-                <label>
-                  {t(locale, "execution")}
-                  <select disabled={!canManage} onChange={(event) => handleExecutionChange(event.target.value)} value={executionId}>
-                    <option value="">{t(locale, "none")}</option>
-                    {projectExecutions.map((execution) => (
-                      <option key={execution.id} value={execution.id}>{execution.id.slice(0, 8)} {t(locale, "valueSeparator")} {displayStatus(locale, execution.status)}</option>
+                  {t(locale, "project")}
+                  <select disabled={!canManage} onChange={(event) => setProjectId(event.target.value)} value={projectId}>
+                    {projectOptions.map((project) => (
+                      <option key={project.id} value={project.id}>{project.key} {t(locale, "valueSeparator")} {project.name}</option>
                     ))}
                   </select>
                 </label>
                 <label>
-                  {t(locale, "finding")}
-                  <select disabled={!canManage || !executionId} onChange={(event) => setFindingId(event.target.value)} value={findingId}>
-                    <option value="">{t(locale, "none")}</option>
-                    {executionFindings.map((finding) => (
-                      <option key={finding.id} value={finding.id}>{displayFindingTitle(locale, finding.title)}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <div className="form-grid">
-                <label>
-                  {t(locale, "requirementItem")}
-                  <input disabled={!canManage} onChange={(event) => setRequirementItemId(event.target.value)} value={requirementItemId} />
+                  {t(locale, "workItemTitle")}
+                  <input disabled={!canManage} onChange={(event) => setTitle(event.target.value)} required value={title} />
                 </label>
                 <label>
-                  {t(locale, "evidenceArtifact")}
-                  <input disabled={!canManage} onChange={(event) => setEvidenceArtifactId(event.target.value)} value={evidenceArtifactId} />
+                  {t(locale, "workItemDescription")}
+                  <textarea disabled={!canManage} onChange={(event) => setDescription(event.target.value)} value={description} />
                 </label>
-              </div>
-              <button className="primary-button" disabled={!canManage || !projectId || !title.trim()} type="submit">
-                {t(locale, "create")}
-              </button>
-            </form>
+                <div className="form-grid">
+                  <label>
+                    {t(locale, "priority")}
+                    <select disabled={!canManage} onChange={(event) => setPriority(event.target.value as WorkItemPriority)} value={priority}>
+                      {priorities.map((item) => <option key={item} value={item}>{displayStatus(locale, item)}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    {t(locale, "assigneeId")}
+                    <input disabled={!canManage} onChange={(event) => setAssigneeId(event.target.value)} value={assigneeId} />
+                  </label>
+                </div>
+                <div className="form-grid">
+                  <label>
+                    {t(locale, "execution")}
+                    <select disabled={!canManage} onChange={(event) => handleExecutionChange(event.target.value)} value={executionId}>
+                      <option value="">{t(locale, "none")}</option>
+                      {projectExecutions.map((execution) => (
+                        <option key={execution.id} value={execution.id}>{execution.id.slice(0, 8)} {t(locale, "valueSeparator")} {displayStatus(locale, execution.status)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    {t(locale, "finding")}
+                    <select disabled={!canManage || !executionId} onChange={(event) => setFindingId(event.target.value)} value={findingId}>
+                      <option value="">{t(locale, "none")}</option>
+                      {executionFindings.map((finding) => (
+                        <option key={finding.id} value={finding.id}>{displayFindingTitle(locale, finding.title)}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="form-grid">
+                  <label>
+                    {t(locale, "requirementItem")}
+                    <input disabled={!canManage} onChange={(event) => setRequirementItemId(event.target.value)} value={requirementItemId} />
+                  </label>
+                  <label>
+                    {t(locale, "evidenceArtifact")}
+                    <input disabled={!canManage} onChange={(event) => setEvidenceArtifactId(event.target.value)} value={evidenceArtifactId} />
+                  </label>
+                </div>
+                <button className="primary-button" disabled={!canManage || !projectId || !title.trim()} type="submit">
+                  {t(locale, "create")}
+                </button>
+              </form>
+            ) : null}
           </div>
         </SectionCard>
       </div>

@@ -8,8 +8,9 @@ from agentic_qa.api.responses import success_response
 from agentic_qa.guardrails.result import GuardrailViolationError
 from agentic_qa.schemas.executions import CreateExecutionRequest, HealExecutionRequest, RetryExecutionRequest, UpdateFindingRequest
 from agentic_qa.services.analysis_service import AnalysisService
-from agentic_qa.services.common import ServiceContext
+from agentic_qa.services.common import InvalidPaginationCursor, ServiceContext
 from agentic_qa.services.execution_service import ExecutionService
+from agentic_qa.services.executable_scenario_compiler import ExecutableScenarioError
 
 
 router = APIRouter(tags=["executions"])
@@ -57,6 +58,8 @@ def create_execution(request: Request, payload: CreateExecutionRequest, db=Depen
     service = ExecutionService(db)
     try:
         data = service.create_execution(payload, ServiceContext(user=user, request_id=get_request_id(request), trace_id=get_trace_id(request)))
+    except ExecutableScenarioError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return success_response(request, data, "accepted")
@@ -67,11 +70,21 @@ def list_executions(
     request: Request,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    cursor: str | None = Query(default=None, max_length=500),
     db=Depends(get_db),
     user=Depends(get_current_user),
 ) -> dict[str, object]:
     service = ExecutionService(db)
-    return success_response(request, service.list_executions(page, page_size, _context(request, user)))
+    try:
+        data = service.list_executions(
+            page,
+            page_size,
+            _context(request, user),
+            cursor=cursor,
+        )
+    except InvalidPaginationCursor as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return success_response(request, data)
 
 
 @router.get("/executions/{execution_id}")
@@ -237,21 +250,24 @@ def list_findings(
     severity: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=100),
+    cursor: str | None = Query(default=None, max_length=500),
     db=Depends(get_db),
     user=Depends(get_current_user),
 ) -> dict[str, object]:
     service = ExecutionService(db)
     _authorize_execution(db, execution_id, request, user)
-    return success_response(
-        request,
-        service.list_findings(
+    try:
+        data = service.list_findings(
             execution_id,
             domain=domain,
             severity=severity,
             page=page,
             page_size=page_size,
-        ),
-    )
+            cursor=cursor,
+        )
+    except InvalidPaginationCursor as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return success_response(request, data)
 
 
 @router.get("/executions/{execution_id}/visual-grounding-attempts")

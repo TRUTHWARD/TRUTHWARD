@@ -5,10 +5,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
+import hashlib
 import json
 from threading import Lock
 from time import sleep
-from typing import Callable, Iterator, Mapping
+from typing import Callable, Iterator, Mapping, Protocol, cast
+from uuid import uuid4
 
 from agentic_qa.agents.base import AgentResult
 from agentic_qa.infra.managed_http import ManagedHttpRequestError
@@ -52,6 +54,7 @@ class SkillInvocationReasonCode(StrEnum):
     TENANT_QUOTA_EXCEEDED = "SKILL_TENANT_QUOTA_EXCEEDED"
     PROJECT_QUOTA_EXCEEDED = "SKILL_PROJECT_QUOTA_EXCEEDED"
     BINDING_CONCURRENCY_EXCEEDED = "SKILL_BINDING_CONCURRENCY_EXCEEDED"
+    QUOTA_COORDINATION_UNAVAILABLE = "SKILL_QUOTA_COORDINATION_UNAVAILABLE"
     INVOCATION_BUDGET_EXHAUSTED = "SKILL_INVOCATION_BUDGET_EXHAUSTED"
     CIRCUIT_OPEN = "SKILL_ADAPTER_CIRCUIT_OPEN"
     FALLBACK_USED = "SKILL_GOVERNED_FALLBACK_USED"
@@ -159,6 +162,7 @@ class SkillInvocationExecutionPolicy:
     tenant_concurrency_limit: int
     project_concurrency_limit: int
     binding_concurrency_limit: int
+    quota_coordination_scope: str
     global_kill_switch: bool
     binding_kill_switch: bool
     binding_kill_switch_reason: str | None
@@ -213,6 +217,7 @@ class SkillInvocationExecutionPolicy:
                 "tenantConcurrencyLimit": self.tenant_concurrency_limit,
                 "projectConcurrencyLimit": self.project_concurrency_limit,
                 "bindingConcurrencyLimit": self.binding_concurrency_limit,
+                "coordinationScope": self.quota_coordination_scope,
             },
             "killSwitchSnapshot": {
                 "globalActive": self.global_kill_switch,
@@ -258,6 +263,110 @@ class _LocalReliabilityState:
     lock: Lock = field(default_factory=Lock)
     active: dict[str, int] = field(default_factory=dict)
     circuits: dict[str, _CircuitState] = field(default_factory=dict)
+
+
+class DistributedQuotaCoordinator(Protocol):
+    def acquire(
+        self,
+        keys_and_limits: list[tuple[str, int]],
+        *,
+        lease_milliseconds: int,
+    ) -> tuple[int, str]: ...
+
+    def release(self, keys: list[str], *, lease_id: str) -> None: ...
+
+
+class RedisEvalClient(Protocol):
+    def eval(self, script: str, numkeys: int, *keys_and_args: object) -> int: ...
+
+
+class RedisSkillQuotaCoordinator:
+    """Atomic multi-scope semaphore backed by Redis with crash-safe leases."""
+
+    _ACQUIRE_SCRIPT = """
+local time = redis.call('TIME')
+local now = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+for index, key in ipairs(KEYS) do
+  redis.call('ZREMRANGEBYSCORE', key, '-inf', now)
+  local current = tonumber(redis.call('ZCARD', key))
+  local limit = tonumber(ARGV[index])
+  if current >= limit then
+    return index
+  end
+end
+local ttl = tonumber(ARGV[#KEYS + 1])
+local lease = ARGV[#KEYS + 2]
+local expires_at = now + ttl
+for _, key in ipairs(KEYS) do
+  redis.call('ZADD', key, expires_at, lease)
+  redis.call('PEXPIRE', key, ttl + 1000)
+end
+return 0
+"""
+    _RELEASE_SCRIPT = """
+local lease = ARGV[1]
+for _, key in ipairs(KEYS) do
+  redis.call('ZREM', key, lease)
+  if redis.call('ZCARD', key) == 0 then
+    redis.call('DEL', key)
+  end
+end
+return 1
+"""
+
+    def __init__(
+        self,
+        redis_url: str,
+        *,
+        client: RedisEvalClient | None = None,
+    ) -> None:
+        if client is None:
+            from redis import Redis
+
+            client = cast(
+                RedisEvalClient,
+                Redis.from_url(
+                    redis_url,
+                    decode_responses=True,
+                    socket_connect_timeout=2,
+                    socket_timeout=2,
+                ),
+            )
+        self._client = client
+
+    @staticmethod
+    def _redis_key(scope_key: str) -> str:
+        digest = hashlib.sha256(scope_key.encode("utf-8")).hexdigest()
+        return f"agentic-qa:skill-quota:v1:{digest}"
+
+    def acquire(
+        self,
+        keys_and_limits: list[tuple[str, int]],
+        *,
+        lease_milliseconds: int,
+    ) -> tuple[int, str]:
+        keys = [self._redis_key(key) for key, _ in keys_and_limits]
+        arguments = [limit for _, limit in keys_and_limits]
+        lease_id = uuid4().hex
+        blocked_index = self._client.eval(
+            self._ACQUIRE_SCRIPT,
+            len(keys),
+            *keys,
+            *arguments,
+            lease_milliseconds,
+            lease_id,
+        )
+        return blocked_index, lease_id
+
+    def release(self, keys: list[str], *, lease_id: str) -> None:
+        redis_keys = [self._redis_key(key) for key in keys]
+        if redis_keys:
+            self._client.eval(
+                self._RELEASE_SCRIPT,
+                len(redis_keys),
+                *redis_keys,
+                lease_id,
+            )
 
 
 class SkillRetryClassifier:
@@ -418,12 +527,11 @@ class SkillRetryClassifier:
 
 
 class SkillInvocationReliabilityRuntime:
-    """Process-local reliability controls for the existing managed Skill boundary.
+    """Reliability controls for the existing managed Skill boundary.
 
-    This object does not claim distributed coordination. Active counters and
-    circuit state are intentionally lost on restart and are not shared between
-    workers. Persistent idempotency remains owned by the existing database row
-    and transaction/advisory-lock path in SkillService.
+    Concurrency quotas may use Redis across workers. Adapter circuit state stays
+    process-local and persistent idempotency remains owned by SkillService's
+    database row and transaction/advisory-lock path.
     """
 
     def __init__(
@@ -434,12 +542,21 @@ class SkillInvocationReliabilityRuntime:
         waiter: Waiter = sleep,
         classifier: SkillRetryClassifier | None = None,
         state: _LocalReliabilityState | None = None,
+        distributed_quota: DistributedQuotaCoordinator | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         self.clock = clock
         self.waiter = waiter
         self.classifier = classifier or SkillRetryClassifier()
         self._state = state or _LocalReliabilityState()
+        self._distributed_quota = distributed_quota
+        if (
+            self.settings.skill_invocation_coordination_mode == "redis"
+            and self._distributed_quota is None
+        ):
+            self._distributed_quota = RedisSkillQuotaCoordinator(
+                self.settings.redis_url
+            )
 
     @staticmethod
     def json_size(value: object) -> int:
@@ -618,6 +735,11 @@ class SkillInvocationReliabilityRuntime:
                     self.settings.skill_invocation_binding_concurrency_limit,
                 ),
             ),
+            quota_coordination_scope=(
+                "distributed_redis"
+                if self.settings.skill_invocation_coordination_mode == "redis"
+                else "process_local"
+            ),
             global_kill_switch=bool(self.settings.skill_invocation_global_kill_switch),
             binding_kill_switch=binding_kill_switch,
             binding_kill_switch_reason=(
@@ -726,6 +848,56 @@ class SkillInvocationReliabilityRuntime:
             (policy.project_key, policy.project_concurrency_limit, SkillInvocationReasonCode.PROJECT_QUOTA_EXCEEDED),
             (policy.binding_key, policy.binding_concurrency_limit, SkillInvocationReasonCode.BINDING_CONCURRENCY_EXCEEDED),
         ]
+        if self._distributed_quota is not None:
+            distributed_entries = [
+                (key, limit, reason)
+                for key, limit, reason in keys_and_limits
+                if key is not None
+            ]
+            distributed_keys = [
+                (key, limit) for key, limit, _reason in distributed_entries
+            ]
+            if not distributed_keys:
+                yield
+                return
+            remaining_ms = int(
+                max(
+                    1.0,
+                    (policy.deadline_at - self._aware(self.clock())).total_seconds()
+                    + self.settings.skill_invocation_quota_lease_grace_seconds,
+                )
+                * 1000
+            )
+            try:
+                blocked_index, lease_id = self._distributed_quota.acquire(
+                    distributed_keys,
+                    lease_milliseconds=remaining_ms,
+                )
+            except Exception as exc:
+                raise SkillInvocationExecutionError(
+                    SkillInvocationReasonCode.QUOTA_COORDINATION_UNAVAILABLE,
+                    status="unavailable",
+                ) from exc
+            if blocked_index:
+                try:
+                    reason = distributed_entries[blocked_index - 1][2]
+                except IndexError:
+                    reason = SkillInvocationReasonCode.QUOTA_COORDINATION_UNAVAILABLE
+                raise SkillInvocationExecutionError(reason, status="blocked")
+            try:
+                yield
+            finally:
+                try:
+                    self._distributed_quota.release(
+                        [key for key, _limit in distributed_keys],
+                        lease_id=lease_id,
+                    )
+                except Exception:
+                    # The bounded Redis TTL releases abandoned capacity after a
+                    # worker/network failure; never mask the invocation result.
+                    pass
+            return
+
         acquired: list[str] = []
         with self._state.lock:
             for key, limit, reason in keys_and_limits:
@@ -955,6 +1127,7 @@ __all__ = [
     "SkillInvocationExecutionPolicy",
     "SkillInvocationReasonCode",
     "SkillInvocationReliabilityRuntime",
+    "RedisSkillQuotaCoordinator",
     "SkillRetryClassifier",
     "STABLE_INVOCATION_STATUSES",
     "get_skill_invocation_reliability_runtime",

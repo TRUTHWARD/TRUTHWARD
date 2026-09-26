@@ -11,7 +11,7 @@ import {
   loginCommunity,
   storeCommunityAuthToken,
 } from "../lib/api";
-import { t } from "../i18n";
+import { t, userFacingError } from "../i18n";
 import { IS_OSS_PROFILE } from "../productProfile";
 
 type AuthMode = "checking" | "ready" | "bootstrap" | "login";
@@ -23,7 +23,6 @@ export function CommunityAuthBoundary({ children }: { children: ReactNode }) {
   const [bootstrapForm, setBootstrapForm] = useState({ username: "admin", email: "admin@example.com", displayName: "Community Admin", password: "" });
   const [loginForm, setLoginForm] = useState({ identity: "admin", password: "" });
   const locale = typeof window !== "undefined" && window.localStorage.getItem("agentic-qa.locale") === "zh-CN" ? "zh-CN" : "en-US";
-  const genericError = t(locale, "communityAuthRequestFailed");
 
   useEffect(() => {
     if (!IS_OSS_PROFILE) return;
@@ -53,14 +52,14 @@ export function CommunityAuthBoundary({ children }: { children: ReactNode }) {
       })
       .catch((requestError) => {
         if (!cancelled) {
-          setError(requestError instanceof Error ? requestError.message : genericError);
+          setError(userFacingError(locale, requestError, "communityAuthRequestFailed"));
           setMode("login");
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [genericError]);
+  }, [locale]);
 
   const submitBootstrap = async (event: FormEvent) => {
     event.preventDefault();
@@ -90,7 +89,7 @@ export function CommunityAuthBoundary({ children }: { children: ReactNode }) {
         setError(t(locale, "communityBootstrapConflict"));
         return;
       }
-      setError(requestError instanceof Error ? requestError.message : genericError);
+      setError(userFacingError(locale, requestError, "communityAuthRequestFailed"));
     } finally {
       setBusy(false);
     }
@@ -105,7 +104,7 @@ export function CommunityAuthBoundary({ children }: { children: ReactNode }) {
       storeCommunityAuthToken(response.token);
       setMode("ready");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : genericError);
+      setError(userFacingError(locale, requestError, "communityAuthRequestFailed"));
     } finally {
       setBusy(false);
     }

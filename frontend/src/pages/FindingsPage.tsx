@@ -1,20 +1,14 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { useState } from "react";
 
-import { Locale, t } from "../i18n";
-import type { ExternalIssueLink } from "../lib/api";
+import { EvidenceReferenceList } from "../components/EvidenceReferenceList";
+import { Locale, t, userFacingError } from "../i18n";
+import type { ExecutionFinding } from "../lib/api";
+import { findingEvidenceReferences } from "../lib/findingEvidence";
 import { ExecutionItem } from "../store/platform";
 
-type FindingItem = {
-  id: string;
-  domain: string;
-  severity: string;
-  source: string;
-  title: string;
-  summary: string;
-  confidence: number | null;
-  externalIssueLink: ExternalIssueLink | null;
-};
+type FindingItem = Pick<ExecutionFinding, "id" | "domain" | "severity" | "source" | "title" | "summary" | "confidence" | "externalIssueLink">
+  & Partial<Pick<ExecutionFinding, "status" | "category" | "description" | "evidenceRef" | "rawRef" | "location" | "evidence" | "comment" | "metadata">>;
 
 type FindingsPageProps = {
   canSyncIssueTracker: boolean;
@@ -55,7 +49,7 @@ export function FindingsPage({
     try {
       await action();
     } catch (issueError) {
-      setActionError(issueError instanceof Error ? issueError.message : t(locale, "issueTrackerSyncFailed"));
+      setActionError(userFacingError(locale, issueError, "issueTrackerSyncFailed"));
     }
   };
 
@@ -141,11 +135,19 @@ export function FindingsPage({
                     {findings.map((finding) => {
                       const link = finding.externalIssueLink;
                       const syncing = syncingFindingId === finding.id;
+                      const evidenceRefs = findingEvidenceReferences(finding);
                       return (
                         <tr key={finding.id}>
                           <td>
                             <strong>{finding.title}</strong>
                             <p>{finding.summary}</p>
+                            <EvidenceReferenceList
+                              emptyLabel={t(locale, "evidencePreviewUnavailable")}
+                              label={t(locale, "evidenceRefs")}
+                              locale={locale}
+                              maxVisible={2}
+                              refs={evidenceRefs}
+                            />
                           </td>
                           <td><span className={`status-pill status-pill--${finding.severity}`}>{finding.severity}</span></td>
                           <td>{finding.source}</td>

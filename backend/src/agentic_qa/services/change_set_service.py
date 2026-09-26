@@ -20,6 +20,7 @@ from agentic_qa.domain.models import (
     RequirementChangeItemRecord,
     RequirementChangeSetRecord,
     RequirementVersion,
+    TestPlan,
 )
 from agentic_qa.guardrails.base import GuardrailContext
 from agentic_qa.guardrails.result import GuardrailDecision, GuardrailResult
@@ -63,7 +64,41 @@ class ChangeSetService(ChangeSetQueryService):
         payload: RequirementChangeSetIngestRequest,
         context: ServiceContext,
     ) -> dict[str, Any]:
-        scope = self._require_scope(project_id, None, context, "change.create")
+        return self._ingest_requirement(
+            project_id,
+            payload,
+            context,
+            required_capability="change.create",
+        )
+
+    def materialize_requirement_analysis(
+        self,
+        project_id: UUID,
+        payload: RequirementChangeSetIngestRequest,
+        context: ServiceContext,
+    ) -> dict[str, Any]:
+        """Create only the immutable requirement Change Set used by Community analysis.
+
+        This is an internal Service entry point.  The Community API never accepts a
+        diff or an alternate capability name from the client.
+        """
+
+        return self._ingest_requirement(
+            project_id,
+            payload,
+            context,
+            required_capability="coverage.materialize",
+        )
+
+    def _ingest_requirement(
+        self,
+        project_id: UUID,
+        payload: RequirementChangeSetIngestRequest,
+        context: ServiceContext,
+        *,
+        required_capability: str,
+    ) -> dict[str, Any]:
+        scope = self._require_scope(project_id, None, context, required_capability)
         head = self._require_requirement_version(scope, payload.headRequirementVersionId)
         base = (
             self._require_requirement_version(scope, payload.baseRequirementVersionId)
@@ -624,7 +659,19 @@ class ChangeSetService(ChangeSetQueryService):
     ) -> RequirementVersion:
         version = self.db.get(RequirementVersion, requirement_version_id)
         project_id = str(version.metadata_json.get("projectId")) if version else None
-        if version is None or project_id != str(scope.project.id):
+        linked_plan = (
+            self.db.scalar(
+                select(TestPlan.id).where(
+                    TestPlan.project_id == scope.project.id,
+                    TestPlan.requirement_version_id == requirement_version_id,
+                )
+            )
+            if version is not None
+            else None
+        )
+        if version is None or (
+            project_id != str(scope.project.id) and linked_plan is None
+        ):
             raise ChangeSetError("CHANGE_REQUIREMENT_VERSION_NOT_FOUND", status_code=404)
         return version
 

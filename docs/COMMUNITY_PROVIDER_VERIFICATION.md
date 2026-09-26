@@ -2,7 +2,7 @@
 
 ## English
 
-**Verified for the current runtime candidate: local Ollama 0.11.10 with `qwen2.5:0.5b`.**
+**Last recorded exact candidate verification: local Ollama 0.11.10 with `qwen2.5:0.5b`.**
 
 On 2026-09-05, an isolated Ubuntu 24.04 environment installed the exact clean source
 bundle for commit `701bd58112eb7baa3f3ddf383a281dacd2905982` (bundle SHA-256
@@ -10,6 +10,10 @@ bundle for commit `701bd58112eb7baa3f3ddf383a281dacd2905982` (bundle SHA-256
 The Ollama container was pinned to image digest
 `sha256:a5409cb903d30f9cd67e9f430dd336ddc9274e16fd78f75b675c42065991b4fd`
 and exposed on loopback only. The model required no credential.
+
+This evidence is frozen to the commit and bundle above. A newer working tree or release
+candidate must repeat or explicitly scope its own exact-commit acceptance; it cannot call
+this historical run current evidence.
 
 | Check | Result |
 | --- | --- |
@@ -39,7 +43,7 @@ raw Provider responses, or private configuration files with the report.
 
 ## 简体中文
 
-**当前运行候选版本已验证：本地 Ollama 0.11.10 与 `qwen2.5:0.5b`。**
+**最近一次精确候选验证：本地 Ollama 0.11.10 与 `qwen2.5:0.5b`。**
 
 2026-09-05，在 Ubuntu 24.04 隔离环境中安装并验证了 commit
 `701bd58112eb7baa3f3ddf383a281dacd2905982` 的精确 clean source bundle
@@ -47,6 +51,9 @@ raw Provider responses, or private configuration files with the report.
 Ollama 容器固定到镜像 digest
 `sha256:a5409cb903d30f9cd67e9f430dd336ddc9274e16fd78f75b675c42065991b4fd`，
 仅监听 loopback；该本地模型无需凭据。
+
+该证据只绑定到上述 commit 与 bundle。更新的工作树或发行候选必须重新执行或明确限定
+自己的 exact-commit 验收，不能把这次历史运行称为当前版本证据。
 
 | 检查项 | 结果 |
 | --- | --- |

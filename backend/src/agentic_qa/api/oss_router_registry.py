@@ -6,8 +6,10 @@ from fastapi import APIRouter
 from agentic_qa.api.routers.auth import router as auth_router
 from agentic_qa.api.routers.candidate_graph_queries import router as candidate_graph_queries_router
 from agentic_qa.api.routers.change_set_queries import router as change_set_queries_router
+from agentic_qa.api.routers.community_analysis import router as community_analysis_router
 from agentic_qa.api.routers.executions import router as executions_router
 from agentic_qa.api.routers.exploratory_session_queries import router as exploratory_session_queries_router
+from agentic_qa.api.routers.exploratory_sessions import router as exploratory_sessions_router
 from agentic_qa.api.routers.health import router as health_router
 from agentic_qa.api.routers.impact_analysis_queries import router as impact_analysis_queries_router
 from agentic_qa.api.routers.models import router as models_router
@@ -15,6 +17,8 @@ from agentic_qa.api.routers.observability import router as observability_router
 from agentic_qa.api.routers.plans import router as plans_router
 from agentic_qa.api.routers.project_setting_queries import router as project_setting_queries_router
 from agentic_qa.api.routers.project_settings import router as project_settings_router
+from agentic_qa.api.routers.requirement_intake import router as requirement_intake_router
+from agentic_qa.api.routers.requirements import router as requirements_router
 from agentic_qa.api.routers.skills import router as skills_router
 from agentic_qa.api.routers.work_item_queries import router as work_item_queries_router
 from agentic_qa.api.routers.work_items import router as work_items_router
@@ -129,6 +133,39 @@ community_observability_router = _route_subset(
         "audit_log_projection",
     },
 )
+community_requirements_router = _route_subset(
+    requirements_router,
+    label="requirements",
+    names={
+        "create_requirement_pipeline",
+        "list_requirement_library",
+        "create_requirement_library_pipeline",
+        "get_requirement_pipeline",
+        "replay_requirement_pipeline",
+        "list_requirement_clarifications",
+        "answer_requirement_clarification",
+        "list_requirement_events",
+    },
+)
+community_requirement_intake_router = _route_subset(
+    requirement_intake_router,
+    label="requirement-intake",
+    names={
+        "create_requirement_intake_draft",
+        "list_requirement_intake_batches",
+        "create_requirement_intake_batch",
+        "upload_requirement_intake_batch_sources",
+        "get_requirement_intake_batch",
+        "confirm_requirement_intake_batch",
+        "retry_requirement_intake_batch_source",
+        "upload_requirement_intake_source",
+        "upload_requirement_intake_ocr_source",
+        "get_requirement_intake_draft",
+        "create_requirement_intake_preview",
+        "get_requirement_intake_preview",
+        "confirm_requirement_intake_preview",
+    },
+)
 
 
 # Read-only query modules stay separately listed so their query/command
@@ -150,6 +187,8 @@ COMMUNITY_OSS_ROUTERS: Sequence[APIRouter] = (
     health_router,
     community_models_router,
     community_plans_router,
+    community_requirements_router,
+    community_requirement_intake_router,
     project_setting_queries_router,
     project_settings_router,
     community_skills_router,
@@ -158,9 +197,11 @@ COMMUNITY_OSS_ROUTERS: Sequence[APIRouter] = (
     work_items_router,
     workflow_runs_router,
     community_observability_router,
+    community_analysis_router,
     candidate_graph_queries_router,
     change_set_queries_router,
     exploratory_session_queries_router,
+    exploratory_sessions_router,
     impact_analysis_queries_router,
 )
 

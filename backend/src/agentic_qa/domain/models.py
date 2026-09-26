@@ -3888,6 +3888,9 @@ class TestPlanDomain(Base):
 
 class Execution(Base, TimestampMixin):
     __tablename__ = "executions"
+    __table_args__ = (
+        Index("idx_executions_created_id", "created_at", "id"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     plan_id: Mapped[UUID] = mapped_column(ForeignKey("test_plans.id", ondelete="CASCADE"), nullable=False)
@@ -3905,6 +3908,9 @@ class Execution(Base, TimestampMixin):
 
 class ExecutionTask(Base, TimestampMixin):
     __tablename__ = "execution_tasks"
+    __table_args__ = (
+        Index("idx_execution_tasks_execution_order", "execution_id", "priority", "created_at", "id"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     execution_id: Mapped[UUID] = mapped_column(ForeignKey("executions.id", ondelete="CASCADE"), nullable=False)
@@ -3926,6 +3932,9 @@ class ExecutionTask(Base, TimestampMixin):
 
 class ExecutionMetric(Base):
     __tablename__ = "execution_metrics"
+    __table_args__ = (
+        Index("idx_execution_metrics_task_created", "task_id", "created_at"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     execution_id: Mapped[UUID] = mapped_column(ForeignKey("executions.id", ondelete="CASCADE"), nullable=False)
@@ -3941,6 +3950,9 @@ class ExecutionMetric(Base):
 
 class ExecutionArtifact(Base):
     __tablename__ = "execution_artifacts"
+    __table_args__ = (
+        Index("idx_execution_artifacts_task_created", "task_id", "created_at"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     execution_id: Mapped[UUID] = mapped_column(ForeignKey("executions.id", ondelete="CASCADE"), nullable=False)
@@ -3957,6 +3969,9 @@ class ExecutionArtifact(Base):
 
 class ExecutionLog(Base):
     __tablename__ = "execution_logs"
+    __table_args__ = (
+        Index("idx_execution_logs_task_created", "task_id", "created_at"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     execution_id: Mapped[UUID] = mapped_column(ForeignKey("executions.id", ondelete="CASCADE"), nullable=False)
@@ -3969,6 +3984,9 @@ class ExecutionLog(Base):
 
 class RawFindingRecord(Base):
     __tablename__ = "raw_findings"
+    __table_args__ = (
+        Index("idx_raw_findings_execution_created", "execution_id", "created_at", "id"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     execution_id: Mapped[UUID] = mapped_column(ForeignKey("executions.id", ondelete="CASCADE"), nullable=False)
@@ -3990,6 +4008,11 @@ class RawFindingRecord(Base):
 
 class Finding(Base, TimestampMixin):
     __tablename__ = "findings"
+    __table_args__ = (
+        Index("idx_findings_execution_created_id", "execution_id", "created_at", "id"),
+        Index("idx_findings_execution_domain_created", "execution_id", "domain", "created_at", "id"),
+        Index("idx_findings_execution_severity_created", "execution_id", "severity", "created_at", "id"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     execution_id: Mapped[UUID] = mapped_column(ForeignKey("executions.id", ondelete="CASCADE"), nullable=False)
@@ -4731,6 +4754,13 @@ class ReplayRepositoryEntry(Base, TimestampMixin):
         Index("idx_replay_repository_entries_execution", "execution_id"),
         Index("idx_replay_repository_entries_created_at", "created_at"),
         Index("idx_replay_repository_entries_retention", "retention_status"),
+        Index(
+            "idx_replay_repository_expiry_scan",
+            "retention_status",
+            "legal_hold",
+            "retention_until",
+            "id",
+        ),
         CheckConstraint("approval_mode IN ('always', 'policy_only', 'threshold')", name="chk_replay_repository_entries_approval_mode"),
         CheckConstraint(
             "approval_state IN ('pending', 'approved', 'not_required', 'rejected', 'cancelled')",
@@ -5225,6 +5255,13 @@ class AuditLog(Base):
 
     __table_args__ = (
         Index("idx_audit_logs_retention_status", "retention_status"),
+        Index(
+            "idx_audit_logs_expiry_scan",
+            "retention_status",
+            "legal_hold",
+            "retention_until",
+            "id",
+        ),
         CheckConstraint(
             "retention_status IN ('active', 'archived', 'purge_eligible', 'purged', 'legal_hold')",
             name="chk_audit_logs_retention_status",
@@ -5422,6 +5459,9 @@ class SkillConnectorCall(Base):
 
 class OrchestrationRun(Base, TimestampMixin):
     __tablename__ = "orchestration_runs"
+    __table_args__ = (
+        Index("uq_orchestration_runs_actor_idempotency", "created_by", "idempotency_key", unique=True),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     source: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -5429,6 +5469,9 @@ class OrchestrationRun(Base, TimestampMixin):
     status: Mapped[JobStatus] = mapped_column(db_enum(JobStatus), default=JobStatus.QUEUED, nullable=False)
     current_step: Mapped[str] = mapped_column(String(100), default="PLAN", nullable=False)
     request_id: Mapped[str | None] = mapped_column(String(255))
+    created_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    idempotency_key: Mapped[str | None] = mapped_column(String(120))
+    request_hash: Mapped[str | None] = mapped_column(String(128))
     trace_id: Mapped[UUID | None] = mapped_column(ForeignKey("traces.id", ondelete="SET NULL"))
     linked_plan_id: Mapped[UUID | None] = mapped_column(ForeignKey("test_plans.id", ondelete="SET NULL"))
     linked_execution_id: Mapped[UUID | None] = mapped_column(ForeignKey("executions.id", ondelete="SET NULL"))

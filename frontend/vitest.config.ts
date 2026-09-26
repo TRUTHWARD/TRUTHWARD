@@ -20,9 +20,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     test: {
-      // Full-product contracts remain runnable, but never enter the OSS test composition.
+      // Full-product-only contracts remain runnable, but never enter the OSS test composition.
       include: isOss
-        ? ["tests/{Community*,Oss*,ChangeSetsPage,ImpactAnalysisPage,SelectiveReplayPlansPage,HeaderPresentation,LocaleQuality,PresentationLabels}.test.{ts,tsx}"]
+        ? ["tests/{Community*,Oss*,AppRoutes,PageErrorBoundary,ErrorPresentation,EvidenceReferenceList,ChangeSetsPage,ImpactAnalysisPage,SelectiveReplayPlansPage,HeaderPresentation,LocaleQuality,PresentationLabels}.test.{ts,tsx}"]
         : ["tests/**/*.test.{ts,tsx}"],
       environment: "jsdom",
       globals: true,

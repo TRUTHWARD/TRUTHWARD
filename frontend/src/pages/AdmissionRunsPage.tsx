@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { useState } from "react";
 
+import { EvidenceReferenceList, type EvidenceReferenceLike } from "../components/EvidenceReferenceList";
 import { SectionCard } from "../components/SectionCard";
 import { useAdmissionGovernance } from "../hooks/useAdmissionGovernance";
 import { type Locale, t } from "../i18n";
@@ -10,9 +11,10 @@ import {
   requestAdmissionReview,
   retryCIWriteback,
   retryAdmissionRun,
-  type AdmissionArtifactRef,
+  type AdmissionRunProjection,
   type CurrentUser,
 } from "../lib/api";
+import { displayReasonCode, displayStageLabel, displayStatus } from "../lib/presentation";
 
 
 type Props = {
@@ -92,7 +94,13 @@ export function AdmissionRunsPage({ currentUser, locale, projectId }: Props) {
 
   const detail = view.detail;
   const result = detail?.admissionResult;
-  const evidence = result?.evidenceRefs ?? [];
+  const evidence = detail ? collectAdmissionEvidence(detail) : [];
+  const frozenInputs = detail ? [
+    detail.requirementMatchRef,
+    detail.impactResultRef,
+    detail.changeSetRef,
+    detail.selectiveReplayPlanRef,
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item)) : [];
 
   return <div className="page-shell" data-route="/admission-runs">
     <div className="page-toolbar">
@@ -102,7 +110,7 @@ export function AdmissionRunsPage({ currentUser, locale, projectId }: Props) {
     {view.state === "loading" ? <State text={t(locale, "loading")} /> : null}
     {view.state === "unavailable" ? <State text={t(locale, "admissionProjectUnavailable")} /> : null}
     {view.state === "restricted" ? <State text={t(locale, "admissionAccessRestricted")} /> : null}
-    {view.state === "error" ? <State text={t(locale, "admissionLoadFailed")} /> : null}
+    {view.state === "error" ? <State text={t(locale, "admissionLoadFailed")} tone="error" /> : null}
     {view.state === "empty" ? <State text={t(locale, "admissionEmpty")} /> : null}
     {view.state === "ready" ? <div className="page-columns">
       <SectionCard title={t(locale, "admissionRunList")} eyebrow={t(locale, "admissionFrozenIdentity")}>
@@ -123,29 +131,30 @@ export function AdmissionRunsPage({ currentUser, locale, projectId }: Props) {
           <h3>{t(locale, "admissionStageTimeline")}</h3>
           <div className="detail-stack" aria-label={t(locale, "admissionStageTimeline")}>
             {view.timeline.stages.map((stage) => <article className={stage.status === "completed" ? "notice notice--info" : "notice notice--warning"} key={stage.lifecycleStage}>
-              <div className="badge-row"><strong>{stage.sequence}. {stage.lifecycleStage}</strong><span className="status-pill">{stage.status}</span></div>
-              {stage.reasonCode ? <small>{stage.reasonCode}</small> : null}
-              <small>{t(locale, "admissionTraceRefs")}: {stage.traceRefs.length} {"·"} {t(locale, "admissionEvidenceRefs")}: {stage.evidenceRefs.length}</small>
+              <div className="badge-row"><strong>{stage.sequence}. {displayStageLabel(locale, stage.lifecycleStage)}</strong><span className="status-pill">{displayStatus(locale, stage.status)}</span></div>
+              {stage.reasonCode ? <p>{displayReasonCode(locale, stage.reasonCode)}</p> : null}
+              <details><summary>{t(locale, "technicalDetails")}</summary><code>{stage.lifecycleStage}</code>{stage.reasonCode ? <code>{stage.reasonCode}</code> : null}</details>
+              <EvidenceReferenceList
+                emptyLabel={t(locale, "evidencePreviewUnavailable")}
+                locale={locale}
+                maxVisible={2}
+                refs={[...stage.evidenceRefs, ...stage.traceRefs.map((ref) => ({ type: "trace", ref }))]}
+              />
             </article>)}
           </div>
 
           <h3>{t(locale, "admissionFrozenInputs")}</h3>
-          <div className="badge-row">
-            <Ref label={t(locale, "requirementMatchStatus")} value={detail.requirementMatchRef?.ref} />
-            <Ref label={t(locale, "admissionImpact")} value={detail.impactResultRef?.ref} />
-            <Ref label={t(locale, "admissionChangeSet")} value={detail.changeSetRef?.ref} />
-            <Ref label={t(locale, "admissionReplayPlan")} value={detail.selectiveReplayPlanRef.ref} />
-          </div>
+          <EvidenceReferenceList locale={locale} maxVisible={4} refs={frozenInputs} />
 
           <h3>{t(locale, "admissionEvidence")}</h3>
-          <p>{t(locale, "admissionStaticScan")}: {detail.staticScan?.status ?? t(locale, "unavailable")} {"·"} {t(locale, "admissionSmoke")}: {detail.smokeResult?.status ?? t(locale, "unavailable")}</p>
+          <p>{t(locale, "admissionStaticScan")}: {displayStatus(locale, detail.staticScan?.status ?? "unavailable")} {"·"} {t(locale, "admissionSmoke")}: {displayStatus(locale, detail.smokeResult?.status ?? "unavailable")}</p>
           <p>{t(locale, "admissionNormalizedFindings")}: {result?.normalizedFindingRefs.length ?? 0} {"·"} {t(locale, "admissionEvidenceRefs")}: {evidence.length}</p>
-          <EvidenceList evidence={evidence} locale={locale} />
+          <EvidenceReferenceList emptyLabel={t(locale, "admissionEvidenceEmpty")} locale={locale} maxVisible={6} refs={evidence} />
 
           <h3>{t(locale, "admissionShadowGate")}</h3>
-          {result?.shadowGate ? <article className="notice notice--warning"><div className="badge-row"><strong>{result.shadowGate.decision ?? result.shadowGate.status}</strong><span className="status-pill">{t(locale, "admissionNonAuthoritative")}</span></div><p>{result.shadowGate.reasonCodes.join(", ") || result.shadowGate.reasonCode}</p><small>{t(locale, "admissionNoWriteback")}</small></article> : <State text={detail.mode === "observe" ? t(locale, "admissionObserveNoGate") : t(locale, "admissionShadowUnavailable")} />}
+          {result?.shadowGate ? <article className="notice notice--warning"><div className="badge-row"><strong>{displayStatus(locale, result.shadowGate.decision ?? result.shadowGate.status)}</strong><span className="status-pill">{t(locale, "admissionNonAuthoritative")}</span></div><ReasonCodes codes={result.shadowGate.reasonCodes.length ? result.shadowGate.reasonCodes : [result.shadowGate.reasonCode].filter((item): item is string => Boolean(item))} locale={locale} /><small>{t(locale, "admissionNoWriteback")}</small></article> : <State text={detail.mode === "observe" ? t(locale, "admissionObserveNoGate") : t(locale, "admissionShadowUnavailable")} />}
 
-          {result?.enforceGate ? <><h3>{t(locale, "admissionEnforceGate")}</h3><article className="notice notice--warning"><div className="badge-row"><strong>{result.enforceGate.decision ?? result.enforceGate.status}</strong><span className="status-pill">{t(locale, "admissionAuthoritative")}</span></div><p>{result.enforceGate.reasonCodes.join(", ") || result.enforceGate.reasonCode}</p></article></> : null}
+          {result?.enforceGate ? <><h3>{t(locale, "admissionEnforceGate")}</h3><article className="notice notice--warning"><div className="badge-row"><strong>{displayStatus(locale, result.enforceGate.decision ?? result.enforceGate.status)}</strong><span className="status-pill">{t(locale, "admissionAuthoritative")}</span></div><ReasonCodes codes={result.enforceGate.reasonCodes.length ? result.enforceGate.reasonCodes : [result.enforceGate.reasonCode].filter((item): item is string => Boolean(item))} locale={locale} /></article></> : null}
 
           <h3>{t(locale, "admissionCIWriteback")}</h3>
           <article className={detail.ciWriteback?.writeStatus === "completed" ? "notice notice--info" : "notice notice--warning"}>
@@ -172,22 +181,43 @@ export function AdmissionRunsPage({ currentUser, locale, projectId }: Props) {
           </div> : <State text={t(locale, "admissionBasicReadOnly")} />}
           {actionState === "accepted" ? <State text={t(locale, "admissionActionAccepted")} /> : null}
           {actionState === "restricted" ? <State text={t(locale, "admissionActionRestricted")} /> : null}
-          {actionState === "error" ? <State text={t(locale, "admissionActionFailed")} /> : null}
+          {actionState === "error" ? <State text={t(locale, "admissionActionFailed")} tone="error" /> : null}
         </div> : <State text={t(locale, "loading")} />}
       </SectionCard>
     </div> : null}
   </div>;
 }
 
-function Ref({ label, value }: { label: string; value?: string | null }) {
-  return <span className="status-pill" title={value ?? undefined}>{label}: {value ? value.split("://")[1]?.slice(0, 8) ?? value.slice(0, 8) : "-"}</span>;
+function ReasonCodes({ codes, locale }: { codes: string[]; locale: Locale }) {
+  if (!codes.length) return null;
+  return <div className="detail-stack">{codes.map((code) => <div key={code}><p>{displayReasonCode(locale, code)}</p><details><summary>{t(locale, "technicalDetails")}</summary><code>{code}</code></details></div>)}</div>;
 }
 
-function EvidenceList({ evidence, locale }: { evidence: AdmissionArtifactRef[]; locale: Locale }) {
-  if (!evidence.length) return <State text={t(locale, "admissionEvidenceEmpty")} />;
-  return <div className="list-stack">{evidence.map((item) => <article className="list-row" key={item.ref}><span><strong>{item.type}</strong><small className="technical-id">{item.ref}</small></span><span className="status-pill">{item.redactionStatus ?? t(locale, "readOnly")}</span></article>)}</div>;
+function collectAdmissionEvidence(run: AdmissionRunProjection): EvidenceReferenceLike[] {
+  const refs: EvidenceReferenceLike[] = [
+    ...(run.admissionResult?.evidenceRefs ?? []),
+    ...(run.admissionResult?.normalizedFindingRefs ?? []),
+    ...(run.staticScan?.artifactRefs ?? []),
+    ...(run.staticScan?.normalizedFindingRefs ?? []),
+    ...(run.smokeResult?.artifactRefs ?? []),
+    ...(run.smokeResult?.normalizedFindingRefs ?? []),
+    ...run.guardrailEventRefs,
+    ...run.auditRefs,
+    ...run.traceRefs.map((ref) => ({ type: "trace", ref })),
+    { type: "trace", ref: run.rootTraceRef },
+  ];
+  if (run.admissionResult?.shadowGate?.policyRef) refs.push(run.admissionResult.shadowGate.policyRef);
+  if (run.admissionResult?.enforceGate?.gateDecisionRef) refs.push({ type: "gate_decision", ref: run.admissionResult.enforceGate.gateDecisionRef });
+
+  const seen = new Set<string>();
+  return refs.filter((item) => {
+    const ref = typeof item.ref === "string" ? item.ref : "";
+    if (!ref || seen.has(ref)) return false;
+    seen.add(ref);
+    return true;
+  });
 }
 
-function State({ text }: { text: string }) {
-  return <div className="notice notice--info" role="status">{text}</div>;
+function State({ text, tone = "info" }: { text: string; tone?: "info" | "error" }) {
+  return <div className={`notice notice--${tone}`} role={tone === "error" ? "alert" : "status"}>{text}</div>;
 }

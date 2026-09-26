@@ -146,6 +146,39 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   return body.data as T;
 }
 
+async function requestBlob(path: string, timeoutMs = 30_000): Promise<Blob> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort("request-timeout"), timeoutMs);
+  const token = getStoredAuthToken();
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      let detail: unknown = null;
+      try {
+        const body = (await response.json()) as { detail?: unknown; message?: unknown };
+        detail = body.detail ?? body.message ?? null;
+      } catch {
+        // Binary endpoints may be rejected by infrastructure without a JSON envelope.
+      }
+      throw new ApiRequestError(response.status, path, detail);
+    }
+    return await response.blob();
+  } catch (error) {
+    if (error instanceof ApiRequestError) throw error;
+    if (controller.signal.aborted || error instanceof TypeError) {
+      throw new ApiRequestError(0, path, null, {
+        code: controller.signal.reason === "request-timeout" ? "CLIENT_REQUEST_TIMEOUT" : "CLIENT_REQUEST_UNAVAILABLE",
+      });
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export type CurrentUser = {
   id: string;
   name: string;
@@ -326,6 +359,10 @@ export async function updateCommunityProjectMember(
   return request<ProjectMemberItem>(`/project-members/${encodeURIComponent(memberId)}`, { method: "PUT", body: payload });
 }
 
+export async function deactivateCommunityProjectMember(memberId: string) {
+  return request<ProjectMemberItem>(`/project-members/${encodeURIComponent(memberId)}`, { method: "DELETE" });
+}
+
 export async function fetchGovernanceReadiness(projectId: string) {
   return request<GovernanceReadiness>(
     `/projects/${encodeURIComponent(projectId)}/governance/readiness`,
@@ -378,6 +415,67 @@ export type CandidateBuildList = {
   total: number;
   page: number;
   pageSize: number;
+  observationPolicy: {
+    enabled: boolean;
+    lifecycleEnabled: boolean;
+    manualRefreshAvailable: boolean;
+    reasonCode: "CANDIDATE_OBSERVATION_READY" | "CANDIDATE_OBSERVATION_AVAILABLE" | "CANDIDATE_EXECUTION_MISSING" | "CANDIDATE_SEMANTIC_TRACE_MISSING";
+    nonAuthoritative: true;
+    promotionAvailable: false;
+    modelEnabled: false;
+  };
+};
+
+export type CandidateSourceRef = {
+  type: string;
+  ref: string;
+  contentHash: string | null;
+  available: boolean;
+  unavailableReason: string | null;
+};
+
+export type CandidateProvenance = {
+  sourceEventRefs: CandidateSourceRef[];
+  evidenceRefs: CandidateSourceRef[];
+  transformerVersion: string;
+  confidence: number;
+  ambiguities: Array<{ code: string; severity: string; entityRef: string | null; detailKey: string }>;
+};
+
+export type CandidateBuildDetail = {
+  schemaVersion: "phase8.candidate-build-result.v1";
+  buildId: string;
+  buildRef: string;
+  projectId: string;
+  graphId: string;
+  candidateVersionId: string;
+  status: "completed";
+  transformerVersion: string;
+  observedTrace: {
+    executionId: string;
+    traceRefs: CandidateSourceRef[];
+    sourceEventRefs: CandidateSourceRef[];
+    toolCallRefs: CandidateSourceRef[];
+    connectorCallRefs: CandidateSourceRef[];
+    replayRefs: CandidateSourceRef[];
+  };
+  candidatePath: {
+    pathId: string;
+    pathRef: string;
+    pathKey: string;
+    confidence: number;
+    provenance: CandidateProvenance;
+    nodes: Array<{ nodeId: string; nodeRef: string; semanticKey: string; nodeType: string; actionType: string; intentKey: string; provenance: CandidateProvenance }>;
+    steps: Array<{ stepId: string; stepRef: string; order: number; outcome: string; retryCount: number; verificationStatus: string | null; provenance: CandidateProvenance }>;
+  };
+  evidenceSummary: CandidateEvidenceSummary;
+  ambiguities: Array<{ code: string; severity: string; entityRef: string | null; detailKey: string; sourceEventRefs: CandidateSourceRef[] }>;
+  guardrailEventRefs: CandidateSourceRef[];
+  auditRefs: CandidateSourceRef[];
+  canonical: false;
+  active: false;
+  promotionPerformed: false;
+  readOnly: true;
 };
 
 export async function fetchCandidateBuilds(projectId: string, query: { graphId?: string; pageSize?: number } = {}) {
@@ -385,6 +483,12 @@ export async function fetchCandidateBuilds(projectId: string, query: { graphId?:
     `/internal/projects/${encodeURIComponent(projectId)}/execution-graph-candidates/builds`,
     { graphId: query.graphId, pageSize: query.pageSize ?? 50 },
   ));
+}
+
+export async function fetchCandidateBuild(projectId: string, buildId: string) {
+  return request<CandidateBuildDetail>(
+    `/internal/projects/${encodeURIComponent(projectId)}/execution-graph-candidates/builds/${encodeURIComponent(buildId)}`,
+  );
 }
 
 export type GraphLearningMode = "learn_only" | "human_supervised" | "controlled_autonomy";
@@ -1109,6 +1213,7 @@ export type ExploratorySessionPayload = {
 export type ExploratoryNotePayload = {
   noteType: "note" | "observation" | "risk" | "question";
   content: string;
+  evidenceRefIds?: string[];
   evidenceRefs?: ExploratoryEvidenceRefInput[];
   metadata?: Record<string, unknown>;
 };
@@ -1146,8 +1251,32 @@ export type ExploratoryEvidenceRef = {
   redactionStatus: string;
   traceId: string | null;
   metadata: Record<string, unknown>;
+  contentAvailable: boolean;
+  contentPath: string | null;
   createdBy: string | null;
   createdAt: string;
+};
+
+export type ExploratoryTraceNode = {
+  id: string;
+  kind: string;
+  referenceId: string;
+  status: string;
+  occurredAt: string | null;
+  description: string;
+  group: "primary" | "system";
+  metadata: Record<string, unknown>;
+};
+
+export type ExploratoryTraceability = {
+  schemaVersion: "community.exploratory-traceability.v1";
+  sessionId: string;
+  status: "complete" | "partial";
+  nodes: ExploratoryTraceNode[];
+  edges: Array<{ source: string; target: string; relation: string; status: string }>;
+  missingLinks: Array<{ code: string; sourceType: string; sourceId: string; blocking: boolean }>;
+  staleLinks: Array<Record<string, unknown>>;
+  summary: Record<string, number>;
 };
 
 export type ExploratoryNote = {
@@ -1265,6 +1394,26 @@ export async function addExploratoryNote(sessionId: string, payload: Exploratory
 
 export async function addExploratoryEvidenceRef(sessionId: string, payload: ExploratoryEvidenceRefInput) {
   return request<ExploratoryEvidenceRef>(`/exploratory-sessions/${encodeURIComponent(sessionId)}/evidence-refs`, { method: "POST", body: payload });
+}
+
+export async function uploadExploratoryEvidenceImage(sessionId: string, file: File, summary: string, confirmSafe: boolean) {
+  const body = new FormData();
+  body.append("file", file);
+  if (summary) body.append("summary", summary);
+  body.append("confirmSafe", String(confirmSafe));
+  return request<ExploratoryEvidenceRef>(`/exploratory-sessions/${encodeURIComponent(sessionId)}/evidence-uploads`, {
+    method: "POST",
+    body,
+    timeoutMs: 60_000,
+  });
+}
+
+export async function fetchExploratoryEvidenceContent(sessionId: string, evidenceId: string) {
+  return requestBlob(`/exploratory-sessions/${encodeURIComponent(sessionId)}/evidence/${encodeURIComponent(evidenceId)}/content`);
+}
+
+export async function fetchExploratoryTraceability(sessionId: string) {
+  return request<ExploratoryTraceability>(`/exploratory-sessions/${encodeURIComponent(sessionId)}/traceability`);
 }
 
 export async function createExploratoryBugCandidate(sessionId: string, payload: ExploratoryBugCandidatePayload) {
@@ -1488,9 +1637,7 @@ export type PlanPayload = {
   input?: Record<string, unknown>;
 };
 
-export type PlanUpdatePayload = Partial<Omit<PlanPayload, "sourceType" | "sourceRef">> & {
-  status?: string;
-};
+export type PlanUpdatePayload = Partial<Omit<PlanPayload, "sourceType" | "sourceRef">>;
 
 export type PlanRecord = {
   id: string;
@@ -1508,6 +1655,11 @@ export type PlanRecord = {
   requirementScope: RequirementScope | null;
   input: Record<string, unknown>;
   generatedPlan: Record<string, unknown>;
+  executableScenarioInsights: {
+    schemaVersion: string;
+    environmentTargetUrl: string | null;
+    historicalLocatorHints: Array<Record<string, unknown>>;
+  };
 };
 
 export type RequirementScope = {
@@ -1544,6 +1696,7 @@ export type RequirementLibraryPipelinePayload = {
   requirementItemRefs?: Array<{ requirementVersionId: string; requirementItemIds: string[] }>;
   requirementScope?: RequirementScope | null;
   metadata?: Record<string, unknown>;
+  idempotencyKey?: string;
 };
 
 export type RequirementPipelineState = {
@@ -1557,6 +1710,7 @@ export type RequirementPipelineState = {
   blocked: boolean;
   result: Record<string, unknown>;
   errorMessage: string | null;
+  deduplicated?: boolean;
 };
 
 export type RequirementIntakeSourceType = "paste" | "upload" | "ocr_upload" | "external_link" | "connector";
@@ -1963,6 +2117,7 @@ export type ExecutionPayload = {
     enableTriage: boolean;
     enableHealing: boolean;
     parallelism: number;
+    selectedScenarioIds?: string[];
   };
 };
 
@@ -1990,8 +2145,62 @@ export async function createRequirementPipeline(payload: RequirementPipelinePayl
   return request<RequirementPipelineState>("/requirements/pipelines", { method: "POST", body: payload });
 }
 
+function requirementPipelineIntentStorageKey(payload: RequirementLibraryPipelinePayload) {
+  const intentPayload = { ...payload, idempotencyKey: undefined };
+  const intentHash = JSON.stringify(intentPayload).split("").reduce((hash, char) => Math.imul(hash ^ char.charCodeAt(0), 16777619), 2166136261) >>> 0;
+  return `truthward.requirement-pipeline-intent.${intentHash.toString(16)}.${JSON.stringify(intentPayload).length}`;
+}
+
+export function clearRequirementLibraryPipelineIntent(payload: RequirementLibraryPipelinePayload) {
+  if (typeof window === "undefined") return;
+  try { window.sessionStorage.removeItem(requirementPipelineIntentStorageKey(payload)); } catch { /* Storage is optional. */ }
+}
+
 export async function createRequirementLibraryPipeline(payload: RequirementLibraryPipelinePayload) {
-  return request<RequirementPipelineState>("/requirements/library/pipelines", { method: "POST", body: payload });
+  const useIntentRecovery = IS_OSS_PROFILE && !payload.idempotencyKey && typeof window !== "undefined";
+  const storageKey = requirementPipelineIntentStorageKey(payload);
+  let stored: { key: string; runId?: string } | null = null;
+  if (useIntentRecovery) {
+    try {
+      stored = JSON.parse(window.sessionStorage.getItem(storageKey) ?? "null");
+    } catch {
+      stored = null;
+    }
+  }
+  if (stored?.runId) {
+    try {
+      const existing = await fetchRequirementPipeline(stored.runId);
+      if (!["failed", "cancelled"].includes(existing.status)) return existing;
+      clearRequirementLibraryPipelineIntent(payload);
+      stored = null;
+    } catch (error) {
+      if (!(error instanceof ApiRequestError) || ![401, 403, 404].includes(error.status)) throw error;
+      try { window.sessionStorage.removeItem(storageKey); } catch { /* Storage is optional. */ }
+      stored = null;
+    }
+  }
+  const idempotencyKey = payload.idempotencyKey
+    ?? stored?.key
+    ?? globalThis.crypto?.randomUUID?.()
+    ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  if (useIntentRecovery) {
+    try { window.sessionStorage.setItem(storageKey, JSON.stringify({ key: idempotencyKey })); } catch { /* Storage is optional. */ }
+  }
+  try {
+    const pipeline = await request<RequirementPipelineState>("/requirements/library/pipelines", {
+      method: "POST",
+      body: { ...payload, idempotencyKey },
+    });
+    if (useIntentRecovery) {
+      try { window.sessionStorage.setItem(storageKey, JSON.stringify({ key: idempotencyKey, runId: pipeline.orchestrationId })); } catch { /* Storage is optional. */ }
+    }
+    return pipeline;
+  } catch (error) {
+    if (useIntentRecovery && error instanceof ApiRequestError && error.status > 0 && error.status < 500) {
+      try { window.sessionStorage.removeItem(storageKey); } catch { /* Storage is optional. */ }
+    }
+    throw error;
+  }
 }
 
 export async function createRequirementIntakeDraft(payload: RequirementIntakeDraftPayload) {
@@ -2131,7 +2340,14 @@ export async function fetchRequirementLibrary(filters: RequirementLibraryFilters
 }
 
 export async function fetchRequirementPipeline(runId: string) {
-  return request<RequirementPipelineState>(`/requirements/pipelines/${encodeURIComponent(runId)}`);
+  const pipeline = await request<
+    Omit<RequirementPipelineState, "orchestrationId"> & { orchestrationId?: string; id?: string }
+  >(`/requirements/pipelines/${encodeURIComponent(runId)}`);
+  const orchestrationId = pipeline.orchestrationId ?? pipeline.id;
+  if (!orchestrationId) {
+    throw new Error("Requirement pipeline response is missing its orchestration identity.");
+  }
+  return { ...pipeline, orchestrationId } as RequirementPipelineState;
 }
 
 export async function fetchWorkflowRuns(filters: { source?: string; status?: string; pageSize?: number } = {}) {
@@ -2706,6 +2922,8 @@ export type ExecutionRuntimeProjection = {
     taskCount: number;
     completedTaskCount: number;
     failedTaskCount: number;
+    cancelledTaskCount: number;
+    terminalTaskCount: number;
     artifactRefCount: number;
     rawMetricRefCount: number;
     rawFindingRefCount: number;
@@ -2814,6 +3032,9 @@ export async function fetchExecutionProgress(executionId: string) {
     progress: number;
     currentTask: string | null;
     completedTasks: number;
+    failedTasks: number;
+    cancelledTasks: number;
+    terminalTasks: number;
     totalTasks: number;
   }>(`/executions/${encodeURIComponent(executionId)}/progress`);
 }
@@ -2867,6 +3088,29 @@ export type ExecutionTaskMetric = {
   metadata: Record<string, unknown>;
 };
 
+export type ExecutionFinding = {
+  id: string;
+  executionId: string;
+  taskId: string | null;
+  domain: string;
+  source: string;
+  severity: string;
+  status: string;
+  category: string;
+  title: string;
+  summary: string;
+  description?: string | null;
+  evidenceRef?: string | null;
+  confidence: number | null;
+  dedupeKey?: string;
+  rawRef?: string | null;
+  location?: Record<string, unknown>;
+  evidence?: Array<Record<string, unknown>>;
+  comment?: string | null;
+  metadata?: Record<string, unknown>;
+  externalIssueLink: ExternalIssueLink | null;
+};
+
 export async function fetchExecutionTasks(executionId: string) {
   return request<{ items: ExecutionTaskRecord[]; total: number }>(`/executions/${encodeURIComponent(executionId)}/tasks`);
 }
@@ -2893,20 +3137,7 @@ export async function fetchExecutionFindings(
   pageSize = 100,
 ) {
   return request<{
-    items: Array<{
-      id: string;
-      executionId: string;
-      taskId: string | null;
-      domain: string;
-      source: string;
-      severity: string;
-      status: string;
-      category: string;
-      title: string;
-      summary: string;
-      confidence: number | null;
-      externalIssueLink: ExternalIssueLink | null;
-    }>;
+    items: ExecutionFinding[];
     total: number;
     page: number;
     pageSize: number;
@@ -4710,9 +4941,25 @@ export interface ChangeSetDetail extends ChangeSetSummary {
     vendor: boolean;
     submodule: boolean;
     riskHints: string[];
-    hunks: Array<{ hunkId: string; header: string; sensitive: boolean; redactionCount: number; symbols: Array<{ symbolId: string; name: string; kind: string; changeType: string }> }>;
+    hunks: Array<{ hunkId: string; header: string; oldLineStart: number; newLineStart: number; sensitive: boolean; redactionCount: number; symbols: Array<{ symbolId: string; name: string; kind: string; changeType: string }> }>;
   }>;
   fullDiffStoredInDatabase?: false;
+}
+
+export interface RequirementContentPreview {
+  schemaVersion: "phase8.requirement-change-content-preview.v1";
+  changeSetId: string;
+  projectId: string;
+  readOnly: true;
+  libraryVersionIds: string[];
+  items: Array<{
+    itemId: string;
+    requirementId: string;
+    changeType: string;
+    identityBasis: "position" | "source_id";
+    before: { status: "available" | "absent" | "unavailable"; text: string | null; truncated: boolean };
+    after: { status: "available" | "absent" | "unavailable"; text: string | null; truncated: boolean };
+  }>;
 }
 
 export async function fetchChangeSets(projectId: string, query: { changeSetType?: ChangeSetType; status?: ChangeSetStatus; pageSize?: number } = {}) {
@@ -4725,6 +4972,126 @@ export async function fetchChangeSets(projectId: string, query: { changeSetType?
 export async function fetchChangeSet(projectId: string, changeSetId: string) {
   return request<ChangeSetDetail>(
     `/projects/${encodeURIComponent(projectId)}/change-sets/${encodeURIComponent(changeSetId)}`,
+  );
+}
+
+export async function fetchRequirementContentPreview(projectId: string, changeSetId: string) {
+  return request<RequirementContentPreview>(
+    `/projects/${encodeURIComponent(projectId)}/change-sets/${encodeURIComponent(changeSetId)}/requirement-content-preview`,
+  );
+}
+
+export type CoverageReadinessIssue = {
+  code: string;
+  severity: "blocking" | "recommended" | "warning";
+};
+
+export type CoverageReadinessStage = {
+  id: "change_set" | "impact" | "selective_replay" | "proof";
+  status: "ready" | "blocked" | "stale";
+  recordCount: number;
+  generationAvailable: boolean;
+  issues: CoverageReadinessIssue[];
+  nextRoute: string;
+};
+
+export type CoverageReadiness = {
+  schemaVersion: "community.coverage-readiness.v1";
+  projectId: string;
+  serverDerived: true;
+  readOnly: true;
+  counts: {
+    trackedRequirementVersions: number;
+    requirementSourcesWithHistory: number;
+    testPlans: number;
+    executions: number;
+    executionsWithTasks: number;
+    changeSets: number;
+    candidateGraphBuilds: number;
+    canonicalGraphs: number;
+    graphVersions: number;
+    capabilityMappings: number;
+    coverageSnapshots: number;
+    impactResults: number;
+    selectiveReplayPlans: number;
+    traceabilitySnapshots: number;
+    proofBundles: number;
+  };
+  commandAvailability: {
+    analysisMaterialize: boolean;
+    candidateObserve: boolean;
+    changeSetCreate: boolean;
+    impactAnalyze: boolean;
+    replayPlanCreate: boolean;
+    proofGenerate: boolean;
+  };
+  freshness: {
+    changeSet: boolean;
+    graph: boolean;
+    coverage: boolean;
+    impact: boolean;
+    selectiveReplay: boolean;
+    proof: boolean;
+  };
+  stages: CoverageReadinessStage[];
+  complete: boolean;
+};
+
+export async function fetchCoverageReadiness(projectId: string) {
+  return request<CoverageReadiness>(
+    `/projects/${encodeURIComponent(projectId)}/coverage-readiness`,
+  );
+}
+
+export type CommunityAnalysisMaterializationStage = {
+  id: "change_set" | "graph" | "coverage" | "impact" | "selective_replay" | "proof";
+  status: "ready" | "blocked" | "failed";
+  recordId: string | null;
+  ref: unknown;
+  deduplicated: boolean;
+  baseRequirementVersionId?: string | null;
+  headRequirementVersionId?: string;
+  issues: CoverageReadinessIssue[];
+};
+
+export type CommunityAnalysisMaterialization = {
+  schemaVersion: "community.analysis-materialization.v1";
+  projectId: string;
+  requirementVersionId: string | null;
+  executionId: string | null;
+  complete: boolean;
+  nonAuthoritative: true;
+  productionApplied: false;
+  executionCreated: false;
+  modelInvoked: false;
+  approvalCreated: false;
+  gateWritten: false;
+  memoryWritten: false;
+  externalWritePerformed: false;
+  candidateObservation: {
+    status: "ready" | "not_applicable" | "failed";
+    buildId: string | null;
+    graphId: string | null;
+    candidateVersionId: string | null;
+    reasonCode: string | null;
+    deduplicated: boolean;
+    nonAuthoritative: true;
+    modelInvoked: false;
+    promotionPerformed: false;
+    gateWritten: false;
+    memoryWritten: false;
+    externalWritePerformed: false;
+  };
+  lifecycleTrigger: boolean;
+  stages: CommunityAnalysisMaterializationStage[];
+  auditRef: string;
+  readiness: CoverageReadiness;
+};
+
+export async function materializeCommunityCoverage(projectId: string) {
+  return request<CommunityAnalysisMaterialization>(
+    `/projects/${encodeURIComponent(projectId)}/coverage-materialization`,
+    { method: "POST", body: {} },
   );
 }
 
@@ -4756,7 +5123,29 @@ export interface RequirementMatchView {
     confidence: number;
     status: RequirementMatchStatus;
     reviewRequired: boolean;
-    reasons: Array<{ code: string; layer: string; explanationKey: string }>;
+    reasons: Array<{
+      code: string;
+      layer: string;
+      explanationKey: string;
+      evidenceRefs: Array<{ type: string; ref: string; contentHash: string | null }>;
+      details: {
+        matchMethod: string | null;
+        explicitSources: Array<"pr_title" | "pr_template" | "commit_message">;
+        configuredPullRequestNumber: string | null;
+        matchedPullRequestNumber: string | null;
+        configuredLabels: string[];
+        matchedLabels: string[];
+        configuredPathPrefixes: string[];
+        matchedPaths: string[];
+        appliesToAll: boolean | null;
+        traceabilityPath: string | null;
+        capabilityRef: string | null;
+        historicalContextRef: { type: string; ref: string; contentHash: string | null } | null;
+        overlappingLabels: string[];
+        overlappingPaths: string[];
+        factsTruncated: boolean;
+      } | null;
+    }>;
   };
   matchHash: string;
   createdAt: string;

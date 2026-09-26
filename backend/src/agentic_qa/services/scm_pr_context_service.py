@@ -688,9 +688,21 @@ class ScmPrContextService:
         for requirement_id in explicit_refs:
             item = catalog[requirement_id.lower()]
             evidence = evidence_by_requirement.get(requirement_id, [])
-            matches.append(self._candidate(item, "explicit_reference", 1.0, "confirmed", "EXPLICIT_CONTROLLED_ID", "explicit", evidence, False))
+            explicit_sources = self._explicit_match_sources(evidence)
+            matches.append(self._candidate(
+                item,
+                "explicit_reference",
+                1.0,
+                "confirmed",
+                "EXPLICIT_CONTROLLED_ID",
+                "explicit",
+                evidence,
+                False,
+                details={"matchMethod": "explicit_reference", "explicitSources": explicit_sources},
+            ))
         for requirement_id in unknown_explicit_refs:
             evidence = evidence_by_requirement.get(requirement_id, [])
+            explicit_sources = self._explicit_match_sources(evidence)
             matches.append(
                 RequirementMatchCandidate(
                     requirementId=requirement_id,
@@ -699,7 +711,13 @@ class ScmPrContextService:
                     source="explicit_reference",
                     confidence=0.0,
                     status="unknown",
-                    reasons=[RequirementMatchReason(code="EXPLICIT_ID_NOT_FOUND", layer="explicit", explanationKey="requirementMatch.reason.explicitNotFound", evidenceRefs=[ScmRef.model_validate(item) for item in evidence])],
+                    reasons=[RequirementMatchReason(
+                        code="EXPLICIT_ID_NOT_FOUND",
+                        layer="explicit",
+                        explanationKey="requirementMatch.reason.explicitNotFound",
+                        evidenceRefs=[ScmRef.model_validate(item) for item in evidence],
+                        details={"matchMethod": "explicit_reference", "explicitSources": explicit_sources},
+                    )],
                     evidenceRefs=[ScmRef.model_validate(item) for item in evidence],
                     modelInvocationRef=None,
                     reviewRequired=True,
@@ -751,7 +769,17 @@ class ScmPrContextService:
             confidence = min(max(float(mapping.get("confidence", 1.0 if verified else 0.75)), 0.0), 1.0)
             status = "confirmed" if verified and confidence >= 0.8 else "candidate"
             evidence = [{"type": "project_mapping", "ref": f"project-mapping://{project.id}/{canonical_hash(mapping)[7:23]}", "contentHash": canonical_hash(mapping)}]
-            result.append(self._candidate(entry, "manual_mapping", confidence, status, "PROJECT_MAPPING_MATCH", "mapping", evidence, status != "confirmed"))
+            result.append(self._candidate(
+                entry,
+                "manual_mapping",
+                confidence,
+                status,
+                "PROJECT_MAPPING_MATCH",
+                "mapping",
+                evidence,
+                status != "confirmed",
+                details=self._mapping_reason_details(mapping, labels, paths, payload, "manual_mapping"),
+            ))
         return result
 
     def _verified_traceability_candidates(
@@ -823,7 +851,27 @@ class ScmPrContextService:
                     {"type": "canonical_graph_version", "ref": graph_version.version_ref, "contentHash": graph_version.content_hash},
                     {"type": "graph_node", "ref": node.node_ref, "contentHash": None},
                 ]
-                found.append(self._candidate(entry, "verified_traceability", confidence, status, "VERIFIED_CEG_TRACEABILITY", "traceability", evidence, status != "confirmed"))
+                matched_paths = [path for path in paths if self._path_matches(path, mapping.source_entity_ref)]
+                traceability_path, unsafe_path = self._safe_match_fact(mapping.source_entity_ref)
+                capability_ref, unsafe_capability = self._safe_match_fact(mapping.capability_ref)
+                safe_matched_paths, paths_truncated = self._safe_match_fact_values(matched_paths)
+                found.append(self._candidate(
+                    entry,
+                    "verified_traceability",
+                    confidence,
+                    status,
+                    "VERIFIED_CEG_TRACEABILITY",
+                    "traceability",
+                    evidence,
+                    status != "confirmed",
+                    details={
+                        "matchMethod": "verified_traceability",
+                        "traceabilityPath": traceability_path,
+                        "matchedPaths": safe_matched_paths,
+                        "capabilityRef": capability_ref,
+                        "factsTruncated": unsafe_path or unsafe_capability or paths_truncated,
+                    },
+                ))
         return self._dedupe_candidates(found)
 
     def _rule_candidates(
@@ -847,7 +895,17 @@ class ScmPrContextService:
                 continue
             confidence = min(max(float(rule.get("confidence", 0.7)), 0.0), 0.89)
             evidence = [{"type": "match_rule", "ref": f"match-rule://{project.id}/{canonical_hash(rule)[7:23]}", "contentHash": canonical_hash(rule)}]
-            result.append(self._candidate(entry, "rule", confidence, "candidate", "PROJECT_RULE_MATCH", "rule_history", evidence, True))
+            result.append(self._candidate(
+                entry,
+                "rule",
+                confidence,
+                "candidate",
+                "PROJECT_RULE_MATCH",
+                "rule_history",
+                evidence,
+                True,
+                details=self._mapping_reason_details(rule, labels, paths, payload, "project_rule"),
+            ))
         return result
 
     def _history_candidates(
@@ -881,6 +939,8 @@ class ScmPrContextService:
             prior_labels = {str(item) for item in historical_version.context_snapshot.get("labels", [])}
             if not (current_paths.intersection(prior_paths) or current_labels.intersection(prior_labels)):
                 continue
+            overlapping_paths = sorted(current_paths.intersection(prior_paths))
+            overlapping_labels = sorted(current_labels.intersection(prior_labels))
             snapshot = self.db.scalar(select(RequirementMatchSnapshotRecord).where(RequirementMatchSnapshotRecord.pr_context_version_id == historical_version.id))
             if snapshot is None:
                 continue
@@ -890,7 +950,29 @@ class ScmPrContextService:
                 if entry is None:
                     continue
                 evidence = [{"type": "historical_match", "ref": f"requirement-match://{row.id}", "contentHash": row.match_hash}]
-                result.append(self._candidate(entry, "history", 0.6, "candidate", "HISTORICAL_OVERLAP", "rule_history", evidence, True))
+                safe_paths, paths_truncated = self._safe_match_fact_values(overlapping_paths)
+                safe_labels, labels_truncated = self._safe_match_fact_values(overlapping_labels)
+                result.append(self._candidate(
+                    entry,
+                    "history",
+                    0.6,
+                    "candidate",
+                    "HISTORICAL_OVERLAP",
+                    "rule_history",
+                    evidence,
+                    True,
+                    details={
+                        "matchMethod": "historical_overlap",
+                        "historicalContextRef": {
+                            "type": "pr_context_version",
+                            "ref": f"pr-context-version://{historical_version.id}",
+                            "contentHash": historical_version.context_hash,
+                        },
+                        "overlappingPaths": safe_paths,
+                        "overlappingLabels": safe_labels,
+                        "factsTruncated": paths_truncated or labels_truncated,
+                    },
+                ))
         return self._dedupe_candidates(result)
 
     def _ai_candidates(
@@ -1549,6 +1631,12 @@ class ScmPrContextService:
         return confirmed, unknown, evidence
 
     @staticmethod
+    def _explicit_match_sources(evidence: list[dict[str, Any]]) -> list[str]:
+        allowed = ("pr_title", "pr_template", "commit_message")
+        observed = {str(item.get("type")) for item in evidence}
+        return [source for source in allowed if source in observed]
+
+    @staticmethod
     def _candidate(
         entry: RequirementCatalogEntry,
         source: str,
@@ -1558,8 +1646,16 @@ class ScmPrContextService:
         layer: str,
         evidence: list[dict[str, Any]],
         review_required: bool,
+        *,
+        details: dict[str, Any] | None = None,
     ) -> RequirementMatchCandidate:
         refs = [ScmRef.model_validate(item) for item in evidence]
+        if details is None:
+            details = {
+                "explicit_reference": "explicit_reference",
+                "ai_suggestion": "ai_suggestion",
+            }.get(source)
+            details = {"matchMethod": details} if details else None
         return RequirementMatchCandidate.model_validate(
             {
                 "requirementId": entry.requirement_id,
@@ -1574,6 +1670,7 @@ class ScmPrContextService:
                         "layer": layer,
                         "explanationKey": f"requirementMatch.reason.{reason_code.lower()}",
                         "evidenceRefs": refs,
+                        "details": details,
                     }
                 ],
                 "evidenceRefs": refs,
@@ -1581,6 +1678,84 @@ class ScmPrContextService:
                 "reviewRequired": review_required,
             }
         )
+
+    @staticmethod
+    def _safe_match_fact(value: Any) -> tuple[str | None, bool]:
+        if value is None:
+            return None, False
+        text = str(value)
+        if (
+            not text
+            or len(text) > 1000
+            or redact_sensitive_text(text) != text
+            or any(ord(character) < 32 and character not in "\t" for character in text)
+        ):
+            return None, True
+        return text, False
+
+    @classmethod
+    def _safe_match_fact_values(cls, values: list[Any]) -> tuple[list[str], bool]:
+        safe_values: list[str] = []
+        truncated = len(values) > 200
+        for value in values[:200]:
+            text, unsafe = cls._safe_match_fact(value)
+            if text is not None:
+                safe_values.append(text)
+            if unsafe:
+                truncated = True
+        return safe_values, truncated
+
+    @classmethod
+    def _mapping_reason_details(
+        cls,
+        mapping: dict[str, Any],
+        labels: set[str],
+        paths: list[str],
+        payload: dict[str, Any],
+        match_method: str,
+    ) -> dict[str, Any]:
+        raw_attrs = payload.get("object_attributes")
+        attrs: dict[str, Any] = raw_attrs if isinstance(raw_attrs, dict) else {}
+        pull_request_number = attrs.get("iid") or attrs.get("id") or payload.get("number")
+        configured_labels = mapping.get("labelsAny") or mapping.get("labels")
+        configured_labels = configured_labels if isinstance(configured_labels, list) else []
+        configured_prefixes = mapping.get("pathPrefixes") or mapping.get("paths")
+        configured_prefixes = configured_prefixes if isinstance(configured_prefixes, list) else []
+        matched_paths = [
+            path
+            for path in paths
+            if any(
+                path == str(prefix)
+                or path.startswith(str(prefix).rstrip("/") + "/")
+                for prefix in configured_prefixes
+            )
+        ]
+        safe_configured_labels, labels_truncated = cls._safe_match_fact_values(configured_labels)
+        safe_matched_labels, matched_labels_truncated = cls._safe_match_fact_values(
+            sorted(labels.intersection({str(item) for item in configured_labels}))
+        )
+        safe_prefixes, prefixes_truncated = cls._safe_match_fact_values(configured_prefixes)
+        safe_paths, paths_truncated = cls._safe_match_fact_values(matched_paths)
+        configured_number, unsafe_configured_number = cls._safe_match_fact(mapping.get("pullRequestNumber"))
+        matched_number, unsafe_matched_number = cls._safe_match_fact(pull_request_number)
+        return {
+            "matchMethod": match_method,
+            "configuredPullRequestNumber": configured_number,
+            "matchedPullRequestNumber": matched_number if mapping.get("pullRequestNumber") is not None else None,
+            "configuredLabels": safe_configured_labels,
+            "matchedLabels": safe_matched_labels,
+            "configuredPathPrefixes": safe_prefixes,
+            "matchedPaths": safe_paths,
+            "appliesToAll": bool(mapping.get("appliesToAll", False)),
+            "factsTruncated": (
+                labels_truncated
+                or matched_labels_truncated
+                or prefixes_truncated
+                or paths_truncated
+                or unsafe_configured_number
+                or (mapping.get("pullRequestNumber") is not None and unsafe_matched_number)
+            ),
+        }
 
     @staticmethod
     def _mapping_applies(mapping: dict[str, Any], labels: set[str], paths: list[str], payload: dict[str, Any]) -> bool:

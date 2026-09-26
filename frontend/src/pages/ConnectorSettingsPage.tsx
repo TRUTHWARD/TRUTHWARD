@@ -9,7 +9,7 @@ import type {
   EnvironmentItem,
   ProjectItem,
 } from "../lib/api";
-import { Locale, t } from "../i18n";
+import { Locale, t, userFacingError } from "../i18n";
 
 type ConnectorSettingsPageProps = {
   connectorBindings: ConnectorBindingItem[];
@@ -34,7 +34,14 @@ const CONNECTOR_NAME_OPTIONS = [
   "jira",
   "zentao",
 ];
-const COMMUNITY_CONNECTOR_NAME_OPTIONS = ["github", "gitlab", "mock-scm"];
+const COMMUNITY_CONNECTOR_NAME_OPTIONS = [
+  "github",
+  "gitlab",
+  "mock-scm",
+  "mock-requirement-docs",
+  "lark-requirement-docs",
+  "zentao-requirement-docs",
+];
 
 function hasCapability(user: CurrentUser | null, capability: string) {
   return user?.capabilities.includes(capability) ?? false;
@@ -77,6 +84,7 @@ export function ConnectorSettingsPage({
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<"success" | "error">("success");
 
   useEffect(() => {
     if (isCommunity && selectedProject?.id) {
@@ -115,8 +123,10 @@ export function ConnectorSettingsPage({
         status: form.status,
       });
       setMessage(t(locale, "connectorBindingSaved"));
+      setMessageTone("success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t(locale, "connectorBindingSaveFailed"));
+      setMessage(userFacingError(locale, error, "connectorBindingSaveFailed"));
+      setMessageTone("error");
     } finally {
       setSaving(false);
     }
@@ -137,8 +147,10 @@ export function ConnectorSettingsPage({
       }
       await onUpdateConnectorBinding(selectedBinding.id, update);
       setMessage(t(locale, "connectorBindingSaved"));
+      setMessageTone("success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t(locale, "connectorBindingSaveFailed"));
+      setMessage(userFacingError(locale, error, "connectorBindingSaveFailed"));
+      setMessageTone("error");
     } finally {
       setSaving(false);
     }
@@ -174,7 +186,7 @@ export function ConnectorSettingsPage({
 
       {!canManageConnectorBindings ? <div className="notice-banner">{t(locale, "connectorBindingRestricted")}</div> : null}
       {canManageConnectorBindings ? <div className="notice-banner">{t(locale, "requirementDocumentConnectorConfigNotice")}</div> : null}
-      {message ? <div className="notice-banner">{message}</div> : null}
+      {message ? <div className={`notice-banner notice-banner--${messageTone}`} role={messageTone === "error" ? "alert" : "status"}>{message}</div> : null}
 
       <section className="panel">
         <div className="panel__header">

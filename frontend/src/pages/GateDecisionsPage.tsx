@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+import { EvidenceReferenceList } from "../components/EvidenceReferenceList";
 import { Locale, t } from "../i18n";
-import { displayEventKind, displayFindingTitle, displayStageLabel, displayStatus } from "../lib/presentation";
+import { displayEventKind, displayReasonCode, displayStageLabel, displayStatus } from "../lib/presentation";
 import { ExecutionItem, ReplayItem } from "../store/platform";
 
 type GateSnapshot = {
@@ -35,6 +36,20 @@ export function GateDecisionsPage({
   const selectedExecution = executions.find((execution) => execution.id === selectedExecutionId) ?? executions[0] ?? null;
   const hasStableContext = Boolean(selectedExecution);
   const reasons = gate?.reasons ?? [];
+  const supportingEvidence = [
+    ...(replay?.findings ?? []).map((finding) => ({
+      type: "finding",
+      ref: `finding://${finding.id}`,
+      title: finding.title,
+      summary: finding.summary,
+    })),
+    ...(replay?.guardrailEvents ?? []).map((event) => ({
+      type: "guardrail_event",
+      ref: `guardrail-event://${event.id}`,
+      title: displayReasonCode(locale, event.reason),
+      summary: `${event.ruleId} · ${displayStatus(locale, event.decision)}`,
+    })),
+  ];
 
   return (
     <div className="page-shell" data-route="/gate-decisions">
@@ -94,7 +109,13 @@ export function GateDecisionsPage({
                   <div className="stack-list">
                     {reasons.map((reason) => (
                       <div className="stack-row stack-row--dense" key={reason}>
-                        <strong>{displayFindingTitle(locale, reason)}</strong>
+                        <div>
+                          <strong>{displayReasonCode(locale, reason)}</strong>
+                          <details>
+                            <summary>{t(locale, "technicalDetails")}</summary>
+                            <code>{reason}</code>
+                          </details>
+                        </div>
                       </div>
                     ))}
                     {reasons.length === 0 ? <p className="empty-copy">{t(locale, "emptyReadOnlyResult")}</p> : null}
@@ -115,6 +136,14 @@ export function GateDecisionsPage({
                   </div>
                 </div>
               </div>
+
+              <EvidenceReferenceList
+                emptyLabel={t(locale, "evidencePreviewUnavailable")}
+                label={t(locale, "evidenceRefs")}
+                locale={locale}
+                maxVisible={5}
+                refs={supportingEvidence}
+              />
             </div>
           ) : null}
         </section>

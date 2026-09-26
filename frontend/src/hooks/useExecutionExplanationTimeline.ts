@@ -6,6 +6,7 @@ import {
   fetchExecutionDecisionTimeline,
   type DecisionTimelineProjection,
 } from "../lib/api";
+import { userFacingError, type Locale } from "../i18n";
 
 const INITIAL_TIMELINE_PAGE_SIZE = 20;
 const TIMELINE_PAGE_SIZE = 200;
@@ -23,6 +24,7 @@ export type ExecutionExplanationLoadState =
 export function useExecutionExplanationTimeline(
   executionId: string | null,
   canRead: boolean,
+  locale: Locale,
 ) {
   const [state, setState] = useState<ExecutionExplanationLoadState>(
     executionId ? (canRead ? "loading" : "restricted") : "unavailable",
@@ -67,7 +69,7 @@ export function useExecutionExplanationTimeline(
         if (cancelled) return;
         setLoadingMore(false);
         if (firstPageRendered) {
-          setError(requestError instanceof Error ? requestError.message : null);
+          setError(userFacingError(locale, requestError, "executionExplanationLoadFailed"));
           return;
         }
         if (requestError instanceof ApiRequestError && requestError.status === 403) {
@@ -84,12 +86,12 @@ export function useExecutionExplanationTimeline(
           return;
         }
         setState("error");
-        setError(requestError instanceof Error ? requestError.message : null);
+        setError(userFacingError(locale, requestError, "executionExplanationLoadFailed"));
       });
     return () => {
       cancelled = true;
     };
-  }, [canRead, executionId]);
+  }, [canRead, executionId, locale]);
 
   return { state, projection, error, loadingMore };
 }

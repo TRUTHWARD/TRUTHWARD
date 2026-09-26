@@ -56,7 +56,8 @@ Community tag，或下载正式源码归档并校验发布的 SHA-256；记录 c
 - `community.env.example` 是无凭据模板；`scripts/community.py configure` 生成 `.env`。
 - `DEPLOYMENT_PROFILE=oss`、`AUTO_CREATE_TABLES=false` 是安装入口的强制要求。
 - `DATABASE_URL` 指向独立 PostgreSQL；默认数据库名为 `truthward_community`。
-- `QUEUE_MODE=inline` 是单实例安装路径，不需要另起 worker。
+- `QUEUE_MODE=inline` 是单实例安装路径，不需要另起 worker；需求库 Pipeline 在 HTTP
+  返回 `202` 和运行 ID 后由同一 API 进程继续执行。进程重启可能中断运行，适合本地评估。
 - `COMMUNITY_SKILL_MANIFEST_DIR` 默认 `community-skills`；不得放入不可信代码。
 - `.tmp/artifacts`、`.tmp/runner-artifacts`、`.tmp/replay-repository` 保存本地运行文件。
 - 模型和 Connector 凭据由管理员在运行环境中配置；启动模板不含真实 Provider 配置。
@@ -70,6 +71,41 @@ Compose 只在使用包内 Compose 时需要，因此 Docker 不可用会显示�
 `unavailable`。`doctor --json` 输出 `truthward.community-doctor.v1`，任一 required
 检查未通过时退出非零。报告不包含 DSN、密码或 Token，也不会创建目录、修改配置、
 应用迁移或修复数据库。
+
+## 需求接入与文档来源
+
+Community 管理员可在“需求接入”中粘贴文本，上传 txt/md/json/csv、Word（DOCX）或
+PDF，使用受控 OCR 处理图片和扫描 PDF，读取公共 HTTPS 文本链接，或通过项目范围的
+`mock-requirement-docs`、`lark-requirement-docs`、`zentao-requirement-docs`
+Binding 导入文档。来源先生成 Draft/Preview，确认后进入既有需求流水线；需求库可按
+项目、环境、来源、状态和关键字检索并选入主流程。
+
+每条需求和文档 Binding 都必须绑定授权项目；环境必须属于该项目。连接器只接受
+`env://`、`secret://` 等凭据引用，前端和 API 不回显明文凭据。公共链接受协议、地址、
+重定向、超时和大小限制，不能用来访问本机或内网地址。Community 不包含 Approval
+模块，因此高风险需求不会进入无法处理的待审批状态，接口会要求改用低/中风险或在
+包含审批治理的完整版中处理。OSS 工作流页面也不显示审批中心。
+
+测试计划的“计划来源”用于追溯需求编号、文档路径或链接；由需求流程创建时自动带入，
+已保存来源不能通过普通计划更新修改。计划状态是后端生命周期结果，不是用户可选择的
+“草稿/批准”审批字段。
+
+需求库 Pipeline 的创建请求携带幂等键。相同用户、相同键和相同请求只返回同一个运行；
+同键不同请求返回 `409`。页面按运行 ID 查询 `queued/running/completed/failed` 状态，
+失败时展示当前阶段与错误。需要让长任务脱离 API 进程时，配置 `QUEUE_MODE=celery`
+及可用的 Redis，并启动独立 worker；API 与 worker 必须使用相同源码版本、数据库和
+队列配置。部署前先应用 `065_requirement_pipeline_async_idempotency.sql` 迁移。默认
+队列配置的 worker 启动示例：
+
+```bash
+PYTHONPATH=backend/src python -m celery -A agentic_qa.infra.queue.celery_app worker -l info
+```
+
+启用 `CELERY_QUEUE_ROUTING_ENABLED` 时，worker 还需订阅配置的 execution 队列。
+worker 不可用时创建请求会快速失败或保持已持久化的 `queued` 运行，可用相同幂等键
+重试入队；不得通过新键反复提交来判断任务是否运行。worker 中途退出后，重投递的
+运行会标记为 `PIPELINE_INTERRUPTED_REVIEW_REQUIRED`，需要人工确认已有执行副作用
+后再启动新运行。
 
 ## 真实浏览器执行
 
@@ -86,11 +122,13 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.ms-playwright" npm exec --prefix frontend -- pla
 Linux 还需满足 Playwright 提示的浏览器原生库依赖。运行用户必须能够读取该目录；
 执行器不会用系统中的任意浏览器替代锁定版本，也不会在执行期间隐式下载浏览器。
 
-真实调用需在创建计划 API 的 `domainConfig.functional` 中显式设置
-`actualExecution=true`、受控测试目标 `targetUrl` 和结构化 `semanticAction`。
-工作流的测试计划表单提供“元素可见”“元素文本匹配”模板，可配置目标 URL、
-元素角色/名称或 CSS 选择器以及预期文本，保存计划后通过既有执行控制启动。
-其他高级动作继续使用 API；只修改名称等字段时，页面保留已有 domainConfig。
+真实调用需在创建计划 API 的 `domainConfig.functional` 中保存
+`community.executable-scenarios.v1` 场景集合；每个场景可包含有序的 `navigate`、`fill`、
+`click`、`assert_visible` 和 `assert_text` 动作。只有信息完整且由用户确认的场景可以执行，
+执行时还可选择本次运行的场景子集。旧版 `actualExecution=true`、`targetUrl` 与结构化
+`semanticAction`/`semanticActions` 会在服务端转换为兼容场景。
+工作流表单支持多场景、多动作、环境 URL 建议、来源变化后重新确认和历史定位提示。
+只修改名称等字段时，页面保留已有 domainConfig。
 缺少真实配置时的模拟执行不能作为业务测试通过证据。
 验收必须核对 task 的 `executionMode=actual`、`actualExecution=true`、
 `runnerMetadata.namedToolExecuted=true`、`pinnedChromium=true`，以及实际 report、
@@ -230,14 +268,15 @@ Community 源码包不应因为维护者专用 CI 静态入口未导出而报告
 首次安装通过本身不代表真实模型、浏览器/扫描器、SCM 外部写入或全平台验收通过。
 证据应记录实际系统、Python 版本、archive hash 和未执行范围，不把未运行标为成功。
 
-本次候选包已在 Linux / Python 3.12 上验证独立锁定依赖安装、空 PostgreSQL 16、
+已记录的历史候选包曾在 Linux / Python 3.12 上验证独立锁定依赖安装、空 PostgreSQL 16、
 原生依赖与 Compose 两条路径、真实 HTTP 首次管理员/项目/计划/执行 API、令牌撤销、
 重启持久性以及 Vite 页面和 API 代理。后续 Skill 候选包补验了真实 Playwright 功能
 执行、实际工具产物、本地扩展解析、绑定启停、跨项目拒绝及构建后的浏览器 UI。
 精确源码包与结果见 [Skill 验收记录](COMMUNITY_SKILL_ENABLEMENT.md#验收)。
-后续 2026-09-05 候选包已补验本地 Ollama 0.11.10 / `qwen2.5:0.5b` 的真实业务调用、
+2026-09-05 的精确候选包另行补验了本地 Ollama 0.11.10 / `qwen2.5:0.5b` 的真实业务调用、
 持久化 live ModelInvocation、官方固定 Chromium 新装与 P21 Semgrep Docker 沙箱。
 Windows 全流程、托管/外部模型 Provider、其他扫描器与真实 SCM 写入仍未验证。
+上述证据均绑定其记录的精确 commit/archive；更新工作树必须重新生成自己的发行证据。
 
 2026-09-05 的原生 Python 迁移增量已在 Ubuntu / Python 3.12 / PostgreSQL 16.15
 隔离环境通过：PATH 中无 `pwsh`、`psql` 时完成空库初始化；64 条账本与旧入口一致，

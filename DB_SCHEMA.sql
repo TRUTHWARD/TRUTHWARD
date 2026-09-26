@@ -968,6 +968,7 @@ CREATE INDEX IF NOT EXISTS idx_executions_status ON executions(status);
 CREATE INDEX IF NOT EXISTS idx_executions_stage ON executions(stage);
 CREATE INDEX IF NOT EXISTS idx_executions_environment ON executions(environment);
 CREATE INDEX IF NOT EXISTS idx_executions_created_at ON executions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_executions_created_id ON executions(created_at, id);
 CREATE INDEX IF NOT EXISTS idx_executions_execution_plan_id ON executions(execution_plan_id);
 
 CREATE TRIGGER trg_executions_updated_at
@@ -1142,6 +1143,7 @@ CREATE INDEX IF NOT EXISTS idx_execution_tasks_status ON execution_tasks(status)
 CREATE INDEX IF NOT EXISTS idx_execution_tasks_domain ON execution_tasks(domain);
 CREATE INDEX IF NOT EXISTS idx_execution_tasks_task_type ON execution_tasks(task_type);
 CREATE INDEX IF NOT EXISTS idx_execution_tasks_parent_task_id ON execution_tasks(parent_task_id);
+CREATE INDEX IF NOT EXISTS idx_execution_tasks_execution_order ON execution_tasks(execution_id, priority, created_at, id);
 
 CREATE TRIGGER trg_execution_tasks_updated_at
 BEFORE UPDATE ON execution_tasks
@@ -1164,6 +1166,7 @@ CREATE TABLE IF NOT EXISTS execution_metrics (
 CREATE INDEX IF NOT EXISTS idx_execution_metrics_execution_id ON execution_metrics(execution_id);
 CREATE INDEX IF NOT EXISTS idx_execution_metrics_task_id ON execution_metrics(task_id);
 CREATE INDEX IF NOT EXISTS idx_execution_metrics_metric_name ON execution_metrics(metric_name);
+CREATE INDEX IF NOT EXISTS idx_execution_metrics_task_created ON execution_metrics(task_id, created_at);
 
 CREATE TABLE IF NOT EXISTS execution_artifacts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1182,6 +1185,7 @@ CREATE TABLE IF NOT EXISTS execution_artifacts (
 CREATE INDEX IF NOT EXISTS idx_execution_artifacts_execution_id ON execution_artifacts(execution_id);
 CREATE INDEX IF NOT EXISTS idx_execution_artifacts_task_id ON execution_artifacts(task_id);
 CREATE INDEX IF NOT EXISTS idx_execution_artifacts_type ON execution_artifacts(artifact_type);
+CREATE INDEX IF NOT EXISTS idx_execution_artifacts_task_created ON execution_artifacts(task_id, created_at);
 
 CREATE TABLE IF NOT EXISTS execution_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1196,6 +1200,7 @@ CREATE TABLE IF NOT EXISTS execution_logs (
 CREATE INDEX IF NOT EXISTS idx_execution_logs_execution_id ON execution_logs(execution_id);
 CREATE INDEX IF NOT EXISTS idx_execution_logs_task_id ON execution_logs(task_id);
 CREATE INDEX IF NOT EXISTS idx_execution_logs_created_at ON execution_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_execution_logs_task_created ON execution_logs(task_id, created_at);
 
 -- =========================================================
 -- 7A. Trace foundation (must precede tables with trace_id FKs)
@@ -1274,6 +1279,9 @@ CREATE INDEX IF NOT EXISTS idx_findings_severity ON findings(severity);
 CREATE INDEX IF NOT EXISTS idx_findings_status ON findings(status);
 CREATE INDEX IF NOT EXISTS idx_findings_category ON findings(category);
 CREATE INDEX IF NOT EXISTS idx_findings_raw_ref ON findings(raw_ref);
+CREATE INDEX IF NOT EXISTS idx_findings_execution_created_id ON findings(execution_id, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_findings_execution_domain_created ON findings(execution_id, domain, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_findings_execution_severity_created ON findings(execution_id, severity, created_at, id);
 
 CREATE TRIGGER trg_findings_updated_at
 BEFORE UPDATE ON findings
@@ -1356,6 +1364,7 @@ CREATE TABLE IF NOT EXISTS raw_findings (
 CREATE INDEX IF NOT EXISTS idx_raw_findings_execution ON raw_findings(execution_id);
 CREATE INDEX IF NOT EXISTS idx_raw_findings_task ON raw_findings(task_id);
 CREATE INDEX IF NOT EXISTS idx_raw_findings_normalized ON raw_findings(normalized_finding_id);
+CREATE INDEX IF NOT EXISTS idx_raw_findings_execution_created ON raw_findings(execution_id, created_at, id);
 
 -- =========================================================
 -- 9. 归因与修复
@@ -2111,6 +2120,8 @@ CREATE INDEX IF NOT EXISTS idx_replay_repository_entries_created_at
   ON replay_repository_entries(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_replay_repository_entries_retention
   ON replay_repository_entries(retention_status);
+CREATE INDEX IF NOT EXISTS idx_replay_repository_expiry_scan
+  ON replay_repository_entries(retention_status, legal_hold, retention_until, id);
 
 DROP TRIGGER IF EXISTS trg_replay_repository_entries_updated_at ON replay_repository_entries;
 CREATE TRIGGER trg_replay_repository_entries_updated_at
@@ -2840,6 +2851,8 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_resource_type ON audit_logs(resource_type);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_resource_id ON audit_logs(resource_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_retention_status ON audit_logs(retention_status);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_expiry_scan
+  ON audit_logs(retention_status, legal_hold, retention_until, id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS domain_events (
@@ -2969,6 +2982,9 @@ CREATE TABLE IF NOT EXISTS orchestration_runs (
   status job_status NOT NULL DEFAULT 'queued',
   current_step VARCHAR(100) NOT NULL DEFAULT 'PLAN',
   request_id VARCHAR(255),
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  idempotency_key VARCHAR(120),
+  request_hash VARCHAR(128),
   trace_id UUID REFERENCES traces(id) ON DELETE SET NULL,
   linked_plan_id UUID REFERENCES test_plans(id) ON DELETE SET NULL,
   linked_execution_id UUID REFERENCES executions(id) ON DELETE SET NULL,
@@ -2984,6 +3000,8 @@ CREATE TABLE IF NOT EXISTS orchestration_runs (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_orchestration_runs_actor_idempotency
+  ON orchestration_runs(created_by, idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_orchestration_runs_status ON orchestration_runs(status);
 CREATE INDEX IF NOT EXISTS idx_orchestration_runs_trace_id ON orchestration_runs(trace_id);
 CREATE INDEX IF NOT EXISTS idx_orchestration_runs_plan_id ON orchestration_runs(linked_plan_id);
@@ -5776,6 +5794,55 @@ INSERT INTO rbac_role_capabilities (role_name, capability_key, effect) VALUES
   ('system', 'governance.aggregate.read', 'allow'), ('system', 'graph.autonomy.configure', 'allow'),
   ('user', 'governance.read', 'allow')
 ON CONFLICT (role_name, capability_key) DO UPDATE SET effect=EXCLUDED.effect;
+
+-- Community-only bounded materialization of non-authoritative coverage analysis
+-- snapshots.  It intentionally does not grant the generic Enterprise mutation
+-- capabilities used by Change, Graph, Impact or Selective Replay APIs.
+INSERT INTO capability_registry (
+  capability_key, category, description, risk_level, is_active
+)
+VALUES (
+  'coverage.materialize',
+  'coverage',
+  'Materialize bounded non-authoritative Community coverage analysis snapshots.',
+  'medium',
+  TRUE
+)
+ON CONFLICT (capability_key) DO UPDATE SET
+  category = EXCLUDED.category,
+  description = EXCLUDED.description,
+  risk_level = EXCLUDED.risk_level,
+  is_active = TRUE;
+
+INSERT INTO edition_capabilities (edition, capability_key, enabled)
+VALUES
+  ('community', 'coverage.materialize', TRUE),
+  ('enterprise', 'coverage.materialize', TRUE)
+ON CONFLICT (edition, capability_key) DO UPDATE SET enabled = TRUE;
+
+-- Community-only bounded Trace-to-Candidate observation. This is deliberately
+-- separate from graph.candidate.create and never grants promotion authority.
+INSERT INTO capability_registry (
+  capability_key, category, description, risk_level, is_active
+)
+VALUES (
+  'graph.candidate.observe',
+  'graph',
+  'Materialize bounded non-authoritative Candidate Path observations from persisted Community executions.',
+  'medium',
+  TRUE
+)
+ON CONFLICT (capability_key) DO UPDATE SET
+  category = EXCLUDED.category,
+  description = EXCLUDED.description,
+  risk_level = EXCLUDED.risk_level,
+  is_active = TRUE;
+
+INSERT INTO edition_capabilities (edition, capability_key, enabled)
+VALUES
+  ('community', 'graph.candidate.observe', TRUE),
+  ('enterprise', 'graph.candidate.observe', TRUE)
+ON CONFLICT (edition, capability_key) DO UPDATE SET enabled = TRUE;
 
 COMMIT;
 

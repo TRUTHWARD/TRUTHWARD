@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 
 import { ApiRequestError, fetchImpactResults, type ImpactResult } from "../lib/api";
+import { readRouteSelection } from "../lib/routeSelection";
 
 
 export type ImpactResultViewState = "loading" | "ready" | "empty" | "unavailable" | "restricted" | "error";
@@ -11,6 +12,7 @@ export function useImpactResults(projectId: string | null, canRead: boolean) {
   const [items, setItems] = useState<ImpactResult[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [backendComputed, setBackendComputed] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -29,7 +31,8 @@ export function useImpactResults(projectId: string | null, canRead: boolean) {
     void fetchImpactResults(projectId).then((response) => {
       if (!active) return;
       setItems(response.items);
-      setSelectedId(response.items[0]?.impactResultId ?? null);
+      const requestedImpactResultId = readRouteSelection("impactResultId");
+      setSelectedId(response.items.some((item) => item.impactResultId === requestedImpactResultId) ? requestedImpactResultId : response.items[0]?.impactResultId ?? null);
       setBackendComputed(response.backendComputed);
       setState(response.items.length ? "ready" : "empty");
     }).catch((error) => {
@@ -37,11 +40,12 @@ export function useImpactResults(projectId: string | null, canRead: boolean) {
       setState(error instanceof ApiRequestError && error.status === 403 ? "restricted" : "error");
     });
     return () => { active = false; };
-  }, [canRead, projectId]);
+  }, [canRead, projectId, reloadToken]);
 
   return {
     items,
     backendComputed,
+    reload: () => setReloadToken((value) => value + 1),
     selectedId,
     selected: items.find((item) => item.impactResultId === selectedId) ?? null,
     select: setSelectedId,

@@ -80,9 +80,9 @@
     {
       "id": "connector_configuration",
       "layer": "oss_core",
-      "runtimeStatus": "implemented_bounded_scm",
+      "runtimeStatus": "implemented_bounded_scm_and_requirement_documents",
       "sourceIsolationStatus": "community_project_scoped_allowlist_and_safe_projection",
-      "targetOperations": ["configure project-scoped GitHub, GitLab, or Mock SCM binding", "update or archive binding", "use secret references", "inspect safe projection"],
+      "targetOperations": ["configure project-scoped GitHub, GitLab, Mock SCM, or supported requirement-document binding", "update or archive binding", "use secret references", "inspect safe projection"],
       "enterpriseExtensions": ["commercial connectors", "organization credential distribution", "cross-tenant connector governance"],
       "sections": [
         {"id": "connector-settings", "currentExposure": "visible", "targetExposure": "visible"}
@@ -102,15 +102,15 @@
     {
       "id": "requirements_and_test_assets",
       "layer": "oss_core",
-      "runtimeStatus": "plan_workflow_implemented_other_intake_hidden",
-      "sourceIsolationStatus": "community_plan_and_workflow_routes_composed",
-      "targetOperations": ["create or import requirements", "create test assets", "create test plan", "create exploratory session", "run a basic workflow"],
+      "runtimeStatus": "requirement_intake_library_generated_executable_scenarios_plan_and_exploratory_workflow_implemented",
+      "sourceIsolationStatus": "community_requirement_intake_plan_workflow_and_exploratory_routes_composed",
+      "targetOperations": ["paste requirements", "upload text, Word, or PDF requirements", "extract scanned PDF or image text through bounded OCR", "import public HTTPS or scoped connector documents", "search and select the project-scoped requirement library", "create test plan", "generate browser scenario candidates from requirement-derived test cases", "review and confirm multi-scenario multi-action browser tests", "create exploratory session", "upload sanitized exploratory PNG, JPEG, or WebP evidence", "inspect human-readable exploratory traceability", "run a basic workflow"],
       "enterpriseExtensions": ["bulk AI governance", "organization approval templates"],
       "sections": [
-        {"id": "requirement-intake", "currentExposure": "hidden", "targetExposure": "visible_when_implemented"},
+        {"id": "requirement-intake", "currentExposure": "visible", "targetExposure": "visible"},
         {"id": "workflow-runs", "currentExposure": "visible_read_only", "targetExposure": "visible"},
         {"id": "workflow", "currentExposure": "visible", "targetExposure": "visible"},
-        {"id": "exploratory-sessions", "currentExposure": "visible_read_only", "targetExposure": "visible"},
+        {"id": "exploratory-sessions", "currentExposure": "visible", "targetExposure": "visible"},
         {"id": "test-assets", "currentExposure": "hidden", "targetExposure": "visible_when_implemented"}
       ]
     },
@@ -119,7 +119,7 @@
       "layer": "oss_core",
       "runtimeStatus": "implemented_bounded_local_execution",
       "sourceIsolationStatus": "community_execution_and_work_item_routes_composed",
-      "targetOperations": ["start basic local execution", "cancel execution", "inspect finding", "update finding state", "create and transition work item"],
+      "targetOperations": ["select confirmed browser scenarios for a run", "freeze each selected scenario into an execution task", "start basic local execution", "cancel execution", "inspect finding", "update finding state", "create and transition work item"],
       "enterpriseExtensions": ["distributed execution", "elastic queue policy", "organization SLA automation"],
       "sections": [
         {"id": "execution-dashboard", "currentExposure": "visible", "targetExposure": "visible"},
@@ -143,9 +143,9 @@
     {
       "id": "coverage_replay_audit",
       "layer": "oss_core",
-      "runtimeStatus": "audit_visible_coverage_and_replay_hidden",
-      "sourceIsolationStatus": "audit_safe_projection_composed",
-      "targetOperations": ["inspect coverage", "record execution replay", "export basic replay", "read project-scoped audit projection"],
+      "runtimeStatus": "bounded_coverage_materialization_and_audit_visible",
+      "sourceIsolationStatus": "community_materialization_route_and_audit_safe_projection_composed",
+      "targetOperations": ["materialize non-authoritative project coverage snapshots", "inspect coverage and selective replay plans", "read project-scoped audit projection"],
       "enterpriseExtensions": ["cross-project replay comparison", "legal hold", "organization retention policy"],
       "sections": [
         {"id": "coverage-matrix", "currentExposure": "hidden", "targetExposure": "visible_when_implemented"},
@@ -189,7 +189,16 @@
       "enterpriseExtensions": ["multi-node operations", "central alert routing", "cross-project operational aggregation"],
       "features": [
         {"id": "observability.ui.safe_detail", "ossIncluded": true, "availability": "community_and_full", "projection": "trace_counts_redacted_metadata_structured_logs_and_guardrail_evidence", "sourcePaths": ["backend/src/agentic_qa/services/observability_service.py", "frontend/src/components/SafeJsonViewer.tsx", "frontend/src/pages/ObservabilityPage.tsx"]},
-        {"id": "observability.ui.raw_model_agent_payload", "ossIncluded": false, "availability": "not_exposed_by_observability_ui", "sourcePaths": ["frontend/src/pages/ObservabilityPage.tsx"]}
+        {"id": "observability.ui.raw_model_agent_payload", "ossIncluded": false, "availability": "not_exposed_by_observability_ui", "sourcePaths": ["frontend/src/pages/ObservabilityPage.tsx"]},
+        {"id": "performance.http_size_timeout_limits", "ossIncluded": true, "availability": "community_and_full", "sourcePaths": ["backend/src/agentic_qa/apps/common.py", "backend/src/agentic_qa/infra/settings.py"]},
+        {"id": "performance.keyset_execution_finding_reads", "ossIncluded": true, "availability": "community_and_full_opt_in_cursor", "sourcePaths": ["backend/src/agentic_qa/api/routers/executions.py", "backend/src/agentic_qa/services/common.py", "backend/src/agentic_qa/services/execution_service.py"]},
+        {"id": "performance.read_path_indexes", "ossIncluded": true, "availability": "community_and_full", "sourcePaths": ["scripts/migrations/061_performance_p0_indexes.sql", "DB_SCHEMA.sql"]},
+        {"id": "performance.database_connection_budget", "ossIncluded": true, "availability": "community_and_full_profile_specific", "sourcePaths": ["backend/src/agentic_qa/infra/settings.py", "backend/src/agentic_qa/db/session.py", "community.env.example"]},
+        {"id": "performance.aggregate_latency_buckets", "ossIncluded": true, "availability": "community_and_full_process_local_projection", "sourcePaths": ["backend/src/agentic_qa/infra/operational_controls.py", "backend/src/agentic_qa/services/health_service.py"]},
+        {"id": "performance.celery_workload_queue_topology", "ossIncluded": false, "availability": "full_default_community_disabled", "sourcePaths": ["backend/src/agentic_qa/infra/queue.py", "docker-compose.yml"]},
+        {"id": "performance.execution_task_fanout", "ossIncluded": false, "availability": "full_default_community_disabled", "sourcePaths": ["backend/src/agentic_qa/infra/queue.py", "backend/src/agentic_qa/services/execution_service.py", "docker-compose.yml"]},
+        {"id": "performance.redis_skill_concurrency_quota", "ossIncluded": false, "availability": "full_default_community_process_local", "sourcePaths": ["backend/src/agentic_qa/services/skill_execution_policy.py", "docker-compose.yml"]},
+        {"id": "performance.retention_eligibility_scheduler", "ossIncluded": false, "availability": "full_default_community_scheduler_excluded", "sourcePaths": ["backend/src/agentic_qa/infra/queue.py", "backend/src/agentic_qa/services/observability_service.py", "backend/src/agentic_qa/services/replay_repository_service.py"]}
       ],
       "sections": [
         {"id": "observability", "currentExposure": "visible_read_only", "targetExposure": "role_gated"},
@@ -216,10 +225,10 @@
     {
       "id": "graph_and_explanation_insights",
       "layer": "oss_conditional",
-      "runtimeStatus": "candidate_read_only_other_insights_hidden",
-      "sourceIsolationStatus": "candidate_graph_read_path_isolated_other_graph_queries_mixed",
+      "runtimeStatus": "candidate_bounded_lifecycle_observation_read_only_other_insights_hidden",
+      "sourceIsolationStatus": "candidate_graph_routes_isolated_shared_service_capability_guarded_other_graph_queries_mixed",
       "readinessCondition": "persisted execution, evidence, replay, or graph projection",
-      "targetOperations": ["inspect candidate path", "inspect CEG projection", "read execution explanation", "query redacted evidence"],
+      "targetOperations": ["materialize bounded candidate observation from persisted execution", "inspect candidate path", "inspect CEG projection", "read execution explanation", "query redacted evidence"],
       "enterpriseExtensions": ["cross-project advanced visualization", "organization graph analytics"],
       "sections": [
         {"id": "candidate-paths", "currentExposure": "visible_read_only", "targetExposure": "readiness_gated"},

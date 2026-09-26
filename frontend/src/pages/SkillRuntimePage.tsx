@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { useEffect, useMemo, useState } from "react";
 
-import { Locale, t } from "../i18n";
+import { EvidenceReferenceList } from "../components/EvidenceReferenceList";
+import { Locale, t, userFacingError } from "../i18n";
 import {
   ApiRequestError,
   changeCommunityBindingLifecycle,
@@ -58,7 +59,7 @@ const COMMUNITY_EXTENSION_POINT = "PREPARE.regression_scope";
 
 function capabilityBindingErrorMessage(locale: Locale, error: unknown, fallbackKey: "capabilityBindingSaveFailed" | "capabilityBindingUpdateFailed") {
   if (!(error instanceof ApiRequestError)) {
-    return error instanceof Error ? error.message : t(locale, fallbackKey);
+    return userFacingError(locale, error, fallbackKey);
   }
   const reasonCode = error.code ?? (typeof error.detail === "string" ? error.detail.split(":", 1)[0] : null);
   if (reasonCode === "COMMUNITY_SKILL_PROJECT_SCOPE_REQUIRED") {
@@ -171,18 +172,18 @@ export function SkillRuntimePage({
         setLocalManifests(catalog.items);
         setLocalManifestDirectory(catalog.configuredDirectory);
       })
-      .catch((error) => setFormError(error instanceof Error ? error.message : String(error)));
-  }, [canRegisterLocalSkills]);
+      .catch((error) => setFormError(userFacingError(locale, error, "skillRuntimeLoadFailed")));
+  }, [canRegisterLocalSkills, locale]);
 
   useEffect(() => {
     if (!currentUser?.capabilities.includes("skills.catalog.read")) return;
     void Promise.all([fetchSkillProductFeatures(), fetchSkillRuntimeAdapters()])
       .then(([features, adapters]) => {
-        setProductFeatures(features.features);
-        setRuntimeAdapters(adapters.items);
+        setProductFeatures(features.features ?? []);
+        setRuntimeAdapters(adapters.items ?? []);
       })
-      .catch((error) => setFormError(error instanceof Error ? error.message : String(error)));
-  }, [currentUser]);
+      .catch((error) => setFormError(userFacingError(locale, error, "skillRuntimeLoadFailed")));
+  }, [currentUser, locale]);
 
   useEffect(() => {
     if (!selectedExtensionPointId && firstBindableNode) {
@@ -228,10 +229,10 @@ export function SkillRuntimePage({
         setSelectedSkillVersionId(active?.id ?? result.items.find((item) => item.governanceStatus === "active")?.id ?? "");
       })
       .catch((error) => {
-        if (!cancelled) setFormError(error instanceof Error ? error.message : String(error));
+        if (!cancelled) setFormError(userFacingError(locale, error, "skillRuntimeLoadFailed"));
       });
     return () => { cancelled = true; };
-  }, [selectedSkill]);
+  }, [locale, selectedSkill]);
   const selectableSkillVersions = skillVersions.filter((item) => item.governanceStatus === "active");
   const selectedSkillVersion = selectableSkillVersions.find((item) => item.id === selectedSkillVersionId) ?? null;
   const visibleBindings = selectedNode
@@ -503,28 +504,53 @@ export function SkillRuntimePage({
             {skillVersions.length > 0 ? (
               <div className="detail-stack skill-version-history">
                 <h3>{t(locale, "skillVersionHistory")}</h3>
-                {skillVersions.map((version) => (
-                  <div className="stack-row stack-row--dense" key={version.id}>
-                    <div>
-                      <strong>{version.version}</strong>
-                      <p className="skill-version-history__metadata">
-                        {isCommunity ? (
-                          <>
-                            {skillVersionSourceLabel(locale, version.provenance.sourceType)}
-                            {" · "}
-                            {t(locale, "createdAt")} {formatSkillVersionTimestamp(version.createdAt, locale)}
-                          </>
-                        ) : (
-                          <>{version.provenance.sourceType} · {version.changesFromPrevious.changedFields.join(", ") || "-"}</>
-                        )}
-                      </p>
+                {skillVersions.map((version) => {
+                  const fieldChanges = skillVersionFieldChanges(version);
+                  const previousVersion = version.changesFromPrevious.baseManifestHash
+                    ? skillVersions.find((candidate) => candidate.manifestHash === version.changesFromPrevious.baseManifestHash) ?? null
+                    : null;
+                  return <div className="skill-version-history__item" key={version.id}>
+                    <div className="stack-row stack-row--dense">
+                      <div>
+                        <strong>{version.version}</strong>
+                        <p className="skill-version-history__metadata">
+                          {skillVersionSourceLabel(locale, version.provenance.sourceType)}
+                          {" · "}
+                          {t(locale, "createdAt")} {formatSkillVersionTimestamp(version.createdAt, locale)}
+                        </p>
+                      </div>
+                      <div className="chip-row">
+                        <span className="tag">{displayStatus(locale, version.governanceStatus)}</span>
+                        <span className="tag">{version.manifestHash.slice(0, 18)}</span>
+                      </div>
                     </div>
-                    <div className="chip-row">
-                      <span className="tag">{displayStatus(locale, version.governanceStatus)}</span>
-                      <span className="tag">{version.manifestHash.slice(0, 18)}</span>
+                    <div className="skill-version-field-summary">
+                      <strong>{t(locale, "skillVersionFieldSummary")}</strong>
+                      {fieldChanges.length > 0 ? <div className="skill-version-field-diffs">
+                        {fieldChanges.map((change) => {
+                          const previousValue = previousVersion?.manifestSnapshot[change.field];
+                          const currentValue = version.manifestSnapshot[change.field];
+                          return <article className="skill-version-field-diff" key={`${change.operation}:${change.field}`}>
+                            <div className="badge-row">
+                              <strong>{skillVersionFieldLabel(locale, change.field)}</strong>
+                              <span className="tag">{skillVersionChangeLabel(locale, change.operation)}</span>
+                            </div>
+                            <dl>
+                              <div><dt>{t(locale, "skillVersionBefore")}</dt><dd><pre>{change.operation === "added"
+                                ? t(locale, "skillVersionFieldAbsent")
+                                : previousVersion
+                                  ? formatSkillVersionFieldValue(previousValue, locale)
+                                  : t(locale, "skillVersionPreviousSnapshotUnavailable")}</pre></dd></div>
+                              <div><dt>{t(locale, "skillVersionAfter")}</dt><dd><pre>{change.operation === "removed"
+                                ? t(locale, "skillVersionFieldAbsent")
+                                : formatSkillVersionFieldValue(currentValue, locale)}</pre></dd></div>
+                            </dl>
+                          </article>;
+                        })}
+                      </div> : <span className="empty-copy">{t(locale, "skillVersionNoFieldChanges")}</span>}
                     </div>
-                  </div>
-                ))}
+                  </div>;
+                })}
               </div>
             ) : null}
           </div>
@@ -858,10 +884,10 @@ function InvocationResolution({ invocation, locale }: { invocation: SkillInvocat
           </div>
         </div>
         <div className="resolution-reference-grid">
-          <ReferenceCollection locale={locale} title={t(locale, "approvalRefs")} values={invocation.approvalRefs} />
-          <ReferenceCollection locale={locale} title={t(locale, "artifactRefs")} values={invocation.artifactRefs} />
-          <ReferenceCollection locale={locale} title={t(locale, "toolRefs")} values={invocation.toolCallRefs} />
-          <ReferenceCollection locale={locale} title={t(locale, "connectorRefs")} values={invocation.connectorCallRefs} />
+          <ReferenceCollection defaultType="approval" locale={locale} title={t(locale, "approvalRefs")} values={invocation.approvalRefs} />
+          <ReferenceCollection defaultType="artifact" locale={locale} title={t(locale, "artifactRefs")} values={invocation.artifactRefs} />
+          <ReferenceCollection defaultType="tool_call" locale={locale} title={t(locale, "toolRefs")} values={invocation.toolCallRefs} />
+          <ReferenceCollection defaultType="connector_call" locale={locale} title={t(locale, "connectorRefs")} values={invocation.connectorCallRefs} />
         </div>
       </section>
 
@@ -887,35 +913,22 @@ function ResolutionField({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ReferenceCollection({ locale, title, values }: { locale: Locale; title: string; values: Array<Record<string, unknown>> }) {
+function ReferenceCollection({ defaultType, locale, title, values }: { defaultType: string; locale: Locale; title: string; values: Array<Record<string, unknown>> }) {
+  const refs = values.map((value, index) => {
+    const identity = referenceIdentity(value, index);
+    return {
+      ...value,
+      type: typeof value.type === "string" ? value.type : defaultType,
+      ref: identity.includes("://") ? identity : `${defaultType.replaceAll("_", "-")}://${identity}`,
+    };
+  });
   return (
     <section className="resolution-reference-card">
       <div className="resolution-reference-card__heading">
         <h4>{title}</h4>
         <span className="tag">{values.length}</span>
       </div>
-      {values.length === 0 ? (
-        <p className="resolution-reference-empty">{t(locale, "noReferenceRecords")}</p>
-      ) : (
-        <div className="resolution-reference-list">
-          {values.map((value, index) => (
-            <details className="resolution-reference-item" key={`${referenceIdentity(value, index)}-${index}`}>
-              <summary>
-                <span>{referenceIdentity(value, index)}</span>
-                <span>{t(locale, "viewDetails")}</span>
-              </summary>
-              <dl>
-                {Object.entries(value).map(([key, item]) => (
-                  <div key={key}>
-                    <dt>{key}</dt>
-                    <dd>{formatResolutionValue(item, locale)}</dd>
-                  </div>
-                ))}
-              </dl>
-            </details>
-          ))}
-        </div>
-      )}
+      <EvidenceReferenceList emptyLabel={t(locale, "noReferenceRecords")} locale={locale} maxVisible={4} refs={refs} />
     </section>
   );
 }
@@ -969,6 +982,52 @@ function skillVersionSourceLabel(locale: Locale, sourceType: string) {
   if (sourceType === "builtin_or_migration") return t(locale, "skillVersionSourceBuiltin");
   if (sourceType === "managed_manifest_draft") return t(locale, "skillVersionSourceManagedDraft");
   return sourceType.replaceAll("_", " ");
+}
+
+function skillVersionFieldChanges(version: SkillVersionItem) {
+  const added = new Set(version.changesFromPrevious.addedFields);
+  const removed = new Set(version.changesFromPrevious.removedFields);
+  const changed = new Set(version.changesFromPrevious.changedFields);
+  return [
+    ...[...added].map((field) => ({ field, operation: "added" as const })),
+    ...[...changed].filter((field) => !added.has(field) && !removed.has(field)).map((field) => ({ field, operation: "changed" as const })),
+    ...[...removed].map((field) => ({ field, operation: "removed" as const })),
+  ];
+}
+
+function skillVersionChangeLabel(locale: Locale, operation: "added" | "changed" | "removed") {
+  const labels = {
+    added: ["Added", "新增"],
+    changed: ["Changed", "修改"],
+    removed: ["Removed", "移除"],
+  } as const;
+  return labels[operation][locale === "zh-CN" ? 1 : 0];
+}
+
+function formatSkillVersionFieldValue(value: unknown, locale: Locale) {
+  if (value === undefined) return t(locale, "skillVersionFieldAbsent");
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value, null, 2);
+}
+
+function skillVersionFieldLabel(locale: Locale, field: string) {
+  const labels: Record<string, [string, string]> = {
+    skillId: ["Skill ID", "Skill ID"],
+    version: ["Version", "版本号"],
+    capabilities: ["Capabilities", "能力"],
+    inputSchema: ["Input schema", "输入契约"],
+    outputSchema: ["Output schema", "输出契约"],
+    allowedTools: ["Allowed tools", "允许的工具"],
+    allowedConnectors: ["Allowed Connectors", "允许的 Connector"],
+    riskProfile: ["Risk profile", "风险配置"],
+    approvalPolicy: ["Approval policy", "审批策略"],
+    dataAccessPolicy: ["Data access policy", "数据访问策略"],
+    replayPolicy: ["Replay policy", "回放策略"],
+    extensionPoints: ["Extension points", "扩展点"],
+    compatibility: ["Compatibility", "兼容性"],
+  };
+  const label = labels[field];
+  return label ? label[locale === "zh-CN" ? 1 : 0] : field.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
 }
 
 function formatSkillVersionTimestamp(value: string, locale: Locale) {

@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { createCommunityUser, fetchCommunityUsers, type CommunityUserItem, type CurrentUser, type ProjectItem, type ProjectMemberItem, type ProjectMemberMutationPayload, type ProjectMutationPayload } from "../lib/api";
-import { Locale, t } from "../i18n";
+import { ApiRequestError, createCommunityUser, fetchCommunityUsers, type CommunityUserItem, type CurrentUser, type ProjectItem, type ProjectMemberItem, type ProjectMemberMutationPayload, type ProjectMutationPayload } from "../lib/api";
+import { Locale, t, userFacingError } from "../i18n";
 import { IS_OSS_PROFILE } from "../productProfile";
 
 type ProjectSettingsPageProps = {
@@ -13,6 +13,7 @@ type ProjectSettingsPageProps = {
   onCreateMember: (projectId: string, payload: ProjectMemberMutationPayload) => Promise<void>;
   onCreateProject: (payload: ProjectMutationPayload) => Promise<void>;
   onLoadMembers: (projectId: string) => Promise<void>;
+  onRemoveMember: (memberId: string) => Promise<void>;
   onSelectProject: (projectId: string) => void;
   onUpdateMember: (memberId: string, payload: Partial<Omit<ProjectMemberMutationPayload, "userId">>) => Promise<void>;
   onUpdateProject: (projectId: string, payload: Partial<ProjectMutationPayload>) => Promise<void>;
@@ -36,6 +37,7 @@ export function ProjectSettingsPage({
   onCreateMember,
   onCreateProject,
   onLoadMembers,
+  onRemoveMember,
   onSelectProject,
   onUpdateMember,
   onUpdateProject,
@@ -54,6 +56,22 @@ export function ProjectSettingsPage({
   const [userForm, setUserForm] = useState({ username: "", email: "", displayName: "", password: "" });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<"success" | "error">("success");
+  const activeOwnerCount = useMemo(
+    () => members.filter((member) => member.role === "owner" && member.status === "active").length,
+    [members],
+  );
+  const availableCommunityUsers = useMemo(
+    () => communityUsers.filter((communityUser) => !members.some((member) => member.userId === communityUser.id)),
+    [communityUsers, members],
+  );
+
+  const loadCommunityUsers = useCallback(async () => {
+    const result = await fetchCommunityUsers();
+    setCommunityUsers(result.items);
+    setMemberForm((current) => ({ ...current, userId: current.userId || result.items[0]?.id || "" }));
+    return result.items;
+  }, []);
 
   useEffect(() => {
     if (selectedProject) {
@@ -69,11 +87,17 @@ export function ProjectSettingsPage({
 
   useEffect(() => {
     if (!IS_OSS_PROFILE || !canManageMembers) return;
-    void fetchCommunityUsers().then((result) => {
-      setCommunityUsers(result.items);
-      setMemberForm((current) => ({ ...current, userId: current.userId || result.items[0]?.id || "" }));
-    }).catch(() => setCommunityUsers([]));
-  }, [canManageMembers]);
+    void loadCommunityUsers().catch(() => setCommunityUsers([]));
+  }, [canManageMembers, loadCommunityUsers]);
+
+  useEffect(() => {
+    if (!IS_OSS_PROFILE) return;
+    setMemberForm((current) => {
+      const selectedUserIsAvailable = availableCommunityUsers.some((communityUser) => communityUser.id === current.userId);
+      const userId = selectedUserIsAvailable ? current.userId : availableCommunityUsers[0]?.id ?? "";
+      return userId === current.userId ? current : { ...current, userId };
+    });
+  }, [availableCommunityUsers]);
 
   const submitNewProject = async () => {
     if (!canManageProjects) {
@@ -90,8 +114,10 @@ export function ProjectSettingsPage({
         metadata: {},
       });
       setMessage(t(locale, "projectSaved"));
+      setMessageTone("success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t(locale, "projectSaveFailed"));
+      setMessage(userFacingError(locale, error, "projectSaveFailed"));
+      setMessageTone("error");
     } finally {
       setSaving(false);
     }
@@ -112,8 +138,10 @@ export function ProjectSettingsPage({
         metadata: selectedProject.metadata,
       });
       setMessage(t(locale, "projectSaved"));
+      setMessageTone("success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t(locale, "projectSaveFailed"));
+      setMessage(userFacingError(locale, error, "projectSaveFailed"));
+      setMessageTone("error");
     } finally {
       setSaving(false);
     }
@@ -133,8 +161,10 @@ export function ProjectSettingsPage({
         metadata: {},
       });
       setMessage(t(locale, "memberSaved"));
+      setMessageTone("success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t(locale, "memberSaveFailed"));
+      setMessage(userFacingError(locale, error, "memberSaveFailed"));
+      setMessageTone("error");
     } finally {
       setSaving(false);
     }
@@ -149,9 +179,59 @@ export function ProjectSettingsPage({
       setCommunityUsers((current) => [...current, created]);
       setMemberForm((current) => ({ ...current, userId: created.id }));
       setUserForm({ username: "", email: "", displayName: "", password: "" });
-      setMessage(t(locale, "memberSaved"));
+      setMessage(t(locale, "localUserCreated"));
+      setMessageTone("success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t(locale, "projectSaveFailed"));
+      if (error instanceof ApiRequestError && error.code === "COMMUNITY_IDENTITY_ALREADY_EXISTS") {
+        try {
+          const users = await loadCommunityUsers();
+          const username = userForm.username.trim().toLowerCase();
+          const email = userForm.email.trim().toLowerCase();
+          const existing = users.find((user) => user.username.toLowerCase() === username || user.email.toLowerCase() === email);
+          if (existing) {
+            setMemberForm((current) => ({ ...current, userId: existing.id }));
+          }
+        } catch {
+          // Preserve the identity conflict when the follow-up list refresh is unavailable.
+        }
+        setMessage(t(locale, "communityIdentityAlreadyExists"));
+        setMessageTone("error");
+      } else {
+        setMessage(userFacingError(locale, error, "projectSaveFailed"));
+        setMessageTone("error");
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeMember = async (member: ProjectMemberItem) => {
+    if (!canManageMembers || member.status !== "active" || !window.confirm(t(locale, "removeMemberConfirmation"))) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      await onRemoveMember(member.id);
+      setMessage(t(locale, "memberRemoved"));
+      setMessageTone("success");
+    } catch (error) {
+      setMessage(userFacingError(locale, error, "memberSaveFailed"));
+      setMessageTone("error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const restoreMember = async (member: ProjectMemberItem) => {
+    if (!canManageMembers || member.status === "active") return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      await onUpdateMember(member.id, { status: "active" });
+      setMessage(t(locale, "memberRestored"));
+      setMessageTone("success");
+    } catch (error) {
+      setMessage(userFacingError(locale, error, "memberSaveFailed"));
+      setMessageTone("error");
     } finally {
       setSaving(false);
     }
@@ -175,7 +255,7 @@ export function ProjectSettingsPage({
       </div>
 
       {!canManageProjects ? <div className="notice-banner">{t(locale, "settingsReadOnlyNotice")}</div> : null}
-      {message ? <div className="notice-banner">{message}</div> : null}
+      {message ? <div className={`notice-banner notice-banner--${messageTone}`} role={messageTone === "error" ? "alert" : "status"}>{message}</div> : null}
 
       <div className="page-columns">
         <section className="panel">
@@ -292,6 +372,47 @@ export function ProjectSettingsPage({
         </section>
       </div>
 
+      {IS_OSS_PROFILE && canManageMembers ? (
+        <section className="panel">
+          <div className="panel__header">
+            <span className="eyebrow">{t(locale, "communityIdentityBoundary")}</span>
+            <h2>{t(locale, "localUsers")}</h2>
+          </div>
+          <div aria-label={t(locale, "localUsers")} className="table-wrap" tabIndex={0}>
+            <table aria-label={t(locale, "localUsers")} className="data-table data-table--compact">
+              <thead>
+                <tr>
+                  <th>{t(locale, "displayName")}</th>
+                  <th>{t(locale, "username")}</th>
+                  <th>{t(locale, "email")}</th>
+                  <th>{t(locale, "accountRoles")}</th>
+                  <th>{t(locale, "status")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {communityUsers.map((communityUser) => (
+                  <tr key={communityUser.id}>
+                    <td><strong>{communityUser.displayName}</strong></td>
+                    <td>{communityUser.username}</td>
+                    <td>{communityUser.email}</td>
+                    <td>{communityUser.roles.join(", ")}</td>
+                    <td>{communityUser.status}</td>
+                  </tr>
+                ))}
+                {communityUsers.length === 0 ? <tr><td colSpan={5}>{t(locale, "noLocalUsers")}</td></tr> : null}
+              </tbody>
+            </table>
+          </div>
+          <div className="control-form control-form--inline">
+            <label className="form-field">{t(locale, "username")}<input value={userForm.username} onChange={(event) => setUserForm((current) => ({ ...current, username: event.target.value }))} /></label>
+            <label className="form-field">{t(locale, "email")}<input type="email" value={userForm.email} onChange={(event) => setUserForm((current) => ({ ...current, email: event.target.value }))} /></label>
+            <label className="form-field">{t(locale, "displayName")}<input value={userForm.displayName} onChange={(event) => setUserForm((current) => ({ ...current, displayName: event.target.value }))} /></label>
+            <label className="form-field">{t(locale, "initialPassword")}<input minLength={12} type="password" value={userForm.password} onChange={(event) => setUserForm((current) => ({ ...current, password: event.target.value }))} /></label>
+            <button disabled={saving || !userForm.username || !userForm.email || !userForm.displayName || userForm.password.length < 12} onClick={() => void submitCommunityUser()} type="button">{t(locale, "createLocalUser")}</button>
+          </div>
+        </section>
+      ) : null}
+
       <section className="panel">
         <div className="panel__header">
           <span className="eyebrow">{t(locale, "projectRoleBoundary")}</span>
@@ -308,7 +429,9 @@ export function ProjectSettingsPage({
               </tr>
             </thead>
             <tbody>
-              {members.map((member) => (
+              {members.map((member) => {
+                const isSoleActiveOwner = member.role === "owner" && member.status === "active" && activeOwnerCount === 1;
+                return (
                 <tr key={member.id}>
                   <td>
                     <strong>{member.userName ?? member.userId ?? t(locale, "none")}</strong>
@@ -320,19 +443,31 @@ export function ProjectSettingsPage({
                     <div className="button-row">
                       {MEMBER_ROLE_OPTIONS.map((role) => (
                         <button
-                          className="link-button"
-                          disabled={!canManageMembers || member.role === role || saving}
+                          aria-pressed={member.role === role}
+                          className={`link-button member-role-action ${member.role === role ? "member-role-action--current" : "member-role-action--available"}`}
+                          disabled={!canManageMembers || member.role === role || saving || (isSoleActiveOwner && role !== "owner")}
                           key={role}
                           onClick={() => void onUpdateMember(member.id, { role })}
+                          title={isSoleActiveOwner && role !== "owner" ? t(locale, "lastOwnerProtected") : undefined}
                           type="button"
                         >
                           {role}
                         </button>
                       ))}
+                      {member.status === "active" ? (
+                        <button className="link-button link-button--danger" disabled={!canManageMembers || saving || isSoleActiveOwner} onClick={() => void removeMember(member)} title={isSoleActiveOwner ? t(locale, "lastOwnerProtected") : undefined} type="button">
+                          {t(locale, "removeMember")}
+                        </button>
+                      ) : (
+                        <button className="link-button" disabled={!canManageMembers || saving} onClick={() => void restoreMember(member)} type="button">
+                          {t(locale, "restoreMember")}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {members.length === 0 ? (
                 <tr>
                   <td colSpan={4}>{t(locale, "noMembers")}</td>
@@ -350,7 +485,7 @@ export function ProjectSettingsPage({
               value={memberForm.userId}
             >
               <option value="">{t(locale, "select")}</option>
-              {communityUsers.map((communityUser) => (
+              {availableCommunityUsers.map((communityUser) => (
                 <option key={communityUser.id} value={communityUser.id}>{communityUser.displayName} ({communityUser.username})</option>
               ))}
             </select>
@@ -387,15 +522,6 @@ export function ProjectSettingsPage({
             {t(locale, "addMember")}
           </button>
         </div>
-        {IS_OSS_PROFILE && canManageMembers ? (
-          <div className="control-form control-form--inline">
-            <label className="form-field">{t(locale, "username")}<input value={userForm.username} onChange={(event) => setUserForm((current) => ({ ...current, username: event.target.value }))} /></label>
-            <label className="form-field">{t(locale, "email")}<input type="email" value={userForm.email} onChange={(event) => setUserForm((current) => ({ ...current, email: event.target.value }))} /></label>
-            <label className="form-field">{t(locale, "displayName")}<input value={userForm.displayName} onChange={(event) => setUserForm((current) => ({ ...current, displayName: event.target.value }))} /></label>
-            <label className="form-field">{t(locale, "initialPassword")}<input minLength={12} type="password" value={userForm.password} onChange={(event) => setUserForm((current) => ({ ...current, password: event.target.value }))} /></label>
-            <button disabled={saving || !userForm.username || !userForm.email || !userForm.displayName || userForm.password.length < 12} onClick={() => void submitCommunityUser()} type="button">{t(locale, "createLocalUser")}</button>
-          </div>
-        ) : null}
       </section>
     </div>
   );

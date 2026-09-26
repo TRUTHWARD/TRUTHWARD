@@ -16,10 +16,10 @@ import type {
   RequirementPipelineState,
   WorkflowRunProjection,
 } from "../lib/api";
-import { fetchRequirementLibrary } from "../lib/api";
+import { clearRequirementLibraryPipelineIntent, fetchRequirementLibrary } from "../lib/api";
 import { BrowserPlanFields } from "../components/BrowserPlanFields";
-import { browserPlanError, buildBrowserPlan, readBrowserPlan } from "../lib/browserPlan";
-import { Locale, t } from "../i18n";
+import { browserPlanError, buildBrowserPlan, executableScenarioIds, readBrowserPlan } from "../lib/browserPlan";
+import { Locale, t, userFacingError } from "../i18n";
 import {
   displayDomainLabel,
   displayFindingTitle,
@@ -37,7 +37,15 @@ type WorkflowPageProps = {
   environments: EnvironmentItem[];
   error: string | null;
   executionFindings: Array<{ id: string; domain: string; severity: string; title: string; summary: string; confidence: number | null }>;
-  executionProgress: { progress: number; currentTask: string | null; completedTasks: number; totalTasks: number } | null;
+  executionProgress: {
+    progress: number;
+    currentTask: string | null;
+    completedTasks: number;
+    failedTasks: number;
+    cancelledTasks: number;
+    terminalTasks: number;
+    totalTasks: number;
+  } | null;
   executionTasks: Array<{
     id: string;
     domain: string;
@@ -169,8 +177,9 @@ export function WorkflowPage({
   const canManagePlans = hasCapability(currentUser, "test_plans.manage");
   const canManageExecutions = hasCapability(currentUser, "executions.manage");
   const canManageExploratory = hasCapability(currentUser, "exploratory_sessions.manage");
-  const canManageApprovals = hasRole(currentUser, "admin");
   const isCommunityEdition = currentUser?.edition === "community";
+  const canManageApprovals = !isCommunityEdition && hasRole(currentUser, "admin");
+  const requirementRiskOptions = isCommunityEdition ? RISK_OPTIONS.filter((risk) => risk !== "high") : RISK_OPTIONS;
   const createRequirementLibraryPipeline = onCreateRequirementLibraryPipeline;
   const selectedPipeline = pipelines.find((pipeline) => pipeline.orchestrationId === selectedPipelineId) ?? pipelines[0] ?? null;
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? plans[0] ?? null;
@@ -178,17 +187,20 @@ export function WorkflowPage({
   const selectedWorkflowProjection =
     workflowRunProjection
     ?? workflowRuns.find((run) => run.runId === selectedPipeline?.orchestrationId)
-    ?? workflowRuns.find((run) => String(run.linkedResources.execution?.executionId ?? "") === selectedExecution?.id)
-    ?? workflowRuns.find((run) => String(run.linkedResources.plan?.planId ?? "") === selectedPlan?.id)
+    ?? workflowRuns.find((run) => String(run.linkedResources?.execution?.executionId ?? "") === selectedExecution?.id)
+    ?? workflowRuns.find((run) => String(run.linkedResources?.plan?.planId ?? "") === selectedPlan?.id)
     ?? workflowRuns[0]
     ?? null;
   const pendingApprovals = approvals.filter((approval) => approval.status === "pending");
   const selectedReason = String(selectedPipeline?.result?.reason ?? "");
-  const approvalRequired = selectedReason === "high_risk_approval_required" || pendingApprovals.length > 0;
+  const approvalRequired = !isCommunityEdition
+    && (selectedReason === "high_risk_approval_required" || pendingApprovals.length > 0);
   const blocked = Boolean(selectedPipeline?.blocked);
   const selectedPipelineLabel = selectedPipeline ? selectedPipeline.orchestrationId.slice(0, 8) : t(locale, "none");
-  const exploratorySessionCount = selectedWorkflowProjection?.linkedResources.exploratorySessions.length ?? 0;
-  const regressionCaseCount = Number(selectedWorkflowProjection?.linkedResources.regressionPlan?.["recommendedCaseCount"] ?? 0);
+  const exploratorySessionCount = Array.isArray(selectedWorkflowProjection?.linkedResources?.exploratorySessions)
+    ? selectedWorkflowProjection.linkedResources.exploratorySessions.length
+    : 0;
+  const regressionCaseCount = Number(selectedWorkflowProjection?.linkedResources?.regressionPlan?.["recommendedCaseCount"] ?? 0);
   const governanceStatus: WorkflowRunProjection["governanceStatus"] = selectedWorkflowProjection?.governanceStatus ?? {};
 
   const [requirementInputMode, setRequirementInputMode] = useState<RequirementInputMode>("manual");
@@ -226,7 +238,6 @@ export function WorkflowPage({
     environmentId: "",
     domains: DOMAIN_OPTIONS,
     riskLevel: "medium",
-    status: "draft",
   });
   const [browserForm, setBrowserForm] = useState(() => readBrowserPlan({}));
   const [browserEdited, setBrowserEdited] = useState(false);
@@ -239,11 +250,13 @@ export function WorkflowPage({
     enableTriage: !isCommunityEdition,
     enableHealing: false,
     parallelism: 1,
+    selectedScenarioIds: executableScenarioIds(selectedPlan?.domainConfig ?? {}),
   });
   const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
   const [approvalComments, setApprovalComments] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<"success" | "error">("success");
 
   const environmentsForLibraryProject = useMemo(
     () => environments.filter((environment) => !libraryFilters.projectId || environment.projectId === libraryFilters.projectId),
@@ -293,7 +306,7 @@ export function WorkflowPage({
       .catch((loadError) => {
         if (!cancelled) {
           setLibraryProjection(null);
-          setLibraryError(loadError instanceof Error ? loadError.message : t(locale, "requirementLibraryLoadFailed"));
+          setLibraryError(userFacingError(locale, loadError, "requirementLibraryLoadFailed"));
         }
       })
       .finally(() => {
@@ -342,7 +355,6 @@ export function WorkflowPage({
       environmentId: selectedPlan.environmentId ?? "",
       domains: selectedPlan.domains.length > 0 ? selectedPlan.domains : DOMAIN_OPTIONS,
       riskLevel: selectedPlan.riskLevel,
-      status: selectedPlan.status,
     });
     setBrowserForm(readBrowserPlan(selectedPlan.domainConfig ?? {}));
     setBrowserEdited(false);
@@ -353,8 +365,14 @@ export function WorkflowPage({
       runFunctional: selectedPlan.domains.includes("functional"),
       runPerformance: selectedPlan.domains.includes("performance"),
       runSecurity: selectedPlan.domains.includes("security"),
+      selectedScenarioIds: executableScenarioIds(selectedPlan.domainConfig ?? {}),
     }));
-  }, [selectedPlan?.id]);
+  }, [selectedPlan]);
+
+  const executionPlan = plans.find((plan) => plan.id === executionForm.planId) ?? null;
+  const executableScenarios = readBrowserPlan(executionPlan?.domainConfig ?? {}).scenarios.filter(
+    (scenario) => scenario.status === "confirmed",
+  );
 
   const environmentOptionsForProject = (projectId: string) =>
     environments.filter((environment) => !projectId || environment.projectId === projectId);
@@ -365,8 +383,10 @@ export function WorkflowPage({
     try {
       await action();
       setMessage(t(locale, successKey));
+      setMessageTone("success");
     } catch (actionError) {
-      setMessage(actionError instanceof Error ? actionError.message : t(locale, "workflowActionFailed"));
+      setMessage(userFacingError(locale, actionError, "workflowActionFailed"));
+      setMessageTone("error");
     } finally {
       setSubmitting(false);
     }
@@ -443,16 +463,19 @@ export function WorkflowPage({
     const selectionMode = requirementVersionIds.length > 1
       ? "requirement_scope"
       : selectedLibraryRequirementItemRefs.length > 0 ? "requirement_items" : "requirement_version";
+    const payload: RequirementLibraryPipelinePayload = {
+      selectionMode,
+      requirementVersionId: requirementVersionIds[0],
+      requirementVersionIds,
+      requirementItemIds: requirementItemRefs[0]?.requirementItemIds ?? [],
+      requirementItemRefs,
+      metadata: { source: "workflow-requirement-library-ui" },
+    };
     void runAction(
-      () =>
-        createRequirementLibraryPipeline({
-          selectionMode,
-          requirementVersionId: requirementVersionIds[0],
-          requirementVersionIds,
-          requirementItemIds: requirementItemRefs[0]?.requirementItemIds ?? [],
-          requirementItemRefs,
-          metadata: { source: "workflow-requirement-library-ui" },
-        }),
+      async () => {
+        await createRequirementLibraryPipeline(payload);
+        clearRequirementLibraryPipelineIntent(payload);
+      },
       "requirementLibraryPipelineSubmitted",
     );
   };
@@ -461,10 +484,12 @@ export function WorkflowPage({
     const error = browserEdited ? browserPlanError(browserForm) : null;
     if (error) {
       setMessage(t(locale, error));
+      setMessageTone("error");
       return false;
     }
     if (browserForm.mode !== "none" && (!planForm.projectId || !planForm.environmentId || !planForm.domains.includes("functional"))) {
       setMessage(t(locale, "browserScopeRequired"));
+      setMessageTone("error");
       return false;
     }
     return true;
@@ -508,7 +533,6 @@ export function WorkflowPage({
           domainConfig: planDomainConfig(),
           riskLevel: planForm.riskLevel,
           input: selectedPlan.input,
-          status: planForm.status,
         }),
       "planSaved",
     );
@@ -532,6 +556,7 @@ export function WorkflowPage({
             enableTriage: !isCommunityEdition && executionForm.enableTriage,
             enableHealing: !isCommunityEdition && executionForm.enableHealing,
             parallelism: executionForm.parallelism,
+            selectedScenarioIds: executionForm.selectedScenarioIds,
           },
         }),
       "executionStarted",
@@ -569,8 +594,8 @@ export function WorkflowPage({
         <div className="notice-banner">{t(locale, "workflowReadOnlyNotice")}</div>
       ) : null}
       {loading ? <div className="notice-banner">{t(locale, "workflowLoading")}</div> : null}
-      {error ? <div className="notice-banner">{t(locale, "workflowErrorState")}: {error}</div> : null}
-      {message ? <div className="notice-banner">{message}</div> : null}
+      {error ? <div className="notice-banner notice-banner--error" role="alert">{t(locale, "workflowErrorState")}: {error}</div> : null}
+      {message ? <div className={`notice-banner notice-banner--${messageTone}`} role={messageTone === "error" ? "alert" : "status"}>{message}</div> : null}
       {blocked ? <div className="notice-banner">{t(locale, "workflowBlockedState")}</div> : null}
       {approvalRequired ? <div className="notice-banner">{t(locale, "workflowApprovalRequired")}</div> : null}
 
@@ -578,7 +603,7 @@ export function WorkflowPage({
         <Metric label={t(locale, "pipeline")} value={selectedPipelineLabel} />
         <Metric label={t(locale, "plans")} value={String(plans.length)} />
         <Metric label={t(locale, "executions")} value={String(executions.length)} />
-        <Metric label={t(locale, "pendingApprovals")} value={String(pendingApprovals.length)} />
+        {!isCommunityEdition ? <Metric label={t(locale, "pendingApprovals")} value={String(pendingApprovals.length)} /> : null}
       </div>
 
       <section className="panel">
@@ -774,7 +799,7 @@ export function WorkflowPage({
                 onChange={(event) => setRequirementForm((current) => ({ ...current, riskLevel: event.target.value }))}
                 value={requirementForm.riskLevel}
               >
-                {RISK_OPTIONS.map((risk) => (
+                {requirementRiskOptions.map((risk) => (
                   <option key={risk} value={risk}>{displayStatus(locale, risk)}</option>
                 ))}
               </select>
@@ -965,6 +990,13 @@ export function WorkflowPage({
             <ReadonlyRow label={t(locale, "currentStep")} value={selectedPipeline?.currentStep ?? t(locale, "none")} />
             <ReadonlyRow label={t(locale, "plan")} value={selectedPipeline?.planId ?? t(locale, "none")} />
             <ReadonlyRow label={t(locale, "execution")} value={selectedPipeline?.executionId ?? t(locale, "none")} />
+            {selectedPipeline?.errorMessage ? (
+              <p className="error-copy" role="alert">
+                {/^\s*[A-Z][A-Z0-9_]{3,100}\s*$/.test(selectedPipeline.errorMessage)
+                  ? `${t(locale, "workflowActionFailed")} (${selectedPipeline.errorMessage.trim()})`
+                  : userFacingError(locale, new Error(selectedPipeline.errorMessage), "workflowActionFailed")}
+              </p>
+            ) : null}
           </div>
 
           <div className="panel__header">
@@ -1029,12 +1061,14 @@ export function WorkflowPage({
               />
             </label>
             <label className="form-field">
-              {t(locale, "sourceRef")}
+              {t(locale, "planSourceRef")}
               <input
                 disabled={!canManagePlans || submitting}
                 onChange={(event) => setPlanForm((current) => ({ ...current, sourceRef: event.target.value }))}
+                readOnly={Boolean(selectedPlan)}
                 value={planForm.sourceRef}
               />
+              <small>{t(locale, selectedPlan ? "planSourceRefPersistedHelp" : "planSourceRefHelp")}</small>
             </label>
             <label className="form-field">
               {t(locale, "project")}
@@ -1092,24 +1126,20 @@ export function WorkflowPage({
             </label>
             <label className="form-field">
               {t(locale, "status")}
-              <select
-                disabled={!canManagePlans || submitting}
-                onChange={(event) => setPlanForm((current) => ({ ...current, status: event.target.value }))}
-                value={planForm.status}
-              >
-                {["draft", "generated", "approved", "archived"].map((status) => (
-                  <option key={status} value={status}>{displayStatus(locale, status)}</option>
-                ))}
-              </select>
+              <output className="form-field__readonly">
+                {displayStatus(locale, selectedPlan?.status ?? "draft")}
+              </output>
+              <small>{t(locale, "planStatusManagedHelp")}</small>
             </label>
             <BrowserPlanFields
               locale={locale}
               value={browserForm}
+              insights={selectedPlan?.executableScenarioInsights}
               disabled={!canManagePlans || submitting}
               onChange={(value) => {
                 setBrowserForm(value);
                 setBrowserEdited(true);
-                if (value.mode !== "none" && value.mode !== "preserve" && browserForm.mode === "none") {
+                if (value.mode === "scenarios" && browserForm.mode === "none") {
                   setPlanForm(current => ({ ...current, domains: ["functional"] }));
                 }
               }}
@@ -1184,6 +1214,7 @@ export function WorkflowPage({
                     runFunctional: plan?.domains.includes("functional") ?? false,
                     runPerformance: plan?.domains.includes("performance") ?? false,
                     runSecurity: plan?.domains.includes("security") ?? false,
+                    selectedScenarioIds: executableScenarioIds(plan?.domainConfig ?? {}),
                   }));
                 }}
                 required
@@ -1224,6 +1255,28 @@ export function WorkflowPage({
                 </label>
               ))}
             </div>
+            {executableScenarios.length > 0 && executionForm.runFunctional ? (
+              <fieldset className="detail-stack browser-execution-selection">
+                <legend>{t(locale, "browserExecutionScenarioSelection")}</legend>
+                <p>{t(locale, "browserExecutionScenarioSelectionHelp")}</p>
+                {executableScenarios.map((scenario) => (
+                  <label className="check-row" key={scenario.scenarioId}>
+                    <input
+                      checked={executionForm.selectedScenarioIds.includes(scenario.scenarioId)}
+                      disabled={!canManageExecutions || submitting}
+                      type="checkbox"
+                      onChange={(event) => setExecutionForm((current) => ({
+                        ...current,
+                        selectedScenarioIds: event.target.checked
+                          ? Array.from(new Set([...current.selectedScenarioIds, scenario.scenarioId]))
+                          : current.selectedScenarioIds.filter((scenarioId) => scenarioId !== scenario.scenarioId),
+                      }))}
+                    />
+                    <span>{scenario.name}</span>
+                  </label>
+                ))}
+              </fieldset>
+            ) : null}
             <label className="form-field">
               {t(locale, "parallelism")}
               <input
@@ -1312,7 +1365,7 @@ export function WorkflowPage({
                   task.resultPayload.executionMode === "actual" ? "browserActualExecution"
                     : task.resultPayload.executionMode === "simulated" ? "browserSimulatedExecution" : "browserExecutionNotRecorded",
                 )}</p> : null}
-                {task.errorMessage ? <p role="alert">{task.errorMessage}</p> : null}
+                {task.errorMessage ? <p className="error-copy" role="alert">{userFacingError(locale, new Error(task.errorMessage), "workflowActionFailed")}</p> : null}
               </div>
             ))}
             {selectedExecution ? <button className="secondary-button" type="button" onClick={() => onNavigateRoute("/executions")}>
@@ -1332,7 +1385,7 @@ export function WorkflowPage({
         </section>
       </div>
 
-      <section className="panel">
+      {!isCommunityEdition ? <section className="panel">
         <div className="panel__header">
           <span className="eyebrow">{t(locale, "approvalCenter")}</span>
           <h2>{t(locale, "pendingApprovals")}</h2>
@@ -1403,7 +1456,7 @@ export function WorkflowPage({
             </tbody>
           </table>
         </div>
-      </section>
+      </section> : null}
     </div>
   );
 }

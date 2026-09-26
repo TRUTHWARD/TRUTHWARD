@@ -80,4 +80,21 @@ def get_change_set(
     return success_response(request, data)
 
 
+@router.get("/projects/{project_id}/change-sets/{change_set_id}/requirement-content-preview")
+def get_requirement_content_preview(
+    request: Request,
+    project_id: UUID,
+    change_set_id: UUID,
+    db=Depends(get_db),
+    user=Depends(capability_dependency("change.read")),
+) -> dict[str, object]:
+    try:
+        data = ChangeSetQueryService(db).get_requirement_content_preview(
+            project_id, change_set_id, _context(request, user)
+        )
+    except ChangeSetError as exc:
+        _raise_http(exc)
+    return success_response(request, data)
+
+
 __all__ = ["router"]

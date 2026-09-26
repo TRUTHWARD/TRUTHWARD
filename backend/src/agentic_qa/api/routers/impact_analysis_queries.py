@@ -12,6 +12,10 @@ from agentic_qa.api.deps import (
 )
 from agentic_qa.api.responses import success_response
 from agentic_qa.services.common import ServiceContext
+from agentic_qa.services.coverage_readiness_service import (
+    CoverageReadinessError,
+    CoverageReadinessService,
+)
 from agentic_qa.services.impact_analysis_query_service import (
     ImpactAnalysisError,
     ImpactAnalysisQueryService,
@@ -49,6 +53,30 @@ def _raise_replay_http(exc: ValueError) -> None:
     else:
         status_code = 422
     raise HTTPException(status_code=status_code, detail={"errorCode": code}) from exc
+
+
+def _raise_readiness_http(exc: CoverageReadinessError) -> None:
+    detail: dict[str, object] = {"errorCode": exc.code}
+    if exc.field:
+        detail["field"] = exc.field
+    raise HTTPException(status_code=exc.status_code, detail=detail) from exc
+
+
+@router.get("/projects/{project_id}/coverage-readiness")
+def get_coverage_readiness(
+    request: Request,
+    project_id: UUID,
+    db=Depends(get_db),
+    user=Depends(capability_dependency("coverage.read")),
+) -> dict[str, object]:
+    try:
+        data = CoverageReadinessService(db).project_readiness(
+            project_id,
+            _context(request, user),
+        )
+    except CoverageReadinessError as exc:
+        _raise_readiness_http(exc)
+    return success_response(request, data)
 
 
 @router.get("/projects/{project_id}/capability-mappings")

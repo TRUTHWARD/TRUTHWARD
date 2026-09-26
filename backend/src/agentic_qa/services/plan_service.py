@@ -20,6 +20,8 @@ from agentic_qa.domain.enums import (
     JobStatus,
     ModelRole,
     PlanStatus,
+    TaskStatus,
+    TestDomain,
 )
 from agentic_qa.domain.models import (
     AgentRun,
@@ -43,6 +45,7 @@ from agentic_qa.guardrails.base import GuardrailContext
 from agentic_qa.guardrails.result import GuardrailViolationError
 from agentic_qa.guardrails.runtime import AgentOutputGuard, RuntimeGuardrailEngine
 from agentic_qa.infra.audit import write_audit_log
+from agentic_qa.infra.redaction import contains_sensitive_material
 from agentic_qa.infra.trace import ensure_trace, record_span, traced_operation
 from agentic_qa.runtime.qa_harness import (
     AgentStepResult,
@@ -75,6 +78,11 @@ from agentic_qa.schemas.admission import SandboxProfile
 from agentic_qa.schemas.model_outputs import GeneratorModelOutput, PlannerModelOutput
 from agentic_qa.schemas.requirement_scope import normalize_requirement_scope
 from agentic_qa.services.common import ServiceContext, canonical_hash, paginate_query, paginate_result
+from agentic_qa.services.executable_scenario_compiler import (
+    generated_collection,
+    normalize_functional_config,
+    source_fingerprint,
+)
 from agentic_qa.services.requirement_scope_service import RequirementScopeService
 from agentic_qa.services.skill_runtime import ManagedSkillRuntimeRegistry
 from agentic_qa.services.skill_service import ExtensionInvocationCompletion, SkillService
@@ -135,13 +143,21 @@ class TestPlanService:
         self.db.flush()
         for domain in payload.domains:
             domain_key = domain.value
+            domain_config = dict(payload.domainConfig.get(domain_key, {}))
+            if domain_key == "functional":
+                domain_config = normalize_functional_config(
+                    domain_config,
+                    risk_level=plan.risk_level.value,
+                    current_source_fingerprint=self._plan_source_fingerprint(plan),
+                    environment_base_url=self._environment_base_url(plan),
+                )
             self.db.add(
                 TestPlanDomain(
                     id=uuid4(),
                     plan_id=plan.id,
                     domain=domain,
                     enabled=True,
-                    config=dict(payload.domainConfig.get(domain_key, {})),
+                    config=domain_config,
                 )
             )
         write_audit_log(self.db, str(context.user.id), "test_plan.create", "test_plan", str(plan.id), context.request_id, context.trace_id)
@@ -260,24 +276,42 @@ class TestPlanService:
                 plan.requirement_scope_id = str(plan.requirement_scope["scopeId"])
                 input_payload["requirementScope"] = plan.requirement_scope
             plan.input_payload = input_payload
-        if payload.status is not None:
-            plan.status = payload.status
         if payload.domains is not None:
             self.db.execute(delete(TestPlanDomain).where(TestPlanDomain.plan_id == plan.id))
             for domain in payload.domains:
                 domain_key = domain.value
+                domain_config = dict((payload.domainConfig or {}).get(domain_key, {}))
+                if domain_key == "functional":
+                    domain_config = normalize_functional_config(
+                        domain_config,
+                        risk_level=plan.risk_level.value,
+                        current_source_fingerprint=self._plan_source_fingerprint(plan),
+                        environment_base_url=self._environment_base_url(plan),
+                    )
                 self.db.add(
                     TestPlanDomain(
                         id=uuid4(),
                         plan_id=plan.id,
                         domain=domain,
                         enabled=True,
-                        config=dict((payload.domainConfig or {}).get(domain_key, {})),
+                        config=domain_config,
                     )
                 )
         elif payload.domainConfig is not None:
             for domain_row in self.db.scalars(select(TestPlanDomain).where(TestPlanDomain.plan_id == plan.id)):
-                domain_row.config = dict(payload.domainConfig.get(domain_row.domain.value, domain_row.config))
+                next_config = dict(
+                    payload.domainConfig.get(domain_row.domain.value, domain_row.config)
+                )
+                if domain_row.domain.value == "functional":
+                    next_config = normalize_functional_config(
+                        next_config,
+                        risk_level=plan.risk_level.value,
+                        current_source_fingerprint=self._plan_source_fingerprint(plan),
+                        environment_base_url=self._environment_base_url(plan),
+                    )
+                domain_row.config = next_config
+        else:
+            self._refresh_functional_scenario_state(plan)
         write_audit_log(self.db, str(context.user.id), "test_plan.update", "test_plan", str(plan.id), context.request_id, context.trace_id)
         self.db.commit()
         self.db.refresh(plan)
@@ -451,6 +485,7 @@ class TestPlanService:
                 "skillInvocationRefs": skill_refs,
                 "harnessRun": harness_result.model_dump(mode="json"),
             }
+            self._apply_generated_executable_scenarios(plan)
             plan.status = PlanStatus.READY
             job.status = JobStatus.COMPLETED
             job.progress = 100
@@ -1558,7 +1593,10 @@ class TestPlanService:
         )
         return (
             f"Generate executable cases for {plan.name}. Return only GeneratorModelOutput JSON with "
-            "result.generatedCases for functional/performance/security, result.summary, confidence, "
+            "result.generatedCases for functional/performance/security. Each case must include name and goal; "
+            "when the authoritative inputs support it, also include preconditions, structured steps, "
+            "sourceRefs, confidence, and limitations. Browser steps may only use navigate, fill, click, "
+            "assert_visible, or assert_text and must not contain plaintext credentials. Return result.summary, confidence, "
             f"evidence, limitations, and metadata.{revision_instruction}"
         )
 
@@ -1721,6 +1759,7 @@ class TestPlanService:
             "requirementScope": plan.requirement_scope,
             "input": plan.input_payload,
             "generatedPlan": plan.generated_plan,
+            "executableScenarioInsights": self._executable_scenario_insights(plan),
             "createdAt": plan.created_at.isoformat(),
             "updatedAt": plan.updated_at.isoformat(),
         }
@@ -1732,6 +1771,134 @@ class TestPlanService:
     def _plan_domain_config(self, plan_id: UUID) -> dict[str, dict[str, object]]:
         rows = self.db.scalars(select(TestPlanDomain).where(TestPlanDomain.plan_id == plan_id))
         return {row.domain.value: row.config for row in rows}
+
+    def _plan_source_fingerprint(self, plan: TestPlan) -> str:
+        return source_fingerprint(
+            dict(plan.input_payload or {}),
+            plan.requirement_version_id,
+            dict(plan.requirement_scope or {}),
+        )
+
+    def _environment_base_url(self, plan: TestPlan) -> str | None:
+        if plan.environment_id is None:
+            return None
+        environment = self.db.get(ProjectEnvironment, plan.environment_id)
+        if (
+            environment is None
+            or environment.status != "active"
+            or (plan.project_id is not None and environment.project_id != plan.project_id)
+        ):
+            return None
+        return str(environment.base_url or "").strip() or None
+
+    def _refresh_functional_scenario_state(self, plan: TestPlan) -> None:
+        functional = self.db.scalar(
+            select(TestPlanDomain).where(
+                TestPlanDomain.plan_id == plan.id,
+                TestPlanDomain.domain == "functional",
+            )
+        )
+        if functional is None:
+            return
+        functional.config = normalize_functional_config(
+            dict(functional.config or {}),
+            risk_level=plan.risk_level.value,
+            current_source_fingerprint=self._plan_source_fingerprint(plan),
+            environment_base_url=self._environment_base_url(plan),
+        )
+
+    def _apply_generated_executable_scenarios(self, plan: TestPlan) -> None:
+        functional = self.db.scalar(
+            select(TestPlanDomain).where(
+                TestPlanDomain.plan_id == plan.id,
+                TestPlanDomain.domain == "functional",
+            )
+        )
+        if functional is None:
+            return
+        previous = (
+            functional.config.get("executableScenarios")
+            if isinstance(functional.config, dict)
+            and isinstance(functional.config.get("executableScenarios"), dict)
+            else None
+        )
+        collection = generated_collection(
+            dict(plan.generated_plan or {}),
+            input_payload=dict(plan.input_payload or {}),
+            requirement_version_id=plan.requirement_version_id,
+            requirement_scope=dict(plan.requirement_scope or {}),
+            environment_base_url=self._environment_base_url(plan),
+            previous=previous,
+            risk_level=plan.risk_level.value,
+        )
+        if collection is None:
+            return
+        functional.config = {
+            **dict(functional.config or {}),
+            "actualExecution": False,
+            "executableScenarios": collection,
+        }
+        plan.generated_plan = {
+            **dict(plan.generated_plan or {}),
+            "executableScenarios": collection,
+        }
+
+    def _executable_scenario_insights(self, plan: TestPlan) -> dict[str, object]:
+        historical_hints: list[dict[str, object]] = []
+        seen: set[str] = set()
+        tasks = list(
+            self.db.scalars(
+                select(ExecutionTask)
+                .join(Execution, Execution.id == ExecutionTask.execution_id)
+                .where(
+                    Execution.plan_id == plan.id,
+                    ExecutionTask.domain == TestDomain.FUNCTIONAL,
+                    ExecutionTask.status == TaskStatus.COMPLETED,
+                )
+                .order_by(ExecutionTask.created_at.desc())
+                .limit(50)
+            )
+        )
+        for task in tasks:
+            if task.result_payload.get("actualExecution") is not True:
+                continue
+            actions = task.config.get("semanticActions")
+            if not isinstance(actions, list):
+                action = task.config.get("semanticAction")
+                actions = [action] if isinstance(action, dict) else []
+            for action in actions:
+                if not isinstance(action, dict):
+                    continue
+                target = action.get("semanticTarget")
+                target = target if isinstance(target, dict) else {}
+                hints = action.get("targetHints")
+                hints = hints if isinstance(hints, dict) else {}
+                projection = {
+                    "scenarioId": task.config.get("scenarioId"),
+                    "actionId": action.get("actionId"),
+                    "selector": hints.get("selector") or hints.get("css"),
+                    "testId": hints.get("testId"),
+                    "role": target.get("role"),
+                    "name": target.get("name"),
+                    "executionId": str(task.execution_id),
+                    "observedAt": task.ended_at.isoformat() if task.ended_at else None,
+                }
+                if contains_sensitive_material(projection):
+                    continue
+                hint_key = canonical_hash(projection)
+                if hint_key in seen:
+                    continue
+                seen.add(hint_key)
+                historical_hints.append(projection)
+                if len(historical_hints) >= 20:
+                    break
+            if len(historical_hints) >= 20:
+                break
+        return {
+            "schemaVersion": "community.executable-scenario-insights.v1",
+            "environmentTargetUrl": self._environment_base_url(plan),
+            "historicalLocatorHints": historical_hints,
+        }
 
     def _plan_domains_map(self, plan_ids: list[UUID]) -> dict[UUID, list[str]]:
         if not plan_ids:

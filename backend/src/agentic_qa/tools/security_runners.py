@@ -65,9 +65,30 @@ class _BaseSecurityRunner(RunnerAdapter):
         if isinstance(custom_command, list) and custom_command:
             return self._run_custom_command(request, custom_command)
 
+        if request.config.get("simulationMode") is True:
+            return self._run_simulated(
+                request,
+                reason="explicit security runner simulation mode",
+            )
+
+        if self.runner_id == "zap" and not str(request.config.get("target") or "").strip():
+            return self._actual_preflight_failure(
+                request,
+                "ZAP authorization scan was not executed because no target URL is configured",
+                tool_status="unavailable",
+                reason_code="SECURITY_SCAN_TARGET_UNAVAILABLE",
+            )
+
         actual = self._run_named_actual(request)
         if actual is not None:
             return actual
+        if self.runner_id == "zap":
+            return self._actual_preflight_failure(
+                request,
+                "ZAP authorization scan was not executed because no runnable scanner is configured",
+                tool_status="unavailable",
+                reason_code="SECURITY_SCAN_RUNNER_UNAVAILABLE",
+            )
         if request.config.get("actualExecution") is True:
             return self._actual_preflight_failure(
                 request,
@@ -508,6 +529,7 @@ class _BaseSecurityRunner(RunnerAdapter):
         executable: str | None = None,
         binary_version: str | None = None,
         version_result: CommandExecutionResult | None = None,
+        reason_code: str | None = None,
     ) -> RunnerExecutionResult:
         now = utcnow()
         pinned_version = PINNED_SECURITY_TOOL_VERSIONS[self.runner_id]
@@ -557,6 +579,7 @@ class _BaseSecurityRunner(RunnerAdapter):
                 "binaryVersion": binary_version,
                 "pinnedVersion": pinned_version,
                 "pinnedBinary": False,
+                "reasonCode": reason_code,
             },
         )
 

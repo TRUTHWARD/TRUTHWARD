@@ -52,11 +52,14 @@ class FixedWindowRateLimiter:
 
 
 class OperationalMetricsRegistry:
+    _LATENCY_BUCKETS_MS = (10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10_000)
+
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._counters: Counter[str] = Counter()
         self._latency_total_ms = 0
         self._latency_max_ms = 0
+        self._latency_buckets: Counter[int] = Counter()
 
     def record_request(self, *, status_code: int, latency_ms: int, reason: str | None = None) -> None:
         with self._lock:
@@ -68,6 +71,11 @@ class OperationalMetricsRegistry:
                 self._counters[f"http.protection.{reason}"] += 1
             self._latency_total_ms += max(0, latency_ms)
             self._latency_max_ms = max(self._latency_max_ms, max(0, latency_ms))
+            bucket = next(
+                (bound for bound in self._LATENCY_BUCKETS_MS if latency_ms <= bound),
+                -1,
+            )
+            self._latency_buckets[bucket] += 1
 
     def increment(self, name: str, amount: int = 1) -> None:
         with self._lock:
@@ -76,6 +84,12 @@ class OperationalMetricsRegistry:
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             total = self._counters["http.requests.total"]
+            cumulative = 0
+            latency_buckets: dict[str, int] = {}
+            for bound in self._LATENCY_BUCKETS_MS:
+                cumulative += self._latency_buckets[bound]
+                latency_buckets[f"le_{bound}ms"] = cumulative
+            latency_buckets["gt_10000ms"] = self._latency_buckets[-1]
             return {
                 "schemaVersion": "phase8.operational-metrics.v1",
                 "counters": dict(sorted(self._counters.items())),
@@ -83,6 +97,7 @@ class OperationalMetricsRegistry:
                     "averageMs": round(self._latency_total_ms / total, 3) if total else 0.0,
                     "maxMs": self._latency_max_ms,
                     "sampleCount": total,
+                    "buckets": latency_buckets,
                 },
                 "secretMaterialIncluded": False,
                 "rawRequestIncluded": False,

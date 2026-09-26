@@ -28,6 +28,8 @@ NUMBERED_MIGRATION = re.compile(r"^[0-9]+_.*\.sql$")
 EXPECTED_QUEUE_TASKS = {
     "plan.generate",
     "execution.run",
+    "execution.run_task",
+    "execution.finalize",
     "execution.retry",
     "execution.heal",
     "execution.gate",
@@ -36,6 +38,7 @@ EXPECTED_QUEUE_TASKS = {
     "triage.rerun",
     "memory.summarize",
     "memory.compress",
+    "retention.mark_expired",
 }
 
 READINESS_RANK = {
@@ -176,6 +179,33 @@ class HealthService:
                 "./scripts/check-celery-runtime.ps1 -AllowMissingRedis",
             )
         ]
+        queue_topology = {
+            "default": settings.celery_queue_name,
+            "control": settings.celery_control_queue_name,
+            "execution": settings.celery_execution_queue_name,
+            "analysis": settings.celery_analysis_queue_name,
+            "maintenance": settings.celery_maintenance_queue_name,
+        }
+        items.append(
+            self._item(
+                "celery-queue-topology",
+                "Celery workload queue topology",
+                "local_passed",
+                (
+                    "Workload routing is enabled with separately configurable queues."
+                    if settings.celery_queue_routing_enabled
+                    else "Compatibility routing keeps every task on the default queue."
+                ),
+                {
+                    "routingEnabled": settings.celery_queue_routing_enabled,
+                    "taskFanoutEnabled": settings.execution_task_fanout_enabled,
+                    "queues": queue_topology,
+                    "configuredQueues": sorted(set(queue_topology.values())),
+                },
+                ["backend/src/agentic_qa/infra/queue.py", "docker-compose.yml"],
+                None,
+            )
+        )
 
         if settings.queue_mode == "inline":
             items.append(
@@ -324,6 +354,26 @@ class HealthService:
                 "External object storage credential refs are configured and ref-only validated; readiness does not call cloud providers."
             )
         return [
+            self._item(
+                "database-connection-budget",
+                "Database connection budget",
+                "local_passed",
+                "Configured process and pool capacities fit the explicit database connection budget.",
+                {
+                    "poolSize": settings.database_pool_size,
+                    "maxOverflow": settings.database_max_overflow,
+                    "processBudget": settings.database_process_budget,
+                    "requiredConnections": (
+                        settings.database_pool_size + settings.database_max_overflow
+                    ) * settings.database_process_budget,
+                    "connectionBudget": settings.database_connection_budget,
+                },
+                [
+                    "backend/src/agentic_qa/infra/settings.py",
+                    "backend/src/agentic_qa/db/session.py",
+                ],
+                None,
+            ),
             self._item(
                 "replay-storage-profile",
                 "Replay Repository storage profile",

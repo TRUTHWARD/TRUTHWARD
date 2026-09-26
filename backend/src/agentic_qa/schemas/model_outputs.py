@@ -51,8 +51,33 @@ class PlannerModelOutput(_StrictModelOutput):
     metadata: dict[str, Any]
 
 
+class GeneratedActionOutput(_StrictModelOutput):
+    actionId: str | None = Field(default=None, max_length=120)
+    actionType: str = Field(max_length=40)
+    semanticTarget: dict[str, Any] = Field(default_factory=dict)
+    targetHints: dict[str, Any] = Field(default_factory=dict)
+    assertionIntent: dict[str, Any] = Field(default_factory=dict)
+    valueRef: str | None = Field(default=None, max_length=500)
+    secretRef: str | None = Field(default=None, max_length=500)
+    sourceRefs: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    limitations: list[str] = Field(default_factory=list, max_length=50)
+
+
+class GeneratedCaseOutput(_StrictModelOutput):
+    caseId: str | None = Field(default=None, max_length=120)
+    name: str = Field(min_length=1, max_length=255)
+    goal: str = Field(min_length=1, max_length=4000)
+    targetUrl: str | None = Field(default=None, max_length=2000)
+    preconditions: list[str] = Field(default_factory=list, max_length=50)
+    steps: list[GeneratedActionOutput] = Field(default_factory=list, max_length=100)
+    sourceRefs: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    limitations: list[str] = Field(default_factory=list, max_length=50)
+
+
 class GeneratedCasesOutput(_StrictModelOutput):
-    functional: list[dict[str, Any]] = Field(max_length=500)
+    functional: list[GeneratedCaseOutput] = Field(max_length=500)
     performance: list[dict[str, Any]] = Field(max_length=500)
     security: list[dict[str, Any]] = Field(max_length=500)
 

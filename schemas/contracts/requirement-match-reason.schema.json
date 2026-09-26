@@ -9,6 +9,27 @@
     "code": {"type": "string", "minLength": 1},
     "layer": {"enum": ["explicit", "mapping", "traceability", "rule_history", "ai"]},
     "explanationKey": {"type": "string", "minLength": 1},
-    "evidenceRefs": {"type": "array"}
+    "evidenceRefs": {"type": "array"},
+    "details": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "matchMethod": {"type": ["string", "null"], "enum": ["explicit_reference", "manual_mapping", "verified_traceability", "project_rule", "historical_overlap", "ai_suggestion", null]},
+        "explicitSources": {"type": "array", "items": {"enum": ["pr_title", "pr_template", "commit_message"]}, "maxItems": 3},
+        "configuredPullRequestNumber": {"type": ["string", "null"], "maxLength": 1000},
+        "matchedPullRequestNumber": {"type": ["string", "null"], "maxLength": 1000},
+        "configuredLabels": {"type": "array", "items": {"type": "string"}, "maxItems": 200},
+        "matchedLabels": {"type": "array", "items": {"type": "string"}, "maxItems": 200},
+        "configuredPathPrefixes": {"type": "array", "items": {"type": "string"}, "maxItems": 200},
+        "matchedPaths": {"type": "array", "items": {"type": "string"}, "maxItems": 200},
+        "appliesToAll": {"type": ["boolean", "null"]},
+        "traceabilityPath": {"type": ["string", "null"], "maxLength": 1000},
+        "capabilityRef": {"type": ["string", "null"], "maxLength": 500},
+        "historicalContextRef": {"type": ["object", "null"]},
+        "overlappingLabels": {"type": "array", "items": {"type": "string"}, "maxItems": 200},
+        "overlappingPaths": {"type": "array", "items": {"type": "string"}, "maxItems": 200},
+        "factsTruncated": {"type": "boolean"}
+      }
+    }
   }
 }

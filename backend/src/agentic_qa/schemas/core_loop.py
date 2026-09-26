@@ -32,6 +32,7 @@ class RequirementLibraryPipelineRequest(BaseModel):
     requirementItemRefs: list[RequirementItemRef] = Field(default_factory=list)
     requirementScope: RequirementScope | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    idempotencyKey: str | None = Field(default=None, min_length=8, max_length=120, pattern=r"^[A-Za-z0-9._:-]+$")
 
 
 class ClarificationAnswerRequest(BaseModel):

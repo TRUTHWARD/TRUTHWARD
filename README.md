@@ -1,6 +1,6 @@
 <h1 align="center">TRUTHWARD · 谛序</h1>
 
-<p align="center"><strong>Community</strong></p>
+<p align="center"><strong>Community · Self-hosted, evidence-grounded AI testing</strong></p>
 
 <p align="center">
   <a href="#english">English</a> · <a href="#简体中文">简体中文</a>
@@ -8,17 +8,45 @@
 
 ## English
 
-Self-hosted AI testing platform · Evidence-grounded execution and failure analysis
+| Question | Short answer |
+| --- | --- |
+| What is it? | The Community OSS edition is a self-hosted testing workspace for projects, plans, restricted execution, results, evidence, Findings, and WorkItem follow-up. |
+| What problem does it solve? | It keeps execution context, artifacts, failure records, and follow-up connected instead of scattering them across logs, screenshots, and separate tools. |
+| What can I see in 30 seconds? | Open the verified screenshot below to see regression cases from a real Playwright run grouped by a local Skill, with the resolved Skill and Invocation record visible. |
+| How do I run it now? | Use the [fresh-install quick start](#quick-start), then reproduce the [real browser example](examples/community-browser/README.md). |
 
-Keep the normal testing workflow—projects and environments, test plans, execution, results,
-and issue follow-up—in one workspace. TRUTHWARD uses evidence from actual runs as the
-connecting thread, so failures can progress from recorded context to normalized Findings
-and actionable WorkItems instead of ending as disconnected logs or screenshots.
+[Quick start](#quick-start) · [Who it is for](#who-community-is-for) · [Edition boundary](#community-basic-and-enterprise) · [Public benchmark](#public-quality-benchmark) · [Troubleshooting](#troubleshooting) · [User guide (Chinese)](docs/OSS_USER_GUIDE.md)
 
-Community provides the self-hosted foundation of this workflow. The broader platform builds
-on the same records for governed failure attribution, release decisions, replay, and audit.
+![Regression view after a real functional execution](docs/images/community-regression-view.png)
 
-[Quick start](#quick-start) · [First steps](#first-steps) · [User guide (Chinese)](docs/OSS_USER_GUIDE.md)
+Isolated acceptance instance: local Skill grouping and Invocation records after a real Playwright functional execution. The screenshot shows the Chinese interface; it is evidence from the named acceptance run, not a product-wide availability claim.
+
+### Who Community is for
+
+| Good fit | Not a good fit yet |
+| --- | --- |
+| Individuals and small teams evaluating a self-hosted, source-visible testing workflow | Teams looking for a hosted SaaS or a prebuilt application/container image |
+| Teams willing to configure their own models, browsers, scanners, and SCM credentials | Public or high-availability production deployments that need managed ingress, TLS, upgrades, backup automation, or on-call support out of the box |
+| Contributors reproducing contracts, examples, and the transparent public quality benchmark | Organizations that require Enterprise IAM, approval-backed high-risk governance, managed Replay/Scheduler, or controlled autonomy in the Community composition |
+| Fresh single-instance evaluation or development installations | In-place upgrades of an existing database using the quick-start procedure |
+
+### Community, Basic, and Enterprise
+
+| Edition | Boundary |
+| --- | --- |
+| Community | The self-hosted OSS composition: local identity, project/environment scope, test plans, restricted execution, evidence and issue follow-up, scoped model/SCM configuration, trusted local data-only Skills, and explicitly included read-only projections. |
+| Basic | A separate commercial edition with project-scoped read-only governance capabilities. `DEPLOYMENT_PROFILE=oss` does not mean Basic. |
+| Enterprise | Reserved proprietary extensions for cross-organization and higher-risk governance, including private registries, Skill evaluation/Shadow, approval-backed activation, managed Replay/Scheduler, rollback automation, and controlled autonomy where explicitly available. |
+
+Backend capabilities, scope authorization, and route composition enforce these boundaries; frontend visibility is only a usability aid. Security controls such as authentication, scope checks, redaction, Secret references, Guardrails, idempotency, and fail-closed behavior remain Community requirements, not Enterprise add-ons. See the [functional layering contract](docs/OSS_FUNCTIONAL_LAYERING.md).
+
+### Recorded baseline and current limits
+
+- **Last recorded end-to-end candidate:** an exact clean bundle for commit `701bd58112eb7baa3f3ddf383a281dacd2905982` was exercised on Ubuntu 24.04 with Python 3.12.14 and Node.js 22.23.2. PostgreSQL 16, Redis 7, and Docker Compose v2 were covered by the recorded Community installation acceptance. These results establish the installation baseline; they are not exact-commit release evidence for a newer working tree.
+- **Supported versions:** Python 3.11–3.14 and Node.js 22.13+ or 24 LTS. A supported version is not a claim that every operating-system and dependency combination was release-tested.
+- **Installation boundary:** source-only, fresh empty database, localhost-first, development frontend, and single-process inline execution. No prebuilt application image, automatic upgrade path, public ingress, TLS, automatic restart, or high-availability configuration is supplied.
+- **Integration boundary:** the base install does not make models, browsers, scanners, or external SCM calls available. The recorded provider acceptance covers the named local Ollama setup; hosted/external Providers remain unverified.
+- **Community boundary:** high-risk approval workflows, managed Replay/Scheduler, complete audit event coverage, Skill evaluation/Shadow/automatic rollback, and controlled autonomy are not exposed by the Community composition.
 
 ### Why TRUTHWARD
 
@@ -39,10 +67,6 @@ Execution, evidence, and failure analysis are not separate products: they are su
 parts of one testing workflow. Models, Skills, runners, and governance controls support
 that workflow; they are not substitutes for it.
 
-![Regression view after a real functional execution](docs/images/community-regression-view.png)
-
-Isolated acceptance instance: local Skill grouping and Invocation records after a real Playwright functional execution. The screenshot shows the Chinese interface.
-
 ### Available capabilities
 
 | Capability | What Community provides |
@@ -60,7 +84,8 @@ See the [Community user guide (Chinese)](docs/OSS_USER_GUIDE.md) for workflows a
 ### Quick start
 
 These steps target a **fresh, single-instance installation on Linux using Bash**.
-The verified environment is Ubuntu 24.04 with Python 3.12.
+The last recorded end-to-end environment was Ubuntu 24.04 with Python 3.12; a newer
+candidate must still pass its own exact-commit acceptance before publication.
 This procedure does not upgrade an existing database, and no prebuilt application image is provided.
 
 > **Scope:** this quick start is an evaluation/development setup. On a remote server the
@@ -214,6 +239,19 @@ docker compose --env-file .env -f compose.community.yml stop
 This preserves database volumes and local files. Avoid commands that remove volumes unless you intend to delete their data.
 See the [installation and operations guide (Chinese)](docs/COMMUNITY_INSTALLATION.md) for backups, external databases, and public deployment considerations.
 
+### Troubleshooting
+
+| Symptom | First check |
+| --- | --- |
+| `configure` refuses to overwrite | An existing `.env` is being preserved. Use a fresh directory for a fresh install; do not replace an existing instance's configuration by force. |
+| `docker compose` is unknown | Install the Compose v2 plugin and repeat the prerequisite checks; do not silently switch to legacy Compose v1. |
+| `init-db` reports a non-empty database | Stop and point the fresh-install flow at a new isolated database. Do not delete tables or edit the migration ledger to bypass the check. |
+| `doctor` returns `blocked` | Read `blockedChecks` and correct the named dependency, configuration, or migration state; `doctor` is intentionally read-only. |
+| Login returns `401` | Use the administrator/user you created locally. Demo bearer values are rejected, and expired or revoked tokens require a new login. |
+| A model, browser, scanner, or SCM operation is unavailable | Configure and verify that dependency separately. Successful base installation is not evidence that an external capability is ready. |
+
+Keep error codes and a redacted minimal reproduction. Do not paste `.env`, DSNs, tokens, credentials, or customer data into a public report. See the [full installation troubleshooting table](docs/COMMUNITY_INSTALLATION.md#故障排查) and [support routes](SUPPORT.md).
+
 ### First steps
 
 1. Create an administrator on the first-start page with a password of at least 12 characters. Keep your username or email.
@@ -241,10 +279,11 @@ Secrets are supplied through runtime environment or credential references and ar
 Role bindings do not mean that every run calls every model, and successful configuration does not prove that a real provider request succeeded.
 Check both connection results and actual run results. The `LOCAL_FALLBACK` role name does not itself enable automatic fallback.
 
-Release acceptance included a real business call with local Ollama 0.11.10 and
-`qwen2.5:0.5b`: the scoped model passed a live health probe,
+The recorded acceptance for commit `701bd58112eb7baa3f3ddf383a281dacd2905982`
+included a real business call with local Ollama 0.11.10 and `qwen2.5:0.5b`: the scoped model passed a live health probe,
 the Community business execution completed, and 2 of 2 persisted ModelInvocations
-were live and bound to the selected model. Hosted/external Providers remain unverified.
+were live and bound to the selected model. This evidence is not automatically inherited
+by later candidates. Hosted/external Providers remain unverified.
 See [Provider verification](docs/COMMUNITY_PROVIDER_VERIFICATION.md) for the exact
 candidate, evidence boundary, and requirements for validating another Provider.
 
@@ -274,6 +313,18 @@ Explicit enablement currently applies only to this fixed presentation extension.
 It does not provide an arbitrary custom executor entry point.
 Community does not expose approval-based activation, Shadow, or automatic rollback controls.
 
+### Public quality benchmark
+
+The Community source candidate includes a transparent benchmark sample, an auditable truth set with seven known defects and three safe negative controls, and a versioned reference result. The reference deliberately includes false positives and false negatives and is classified `contract_only`; it is a measurable baseline, not proof that every product workflow or external Provider passed.
+
+Inspect the [loopback-only sample and safety notes](examples/public_quality_benchmark/README.md), the [expected findings](benchmarks/public_quality/expected-findings.v1.json), and the [reference result](benchmarks/public_quality/results/reference-result.v1.json) directly. To explore the sample locally:
+
+```bash
+python examples/public_quality_benchmark/app.py --port 8765
+```
+
+The source-only Community package does not claim a complete local-actual benchmark run. Maintainer-only scoring and release commands are intentionally not documented as Community package commands.
+
 ### Security and known limitations
 
 - Frontend visibility is not authorization. The backend validates capabilities, project membership, and environment ownership.
@@ -289,7 +340,10 @@ Community does not expose approval-based activation, Shadow, or automatic rollba
 - [Installation, backups, and troubleshooting (Chinese)](docs/COMMUNITY_INSTALLATION.md)
 - [Trusted local Skill Manifests](community-skills/README.md)
 - [Runnable browser example](examples/community-browser/README.md)
+- [Public quality benchmark sample and safety notes](examples/public_quality_benchmark/README.md)
 - [Provider verification](docs/COMMUNITY_PROVIDER_VERIFICATION.md)
+- [Contribution guide](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Support and issue routing](SUPPORT.md)
 - [Security policy and private vulnerability reporting](SECURITY.md)
 
@@ -319,16 +373,49 @@ TRUTHWARD and 谛序 identify the project. The Apache License 2.0 does not grant
 
 [English](#english) | [简体中文](#简体中文)
 
-谛序 Community · 以执行证据和失败分析贯穿测试闭环的可自托管 AI 测试平台
+| 问题 | 简短回答 |
+| --- | --- |
+| 这是什么？ | 一套可自托管、源码可见的测试工作台，覆盖项目、计划、受限执行、结果、证据、Finding 和 WorkItem 跟进。 |
+| 解决什么痛点？ | 把执行上下文、产物、失败记录和后续处理连在一起，避免它们散落在日志、截图和不同工具中。 |
+| 30 秒内能看到什么？ | 直接看下方已验证截图：真实 Playwright 执行产生的回归用例经过本地 Skill 分组，并展示实际解析到的 Skill 和 Invocation 记录。 |
+| 现在如何运行？ | 按[全新安装快速开始](#快速开始)启动，再复现[真实浏览器示例](examples/community-browser/README.md#简体中文)。 |
 
-保留项目与环境、测试计划、执行、结果和问题跟进组成的完整测试流程，并以真实执行产生的
-证据贯穿各环节。失败不会停留在零散日志或截图中，而是带着上下文进入标准化 Finding 和
-可继续处理的 WorkItem。
+[快速开始](#快速开始) · [适用对象](#community-fit-zh) · [版本边界](#edition-boundary-zh) · [公开基准](#public-benchmark-zh) · [故障排查](#troubleshooting-zh) · [使用指南](docs/OSS_USER_GUIDE.md)
 
-Community 提供这条流程的可自托管基础；更完整的平台能力继续基于同一批事实记录提供
-受治理的失败归因、发布决策、回放和审计。
+![真实功能执行后的回归展示](docs/images/community-regression-view.png)
 
-[快速开始](#快速开始) · [首次使用](#完成第一次使用) · [使用指南](docs/OSS_USER_GUIDE.md)
+隔离验收实例：真实 Playwright 功能执行后的本地 Skill 分组结果与 Invocation。该图只证明所述验收运行，不代表所有产品能力或外部依赖均已可用。
+
+<a id="community-fit-zh"></a>
+
+### 谁适合使用 Community
+
+| 适合 | 当前不适合 |
+| --- | --- |
+| 希望评估可自托管、源码可见测试流程的个人和小团队 | 希望直接使用托管 SaaS 或预构建应用/容器镜像的团队 |
+| 愿意自行配置模型、浏览器、扫描器与 SCM 凭据的团队 | 要求开箱即用的公网入口、TLS、高可用、自动升级、自动备份或值班支持的生产部署 |
+| 希望复现公开契约、示例和透明质量基准的贡献者 | 必须在 Community composition 中使用企业 IAM、审批型高风险治理、受管 Replay/Scheduler 或 controlled autonomy 的组织 |
+| 全新单实例评估或开发安装 | 希望用快速开始对已有数据库做原地升级的场景 |
+
+<a id="edition-boundary-zh"></a>
+
+### Community、Basic 与 Enterprise 边界
+
+| Edition | 边界 |
+| --- | --- |
+| Community | OSS 自托管 composition：本地身份、项目/环境范围、测试计划、受限执行、证据与问题跟进、作用域模型/SCM 配置、可信本地 data-only Skill，以及明确纳入的只读投影。 |
+| Basic | 独立商业 edition，保留项目级只读治理能力；`DEPLOYMENT_PROFILE=oss` 不代表 Basic。 |
+| Enterprise | 为跨组织和更高风险治理保留的专有扩展，包括私有 Registry、Skill Evaluation/Shadow、审批型激活、受管 Replay/Scheduler、回滚自动化和在明确开放时的 controlled autonomy。 |
+
+版本边界由后端 capability、作用域授权和路由 composition 强制执行；前端显隐只改善使用体验。认证、作用域检查、脱敏、Secret ref、Guardrail、幂等和 fail-closed 等安全控制仍是 Community 的必要边界，不是 Enterprise 附加项。详见[功能分层契约](docs/OSS_FUNCTIONAL_LAYERING.md)。
+
+### 已记录基线与当前限制
+
+- **最近一次完整候选验收：**commit `701bd58112eb7baa3f3ddf383a281dacd2905982` 的精确 clean bundle 已在 Ubuntu 24.04、Python 3.12.14、Node.js 22.23.2 上运行；已记录的 Community 安装验收还覆盖 PostgreSQL 16、Redis 7 和 Docker Compose v2。这些结果建立安装基线，不是更新工作树的 exact-commit 发行证据。
+- **支持版本：**Python 3.11–3.14，Node.js 22.13+ 或 24 LTS。支持范围不等于每种操作系统与依赖组合都已完成发行验证。
+- **安装边界：**仅源码、全新空数据库、localhost 优先、开发前端、单进程 inline 执行；不提供预构建应用镜像、自动升级、公网入口、TLS、自动重启或高可用配置。
+- **集成边界：**基础安装不会自动提供模型、浏览器、扫描器或外部 SCM 调用。已记录的 Provider 验收只覆盖文档点名的本地 Ollama 配置；托管/外部 Provider 仍未验证。
+- **Community 边界：**高风险审批流程、受管 Replay/Scheduler、完整审计事件覆盖、Skill Evaluation/Shadow/自动回滚和 controlled autonomy 不进入当前 Community composition。
 
 ### 为什么使用谛序
 
@@ -348,10 +435,6 @@ flowchart LR
 执行、证据和失败分析不是三个割裂的产品，而是同一测试流程中连续发生的环节。模型、Skill、
 执行器和治理能力用于支撑这条流程，不能替代测试流程本身。
 
-![真实功能执行后的回归展示](docs/images/community-regression-view.png)
-
-隔离验收实例：真实 Playwright 功能执行后的本地 Skill 分组结果与 Invocation。
-
 ### 当前支持
 
 | 能力 | Community 提供什么 |
@@ -368,7 +451,8 @@ flowchart LR
 
 ### 快速开始
 
-以下步骤以 **Linux / Bash 下的全新单实例安装**为主，已验证环境为 Ubuntu 24.04 / Python 3.12。
+以下步骤以 **Linux / Bash 下的全新单实例安装**为主。最近一次完整记录使用
+Ubuntu 24.04 / Python 3.12；更新候选版本仍须在发布前完成自己的 exact-commit 验收。
 它不是现有数据库的升级步骤，也不提供预构建应用镜像。
 
 > **适用范围：**这是一条评估/开发用途的快速安装流程。安装在远程服务器时，进程确实
@@ -515,6 +599,21 @@ docker compose --env-file .env -f compose.community.yml stop
 这会保留数据库卷和本地文件。不要随意使用删除卷的命令。
 备份、外部数据库和公网部署注意事项见 [安装与运行说明](docs/COMMUNITY_INSTALLATION.md)。
 
+<a id="troubleshooting-zh"></a>
+
+### 故障排查
+
+| 现象 | 优先检查 |
+| --- | --- |
+| `configure` 拒绝覆盖 | 已有 `.env` 被保留。全新安装请使用新目录，不要强行替换已有实例配置。 |
+| 找不到 `docker compose` | 安装 Compose v2 插件并重新执行前置检查，不要静默改用旧版 Compose v1。 |
+| `init-db` 提示数据库非空 | 停止并为全新安装指定新的隔离数据库；不要删表或修改迁移账本来绕过检查。 |
+| `doctor` 返回 `blocked` | 查看 `blockedChecks`，修复点名的依赖、配置或迁移状态；`doctor` 只读，不会自动修复。 |
+| 登录返回 `401` | 使用本地创建的管理员/用户；演示 bearer 会被拒绝，Token 过期或撤销后需重新登录。 |
+| 模型、浏览器、扫描器或 SCM 操作 unavailable | 单独配置并验证对应依赖；基础安装成功不能证明外部能力已就绪。 |
+
+保留错误码和脱敏后的最小复现；不要把 `.env`、DSN、Token、凭据或客户数据贴到公开报告。更多场景见[完整故障排查表](docs/COMMUNITY_INSTALLATION.md#故障排查)和[支持渠道](SUPPORT.md)。
+
 ### 完成第一次使用
 
 1. 在首次启动页面创建管理员；密码至少 12 位。保存自己的用户名或邮箱。
@@ -539,9 +638,11 @@ docker compose --env-file .env -f compose.community.yml stop
 角色绑定不等于每次运行都调用所有模型；配置成功也不等于真实 Provider 请求成功。
 请分别确认连接检查和实际运行结果。`LOCAL_FALLBACK` 角色名称本身不代表自动回退已启用。
 
-本次发行验收已使用本地 Ollama 0.11.10 与 `qwen2.5:0.5b` 完成真实业务调用：
+commit `701bd58112eb7baa3f3ddf383a281dacd2905982` 的已记录验收使用本地
+Ollama 0.11.10 与 `qwen2.5:0.5b` 完成真实业务调用：
 作用域模型通过 live 健康检查，Community 业务执行完成，2/2 次持久化
-ModelInvocation 均为 live 且绑定到所选模型。托管/外部 Provider 仍未验证。
+ModelInvocation 均为 live 且绑定到所选模型。后续候选版本不能自动继承这份证据；
+托管/外部 Provider 仍未验证。
 精确候选版本、证据边界和其他 Provider 的验收要求见
 [模型验证记录](docs/COMMUNITY_PROVIDER_VERIFICATION.md#简体中文)。
 
@@ -568,6 +669,20 @@ Agent 只提出 Skill Request；权限校验、解析和调用由 Service 托管
 当前显式启用仅适用于上述固定展示扩展，不是任意自定义执行器入口。
 Community 不提供审批激活、Shadow 或自动回滚入口。
 
+<a id="public-benchmark-zh"></a>
+
+### 公开质量基准
+
+Community 源码候选包包含透明 benchmark 样例、带 7 个已知缺陷和 3 个安全负对照的可审计 truth set，以及版本化参考结果。参考结果刻意保留 false positive 与 false negative，并标记为 `contract_only`；它是可测量基线，不代表所有产品工作流或外部 Provider 均已通过。
+
+可直接检查[仅允许 loopback 的样例及安全说明](examples/public_quality_benchmark/README.md)、[expected findings](benchmarks/public_quality/expected-findings.v1.json)和[参考结果](benchmarks/public_quality/results/reference-result.v1.json)。本地查看样例：
+
+```bash
+python examples/public_quality_benchmark/app.py --port 8765
+```
+
+源码版 Community 不声称已经完成全部 local-actual benchmark；维护者专用评分与发行命令不会伪装成 Community 包内命令。
+
 ### 安全与已知限制
 
 - 前端可见性不构成授权；服务端校验 capability、项目成员关系与环境归属。
@@ -583,7 +698,10 @@ Community 不提供审批激活、Shadow 或自动回滚入口。
 - [安装、备份与故障排查](docs/COMMUNITY_INSTALLATION.md)
 - [可信本地 Skill Manifest](community-skills/README.md)
 - [可运行的真实浏览器示例](examples/community-browser/README.md#简体中文)
+- [公开质量基准样例与安全说明](examples/public_quality_benchmark/README.md)
 - [模型验证记录](docs/COMMUNITY_PROVIDER_VERIFICATION.md#简体中文)
+- [贡献指南](CONTRIBUTING.md)
+- [社区行为准则](CODE_OF_CONDUCT.md)
 - [支持与问题分流](SUPPORT.md)
 - [安全策略与私密漏洞报告](SECURITY.md)
 

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -28,6 +28,9 @@ class ExecutionOptions(BaseModel):
     enableTriage: bool = True
     enableHealing: bool = False
     parallelism: int = 5
+    selectedScenarioIds: list[Annotated[str, Field(min_length=1, max_length=120)]] | None = (
+        Field(default=None, max_length=100)
+    )
 
 
 class CreateExecutionRequest(BaseModel):
@@ -72,6 +75,9 @@ class ExecutionProgressResponse(BaseModel):
     progress: int
     currentTask: str | None = None
     completedTasks: int
+    failedTasks: int
+    cancelledTasks: int
+    terminalTasks: int
     totalTasks: int
 
 

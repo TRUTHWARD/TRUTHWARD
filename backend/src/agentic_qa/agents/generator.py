@@ -10,7 +10,10 @@ class GeneratorAgent(BaseAgent):
         "generatedPlan": "dict",
     }
     output_schema = {
-        "generatedCases": "dict[str, list[dict[str, str]]]",
+        "generatedCases": (
+            "dict[str, list[{name, goal, targetUrl?, preconditions?, steps?, "
+            "sourceRefs?, confidence?, limitations?}]]"
+        ),
         "summary": "str",
     }
     allowed_tools = []

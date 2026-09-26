@@ -73,7 +73,7 @@ export function CegVisualizationPage({ currentUser, deepLink = readCegDeepLink()
       {projection.state === "loading" ? <ProjectionState text={t(locale, "loading")} /> : null}
       {projection.state === "unavailable" ? <ProjectionState text={t(locale, "cegUnavailable")} /> : null}
       {projection.state === "restricted" ? <ProjectionState text={t(locale, "cegRestricted")} /> : null}
-      {projection.state === "error" ? <ProjectionState text={t(locale, "cegLoadFailed")} /> : null}
+      {projection.state === "error" ? <ProjectionState text={t(locale, "cegLoadFailed")} tone="error" /> : null}
       {projection.state === "empty" ? <ProjectionState text={t(locale, "cegEmpty")} /> : null}
 
       {projection.summary ? <div className="ceg-level-stack">
@@ -149,8 +149,8 @@ export function CegVisualizationPage({ currentUser, deepLink = readCegDeepLink()
   );
 }
 
-function ProjectionState({ text }: { text: string }) {
-  return <div className="notice notice--info" role="status">{text}</div>;
+function ProjectionState({ text, tone = "info" }: { text: string; tone?: "info" | "error" }) {
+  return <div className={`notice notice--${tone}`} role={tone === "error" ? "alert" : "status"}>{text}</div>;
 }
 
 function ProjectionRefs({ locale, refs, title }: { locale: Locale; refs: CegStableRef[]; title: string }) {

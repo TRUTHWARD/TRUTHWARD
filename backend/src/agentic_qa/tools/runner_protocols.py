@@ -15,12 +15,16 @@ RUNNER_STATUS_TOOL_STATUS: dict[str, frozenset[str]] = {
     "queued": frozenset({"ok"}),
     "running": frozenset({"ok"}),
     "completed": frozenset({"ok", "findings_detected", "threshold_exceeded"}),
-    "failed": frozenset({"tool_error", "infra_error", "timeout", "partial"}),
+    "failed": frozenset(
+        {"tool_error", "infra_error", "timeout", "partial", "unavailable"}
+    ),
     "cancelled": frozenset({"cancelled"}),
 }
 TERMINAL_RUNNER_STATUSES = frozenset({"completed", "failed", "cancelled"})
 SAFE_RETRY_TOOL_STATUSES = frozenset({"infra_error", "timeout"})
-UNSAFE_RETRY_TOOL_STATUSES = frozenset({"tool_error", "partial", "cancelled"})
+UNSAFE_RETRY_TOOL_STATUSES = frozenset(
+    {"tool_error", "partial", "cancelled", "unavailable"}
+)
 MAX_INLINE_EVIDENCE_BYTES = 64 * 1024
 MAX_ARTIFACT_REF_BYTES = 4096
 

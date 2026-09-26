@@ -21,6 +21,7 @@ import {
   createCommunityEnvironment,
   createCommunityProject,
   createCommunityProjectMember,
+  deactivateCommunityProjectMember,
   fetchCommunityModels,
   fetchCommunityConnectorBindings,
   updateCommunityEnvironment,
@@ -75,6 +76,7 @@ export const enterpriseApi = {
   deleteConnectorBinding: (bindingId: string) => archiveCommunityConnectorBinding(bindingId),
   deleteEnvironment: (environmentId: string) => archiveCommunityEnvironment(environmentId),
   deleteProject: (projectId: string) => archiveCommunityProject(projectId),
+  deleteProjectMember: (memberId: string) => deactivateCommunityProjectMember(memberId),
   fetchConnectorBindings: (filters: Record<string, unknown> = {}) =>
     fetchCommunityConnectorBindings({
       connectorName: typeof filters.connectorName === "string" ? filters.connectorName : undefined,

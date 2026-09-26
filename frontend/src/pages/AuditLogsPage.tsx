@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
-import { Locale, t } from "../i18n";
+import { Locale, t, userFacingError } from "../i18n";
 import { SafeJsonViewer } from "../components/SafeJsonViewer";
 import {
   fetchAuditRetentionPolicy,
@@ -106,7 +106,7 @@ export function AuditLogsPage({
       });
       setRetentionNotice(result);
     } catch (requestError) {
-      setRetentionError(requestError instanceof Error ? requestError.message : t(locale, "retentionRequestFailed"));
+      setRetentionError(userFacingError(locale, requestError, "retentionRequestFailed"));
     } finally {
       setRetentionBusy(false);
     }

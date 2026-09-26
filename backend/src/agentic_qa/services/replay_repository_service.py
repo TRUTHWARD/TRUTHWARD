@@ -626,6 +626,60 @@ class ReplayRepositoryService:
             "projectedRetentionState": preview,
         }
 
+    def mark_expired_entries_purge_eligible(
+        self,
+        *,
+        batch_size: int,
+        now: datetime | None = None,
+    ) -> int:
+        """Mark bounded expired Replay entries eligible without deleting payloads."""
+
+        effective_now = now or datetime.now(timezone.utc)
+        candidates = list(
+            self.db.scalars(
+                select(ReplayRepositoryEntry)
+                .where(
+                    ReplayRepositoryEntry.retention_until.is_not(None),
+                    ReplayRepositoryEntry.retention_until <= effective_now,
+                    ReplayRepositoryEntry.legal_hold.is_(False),
+                    ReplayRepositoryEntry.retention_status.in_(["active", "archived"]),
+                )
+                .order_by(
+                    ReplayRepositoryEntry.retention_until.asc(),
+                    ReplayRepositoryEntry.id.asc(),
+                )
+                .limit(batch_size)
+                .with_for_update(skip_locked=True)
+            )
+        )
+        pending_hold_resource_ids = set(
+            self.db.scalars(
+                select(Approval.resource_id).where(
+                    Approval.type == ApprovalType.OTHER,
+                    Approval.resource_type == "replay_repository_retention",
+                    Approval.status == ApprovalStatus.PENDING,
+                    Approval.resource_id.in_(
+                        [
+                            f"retention:{entry.replay_id}:set_legal_hold"
+                            for entry in candidates
+                        ]
+                    ),
+                )
+            )
+        )
+        changed = 0
+        for entry in candidates:
+            if (
+                f"retention:{entry.replay_id}:set_legal_hold"
+                in pending_hold_resource_ids
+            ):
+                continue
+            entry.retention_status = "purge_eligible"
+            entry.purge_eligible_at = effective_now
+            changed += 1
+        self.db.flush()
+        return changed
+
     def execute_approved_retention_action(
         self,
         *,

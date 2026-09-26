@@ -417,12 +417,17 @@ class ProjectSettingsService:
     def update_member(self, member_id: UUID, payload: ProjectMemberUpdateRequest, context: ServiceContext) -> dict[str, object]:
         member = self._scoped_member(member_id, context, write=True)
         updates = payload.model_dump(exclude_unset=True)
+        next_role = member.role
+        next_status = member.status
         if "role" in updates and updates["role"] is not None:
-            self._validate_member_role(str(updates["role"]))
-            member.role = str(updates["role"])
+            next_role = str(updates["role"])
+            self._validate_member_role(next_role)
         if "status" in updates and updates["status"] is not None:
-            self._validate_member_status(str(updates["status"]))
-            member.status = str(updates["status"])
+            next_status = str(updates["status"])
+            self._validate_member_status(next_status)
+        self._require_active_owner_after_change(member, next_role=next_role, next_status=next_status)
+        member.role = next_role
+        member.status = next_status
         if "metadata" in updates and updates["metadata"] is not None:
             member.metadata_json = dict(updates["metadata"])
         with traced_operation(
@@ -451,6 +456,7 @@ class ProjectSettingsService:
 
     def deactivate_member(self, member_id: UUID, context: ServiceContext) -> dict[str, object]:
         member = self._scoped_member(member_id, context, write=True)
+        self._require_active_owner_after_change(member, next_role=member.role, next_status="inactive")
         member.status = "inactive"
         with traced_operation(
             self.db,
@@ -594,6 +600,28 @@ class ProjectSettingsService:
         if user is None:
             raise LookupError("user not found")
         return user
+
+    def _require_active_owner_after_change(
+        self,
+        member: ProjectMember,
+        *,
+        next_role: str,
+        next_status: str,
+    ) -> None:
+        if member.role != "owner" or member.status != "active":
+            return
+        if next_role == "owner" and next_status == "active":
+            return
+        other_owner_id = self.db.scalar(
+            select(ProjectMember.id).where(
+                ProjectMember.project_id == member.project_id,
+                ProjectMember.id != member.id,
+                ProjectMember.role == "owner",
+                ProjectMember.status == "active",
+            )
+        )
+        if other_owner_id is None:
+            raise ValueError("project must retain at least one active owner")
 
     def _project_by_key(self, key: str) -> Project | None:
         return self.db.scalar(select(Project).where(Project.key == key))
