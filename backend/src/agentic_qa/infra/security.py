@@ -91,7 +91,7 @@ def resolve_user_from_token(token: str, db: Session | None = None) -> CurrentUse
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="invalid bearer token",
         )
-    if token == settings.demo_admin_token:
+    if settings.deployment_profile == "full" and settings.full_auth_mode == "demo" and token == settings.demo_admin_token:
         edition, capabilities, projection = CapabilityService(db).effective_access_projection_for_user(DEMO_ADMIN_ID, EDITION_ENTERPRISE)
         return CurrentUser(
             id=DEMO_ADMIN_ID,
@@ -104,7 +104,7 @@ def resolve_user_from_token(token: str, db: Session | None = None) -> CurrentUse
             authorization_revision=str(projection["authorizationRevision"]),
             edition_projection=projection,
         )
-    if token == settings.demo_user_token:
+    if settings.deployment_profile == "full" and settings.full_auth_mode == "demo" and token == settings.demo_user_token:
         edition, capabilities, projection = CapabilityService(db).effective_access_projection_for_user(
             DEMO_USER_ID,
             EDITION_BASIC,

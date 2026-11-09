@@ -42,7 +42,7 @@ class CommunityUserCreateRequest(BaseModel):
 class CommunityBootstrapStatus(BaseModel):
     deploymentProfile: Literal["full", "oss"]
     bootstrapRequired: bool
-    authenticationMode: Literal["demo", "community_local"]
+    authenticationMode: Literal["demo", "community_local", "full_local"]
 
 
 class CommunityTokenResponse(BaseModel):

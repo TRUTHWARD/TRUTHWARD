@@ -79,6 +79,7 @@ from agentic_qa.schemas.model_outputs import GeneratorModelOutput, PlannerModelO
 from agentic_qa.schemas.requirement_scope import normalize_requirement_scope
 from agentic_qa.services.common import ServiceContext, canonical_hash, paginate_query, paginate_result
 from agentic_qa.services.executable_scenario_compiler import (
+    acceptance_sources,
     generated_collection,
     normalize_functional_config,
     source_fingerprint,
@@ -150,6 +151,7 @@ class TestPlanService:
                     risk_level=plan.risk_level.value,
                     current_source_fingerprint=self._plan_source_fingerprint(plan),
                     environment_base_url=self._environment_base_url(plan),
+                    sources=acceptance_sources(input_payload, plan.requirement_version_id),
                 )
             self.db.add(
                 TestPlanDomain(
@@ -287,6 +289,7 @@ class TestPlanService:
                         risk_level=plan.risk_level.value,
                         current_source_fingerprint=self._plan_source_fingerprint(plan),
                         environment_base_url=self._environment_base_url(plan),
+                        sources=acceptance_sources(dict(plan.input_payload or {}), plan.requirement_version_id),
                     )
                 self.db.add(
                     TestPlanDomain(
@@ -308,6 +311,7 @@ class TestPlanService:
                         risk_level=plan.risk_level.value,
                         current_source_fingerprint=self._plan_source_fingerprint(plan),
                         environment_base_url=self._environment_base_url(plan),
+                        sources=acceptance_sources(dict(plan.input_payload or {}), plan.requirement_version_id),
                     )
                 domain_row.config = next_config
         else:
@@ -1595,6 +1599,10 @@ class TestPlanService:
             f"Generate executable cases for {plan.name}. Return only GeneratorModelOutput JSON with "
             "result.generatedCases for functional/performance/security. Each case must include name and goal; "
             "when the authoritative inputs support it, also include preconditions, structured steps, "
+            "expectedOutcome (business result, not literal page text), acceptanceCriterionRef "
+            "from the supplied acceptanceSources, and openQuestions for ambiguous requirements. "
+            "Do not invent source references or turn a whole requirement into expectedText. "
+            "Only supply a browser text assertion when the input specifies the literal text. Include "
             "sourceRefs, confidence, and limitations. Browser steps may only use navigate, fill, click, "
             "assert_visible, or assert_text and must not contain plaintext credentials. Return result.summary, confidence, "
             f"evidence, limitations, and metadata.{revision_instruction}"
@@ -1618,6 +1626,7 @@ class TestPlanService:
         }
         if plan.requirement_scope:
             source["requirementScope"] = plan.requirement_scope
+        source["acceptanceSources"] = acceptance_sources(dict(plan.input_payload or {}), plan.requirement_version_id)
         return cast(dict[str, object], self._minimal_json_value(source))
 
     def _minimal_json_value(self, value: object) -> object:
@@ -1805,6 +1814,7 @@ class TestPlanService:
             risk_level=plan.risk_level.value,
             current_source_fingerprint=self._plan_source_fingerprint(plan),
             environment_base_url=self._environment_base_url(plan),
+            sources=acceptance_sources(dict(plan.input_payload or {}), plan.requirement_version_id),
         )
 
     def _apply_generated_executable_scenarios(self, plan: TestPlan) -> None:
@@ -1898,6 +1908,7 @@ class TestPlanService:
             "schemaVersion": "community.executable-scenario-insights.v1",
             "environmentTargetUrl": self._environment_base_url(plan),
             "historicalLocatorHints": historical_hints,
+            "acceptanceSources": acceptance_sources(dict(plan.input_payload or {}), plan.requirement_version_id),
         }
 
     def _plan_domains_map(self, plan_ids: list[UUID]) -> dict[UUID, list[str]]:

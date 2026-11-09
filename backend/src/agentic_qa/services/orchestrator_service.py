@@ -33,7 +33,6 @@ from agentic_qa.domain.models import (
     TestPlan,
 )
 from agentic_qa.infra.trace import ensure_trace, traced_operation
-from agentic_qa.infra.settings import get_settings
 from agentic_qa.services.analysis_service import AnalysisService
 from agentic_qa.services.approval_service import ApprovalService
 from agentic_qa.services.common import ServiceContext, canonical_hash
@@ -55,12 +54,8 @@ class OrchestrationConflictError(Exception):
     """Raised when an orchestration action is invalid for the current run state."""
 
 
-class RequirementPipelineQueueUnavailable(Exception):
-    """Raised when a committed Community pipeline cannot be sent to the worker."""
-
-    def __init__(self, orchestration_id: str) -> None:
-        self.orchestration_id = orchestration_id
-        super().__init__("PIPELINE_QUEUE_UNAVAILABLE")
+class PipelineQueueUnavailableError(Exception):
+    """The accepted run is durable, but the queue could not publish it."""
 
 
 class OrchestratorService:
@@ -75,6 +70,26 @@ class OrchestratorService:
         self.core_loop_service = CoreLoopService(db)
         self.observability_service = ObservabilityService(db)
         self.approval_service = ApprovalService(db)
+
+    @staticmethod
+    def dispatch_queued_requirement_pipeline(
+        data: dict[str, object],
+        context: ServiceContext,
+        schedule_background: Callable[..., object],
+    ) -> None:
+        if data["status"] != "queued" or data["blocked"] or data["currentStep"] != "PLAN":
+            return
+        from agentic_qa.infra.queue import enqueue_task
+        from agentic_qa.infra.settings import get_settings
+
+        args = (str(data["orchestrationId"]), str(context.user.id), context.request_id, context.trace_id)
+        if get_settings().queue_mode == "inline":
+            schedule_background(enqueue_task, "requirement.pipeline.run", *args)
+            return
+        try:
+            enqueue_task("requirement.pipeline.run", *args, _publish_retry=False)
+        except Exception as exc:
+            raise PipelineQueueUnavailableError(str(data["orchestrationId"])) from exc
 
     def run_pr_pipeline(self, payload, context: ServiceContext) -> dict[str, object]:
         return self._run_pipeline(payload, context, event_type="pr_trigger", trigger_type="pr_trigger")
@@ -295,30 +310,8 @@ class OrchestratorService:
             raise OrchestrationConflictError("PIPELINE_IDEMPOTENCY_CONFLICT")
         return {**self._requirement_pipeline_response(run), "deduplicated": True}
 
-    @staticmethod
-    def dispatch_queued_requirement_pipeline(
-        data: dict[str, object], context: ServiceContext, schedule_after_response: Callable[..., object]
-    ) -> None:
-        if data["status"] != "queued" or data["blocked"] or data["currentStep"] != "PLAN":
-            return
-        from agentic_qa.infra.queue import enqueue_task
-
-        args = (
-            str(data["orchestrationId"]),
-            str(context.user.id),
-            context.request_id,
-            context.trace_id,
-        )
-        if get_settings().queue_mode == "inline":
-            schedule_after_response(enqueue_task, "requirement.pipeline.run", *args)
-            return
-        try:
-            enqueue_task("requirement.pipeline.run", *args, _publish_retry=False)
-        except Exception as exc:
-            raise RequirementPipelineQueueUnavailable(str(data["orchestrationId"])) from exc
-
     def run_queued_requirement_pipeline(self, run_id: UUID, context: ServiceContext) -> dict[str, object]:
-        """Continue one accepted Community run under the queue's per-run lock."""
+        """Continue one accepted scoped run under the queue's per-run lock."""
         run = self._require_run(run_id)
         if run.trigger_type != "requirement_library_selection" or run.idempotency_key is None:
             raise OrchestrationConflictError("PIPELINE_ASYNC_RUN_INVALID")
@@ -396,8 +389,10 @@ class OrchestratorService:
         if self.core_loop_service.has_open_p0(run.linked_requirement_version_id):
             self.db.commit()
             return self._requirement_pipeline_response(run)
-        run.status = JobStatus.RUNNING
+        deferred = run.idempotency_key is not None
+        run.status = JobStatus.QUEUED if deferred else JobStatus.RUNNING
         run.current_step = "PLAN"
+        run.result_payload = {**run.result_payload, "blocked": False}
         self._record_checkpoint(
             run_id=run.id,
             step_name="CLARIFICATION",
@@ -409,6 +404,8 @@ class OrchestratorService:
             execution_id=None,
         )
         self.db.commit()
+        if deferred:
+            return {**self._requirement_pipeline_response(run), "deferred": True}
         return self._continue_requirement_pipeline(run.id, context)
 
     def apply_requirement_correction(self, run_id: UUID, payload, context: ServiceContext) -> dict[str, object]:

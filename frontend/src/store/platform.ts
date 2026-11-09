@@ -104,6 +104,7 @@ export type PlanItem = {
     schemaVersion: string;
     environmentTargetUrl: string | null;
     historicalLocatorHints: Array<Record<string, unknown>>;
+    acceptanceSources?: Array<{ ref: string; text: string }>;
   };
 };
 

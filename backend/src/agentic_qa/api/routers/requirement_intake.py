@@ -149,7 +149,7 @@ async def upload_requirement_intake_batch_sources(
     domains: str = Form(default='["functional","performance","security"]'),
     riskLevel: str = Form(default="medium"),
     metadata: str | None = Form(default="{}"),
-    idempotencyKey: str | None = Form(default=None),
+    idempotencyKey: str | None = Form(default=None, min_length=1, max_length=120),
     db=Depends(get_db),
     user=Depends(capability_dependency("requirements.manage")),
 ) -> dict[str, object]:

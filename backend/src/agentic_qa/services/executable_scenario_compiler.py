@@ -9,9 +9,11 @@ from typing import Any, Iterable
 from urllib.parse import urlsplit
 
 from agentic_qa.infra.redaction import contains_sensitive_material
+from agentic_qa.schemas.scenario_acceptance import ScenarioAcceptanceContract
 
 
 SCHEMA_VERSION = "community.executable-scenarios.v1"
+ACCEPTANCE_SCHEMA_VERSION = "community.scenario-acceptance.v1"
 ALLOWED_ACTION_TYPES = frozenset(
     {"navigate", "fill", "click", "assert_visible", "assert_text"}
 )
@@ -29,12 +31,76 @@ _VALIDATION_LIMITATIONS = frozenset(
         "ELEMENT_TARGET_REQUIRED",
         "EXPECTED_TEXT_REQUIRED",
         "FILL_REFERENCE_REQUIRED",
+        "BUSINESS_EXPECTATION_REQUIRED",
+        "BUSINESS_EXPECTATION_REVIEW_REQUIRED",
+        "BUSINESS_QUESTIONS_UNRESOLVED",
+        "BUSINESS_ASSERTION_REQUIRED",
     }
 )
 
 
 class ExecutableScenarioError(ValueError):
     pass
+
+
+def acceptance_sources(
+    input_payload: dict[str, Any], requirement_version_id: object | None
+) -> list[dict[str, str]]:
+    """Only persisted plan input supplies source text; never model/client quotations."""
+    base = (
+        f"requirement-version://{requirement_version_id}"
+        if requirement_version_id else "test-plan-input://requirements"
+    )
+    criteria = input_payload.get("acceptanceCriteria", [])
+    if not isinstance(criteria, list):
+        return []
+    return [
+        {"ref": f"{base}#acceptance-criteria/{index}", "text": text.strip()}
+        for index, text in enumerate(criteria[:500])
+        if isinstance(text, str) and text.strip() and len(text) <= 4000
+        and not contains_sensitive_material(text)
+    ]
+
+
+def _normalize_acceptance(
+    raw: object, *, sources: list[dict[str, str]] | None,
+    origin: str, allow_review: bool,
+) -> dict[str, Any]:
+    if not isinstance(raw, dict) or raw.get("schemaVersion") != ACCEPTANCE_SCHEMA_VERSION:
+        raise ExecutableScenarioError("EXECUTABLE_ACCEPTANCE_INVALID")
+    expected_raw = raw.get("expectedOutcome", "")
+    questions_raw = raw.get("openQuestions", [])
+    ref_raw = raw.get("sourceCriterionRef", "")
+    if (
+        not isinstance(expected_raw, str) or len(expected_raw) > 4000
+        or not isinstance(ref_raw, str) or len(ref_raw) > 1000
+        or not isinstance(raw.get("reviewed", False), bool)
+        or not isinstance(questions_raw, list) or len(questions_raw) > 50
+        or any(not isinstance(item, str) or len(item) > 4000 for item in questions_raw)
+    ):
+        raise ExecutableScenarioError("EXECUTABLE_ACCEPTANCE_INVALID")
+    expected = _bounded_text(expected_raw, 4000)
+    questions = [_bounded_text(item, 4000) for item in _clean_strings(questions_raw, 50)]
+    ref = _bounded_text(ref_raw, 1000)
+    source_text = _bounded_text(raw.get("sourceText"), 4000)
+    if sources is not None:
+        source = next((item for item in sources if item["ref"] == ref), None)
+        if ref and source is None:
+            raise ExecutableScenarioError("EXECUTABLE_ACCEPTANCE_SOURCE_INVALID")
+        source_text = source["text"] if source else ""
+    if ref and not source_text:
+        raise ExecutableScenarioError("EXECUTABLE_ACCEPTANCE_SOURCE_INVALID")
+    reviewed = raw.get("reviewed") is True and allow_review
+    normalized = {
+        "schemaVersion": ACCEPTANCE_SCHEMA_VERSION,
+        "expectedOutcome": expected,
+        "sourceCriterionRef": ref,
+        "sourceText": source_text if ref else "",
+        "basis": "requirement" if ref else ("inferred" if origin == "generated" else "manual"),
+        "openQuestions": questions,
+        "reviewed": reviewed and bool(expected) and not questions,
+    }
+    return ScenarioAcceptanceContract.model_validate(normalized).model_dump(mode="json")
 
 
 def canonical_hash(value: object) -> str:
@@ -87,7 +153,7 @@ def generated_collection(
     if not isinstance(functional, list) or not functional:
         return None
 
-    acceptance = _clean_strings(input_payload.get("acceptanceCriteria", []), 500)
+    sources = acceptance_sources(input_payload, requirement_version_id)
     requirement_ref = (
         f"requirement-version://{requirement_version_id}"
         if requirement_version_id
@@ -106,15 +172,20 @@ def generated_collection(
             str(index),
         )
         case_source_refs = _source_refs(raw_case.get("sourceRefs"))
-        criterion = acceptance[index] if index < len(acceptance) else (
-            acceptance[0] if len(acceptance) == 1 else goal
-        )
+        # Positional pairing does not prove that a case implements a criterion.
+        criterion_ref = str(raw_case.get("acceptanceCriterionRef") or "")
+        if not criterion_ref:
+            criterion_ref = next(
+                (item["ref"] for item in case_source_refs
+                 if any(source["ref"] == item.get("ref") for source in sources)), ""
+            )
+        source = next((item for item in sources if item["ref"] == criterion_ref), None)
+        criterion_ref = source["ref"] if source else ""
         if not case_source_refs:
-            criterion_index = index if index < len(acceptance) else 0
             case_source_refs = [
                 {
-                    "type": "acceptance_criterion",
-                    "ref": f"{requirement_ref}#acceptance-criteria/{criterion_index}",
+                    "type": "acceptance_criterion" if source else "plan_input",
+                    "ref": criterion_ref or requirement_ref,
                 }
             ]
         raw_actions = raw_case.get("steps")
@@ -122,13 +193,10 @@ def generated_collection(
             raw_actions = [
                 {
                     "actionId": f"{scenario_id}-assertion-1",
-                    "actionType": "assert_text",
+                    "actionType": "assert_visible",
                     "semanticTarget": {},
                     "targetHints": {},
-                    "assertionIntent": {
-                        "expectedText": criterion,
-                        "match": "contains",
-                    },
+                    "assertionIntent": {},
                     "sourceRefs": case_source_refs,
                     "confidence": float(raw_case.get("confidence") or 0.5),
                     "limitations": ["ELEMENT_TARGET_REQUIRED"],
@@ -144,6 +212,14 @@ def generated_collection(
                     raw_case.get("targetUrl") or environment_base_url, 2000
                 ),
                 "preconditions": _clean_strings(raw_case.get("preconditions", []), 50),
+                "acceptance": {
+                    "schemaVersion": ACCEPTANCE_SCHEMA_VERSION,
+                    "expectedOutcome": _bounded_text(raw_case.get("expectedOutcome"), 4000)
+                    or (source["text"] if source else ""),
+                    "sourceCriterionRef": criterion_ref,
+                    "openQuestions": _clean_strings(raw_case.get("openQuestions", []), 50),
+                    "reviewed": False,
+                },
                 "actions": raw_actions,
                 "sourceRefs": case_source_refs,
                 "confidence": _confidence(raw_case.get("confidence"), 0.5),
@@ -186,6 +262,7 @@ def generated_collection(
         current_source_fingerprint=current_fingerprint,
         environment_base_url=environment_base_url,
         allow_confirm=False,
+        sources=sources,
     )
 
 
@@ -196,6 +273,7 @@ def normalize_functional_config(
     current_source_fingerprint: str | None = None,
     environment_base_url: str | None = None,
     allow_confirm: bool = True,
+    sources: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     config = deepcopy(raw_config or {})
     raw_collection = config.get("executableScenarios")
@@ -206,6 +284,7 @@ def normalize_functional_config(
             current_source_fingerprint=current_source_fingerprint,
             environment_base_url=environment_base_url,
             allow_confirm=allow_confirm,
+            sources=sources,
         )
         config["executableScenarios"] = collection
         config["actualExecution"] = bool(collection["reviewSummary"]["confirmedCount"])
@@ -261,6 +340,7 @@ def normalize_collection(
     current_source_fingerprint: str | None,
     environment_base_url: str | None,
     allow_confirm: bool,
+    sources: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     raw_scenarios = raw.get("scenarios")
     if not isinstance(raw_scenarios, list):
@@ -282,6 +362,12 @@ def normalize_collection(
     for index, item in enumerate(raw_scenarios):
         if not isinstance(item, dict):
             raise ExecutableScenarioError("EXECUTABLE_SCENARIO_INVALID")
+        if (accept_current_source or source_changed) and sources is not None and isinstance(item.get("acceptance"), dict):
+            ref = str(item["acceptance"].get("sourceCriterionRef") or "")
+            if ref and not any(source["ref"] == ref for source in sources):
+                item = deepcopy(item)
+                item["acceptance"]["sourceCriterionRef"] = ""
+                item["acceptance"]["sourceText"] = ""
         scenario = _normalize_scenario(
             item,
             index=index,
@@ -289,6 +375,7 @@ def normalize_collection(
             environment_base_url=environment_base_url,
             source_changed=source_changed,
             allow_confirm=allow_confirm and not accept_current_source,
+            sources=sources,
         )
         if scenario["scenarioId"] in seen_ids:
             raise ExecutableScenarioError("EXECUTABLE_SCENARIO_ID_CONFLICT")
@@ -346,6 +433,7 @@ def compile_confirmed_scenarios(
     selected_scenario_ids: Iterable[str] | None = None,
     current_source_fingerprint: str | None = None,
     environment_base_url: str | None = None,
+    sources: list[dict[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     normalized = normalize_functional_config(
         config,
@@ -353,6 +441,7 @@ def compile_confirmed_scenarios(
         current_source_fingerprint=current_source_fingerprint,
         environment_base_url=environment_base_url,
         allow_confirm=True,
+        sources=sources,
     )
     collection = normalized.get("executableScenarios")
     if not isinstance(collection, dict):
@@ -392,6 +481,7 @@ def compile_confirmed_scenarios(
             "revision": collection["revision"],
             "confidence": item["confidence"],
             "limitations": deepcopy(item["limitations"]),
+            **({"acceptance": deepcopy(item["acceptance"])} if "acceptance" in item else {}),
         }
         for item in candidates
     ]
@@ -405,6 +495,7 @@ def _normalize_scenario(
     environment_base_url: str | None,
     source_changed: bool,
     allow_confirm: bool,
+    sources: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     scenario_id = str(raw.get("scenarioId") or f"scenario-{index + 1}")
     if not _SCENARIO_ID.fullmatch(scenario_id):
@@ -448,6 +539,22 @@ def _normalize_scenario(
     if not actions:
         action_issues.append("ACTIONS_REQUIRED")
 
+    acceptance = None
+    if "acceptance" in raw:
+        acceptance = _normalize_acceptance(
+            raw["acceptance"], sources=sources,
+            origin=str(raw.get("origin") or "manual"),
+            allow_review=allow_confirm and not source_changed,
+        )
+        if not acceptance["expectedOutcome"]:
+            action_issues.append("BUSINESS_EXPECTATION_REQUIRED")
+        if acceptance["openQuestions"]:
+            action_issues.append("BUSINESS_QUESTIONS_UNRESOLVED")
+        if not acceptance["reviewed"]:
+            action_issues.append("BUSINESS_EXPECTATION_REVIEW_REQUIRED")
+        if not any(action["actionType"].startswith("assert_") for action in actions):
+            action_issues.append("BUSINESS_ASSERTION_REQUIRED")
+
     requested_status = str(raw.get("status") or "draft")
     if requested_status not in {"draft", "needs_input", "confirmed", "stale"}:
         raise ExecutableScenarioError("EXECUTABLE_SCENARIO_STATUS_INVALID")
@@ -490,6 +597,8 @@ def _normalize_scenario(
             else "manual"
         ),
     }
+    if acceptance is not None:
+        scenario["acceptance"] = acceptance
     scenario["contentHash"] = canonical_hash(
         {key: value for key, value in scenario.items() if key != "contentHash"}
     )

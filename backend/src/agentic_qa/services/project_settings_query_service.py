@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from agentic_qa.domain.enums import UserStatus
 from agentic_qa.domain.models import (
     Execution,
     Project,
@@ -15,7 +16,11 @@ from agentic_qa.domain.models import (
     User,
 )
 from agentic_qa.services.common import ServiceContext, paginate_query, paginate_result
-from agentic_qa.services.scope_service import ScopeAuthorizationError, ScopeAuthorizationService
+from agentic_qa.services.scope_service import (
+    PLATFORM_SCOPE_ROLES,
+    ScopeAuthorizationError,
+    ScopeAuthorizationService,
+)
 
 
 PROJECT_STATUSES = {"active", "archived"}
@@ -112,6 +117,71 @@ class ProjectSettingsQueryService:
             page,
             page_size,
         )
+
+    def list_member_candidates(
+        self,
+        project_id: UUID,
+        context: ServiceContext,
+        *,
+        search: str = "",
+        limit: int = 50,
+    ) -> dict[str, object]:
+        scope_service = ScopeAuthorizationService(self.db)
+        scope = scope_service.resolve_project(project_id, context, write=True)
+        existing_user_ids = select(ProjectMember.user_id).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id.is_not(None),
+        )
+        statement = select(User).where(
+            User.status == UserStatus.ACTIVE,
+            User.edition != "community",
+            User.id.not_in(existing_user_ids),
+        )
+
+        # User identities have no tenant column. A platform identity reader can
+        # inspect the full user directory; other project managers only see users
+        # already known through projects they can access in this workspace.
+        if not (
+            PLATFORM_SCOPE_ROLES.intersection(context.user.roles)
+            or "access_control.manage" in context.user.capabilities
+        ):
+            authorized_ids = scope_service.authorized_project_ids(context)
+            workspace_ids = [
+                project.id
+                for project in self.db.scalars(select(Project).where(Project.id.in_(authorized_ids)))
+                if scope_service.project_authority(project) == (scope.tenant_id, scope.workspace_id)
+            ]
+            known_user_ids = select(ProjectMember.user_id).where(
+                ProjectMember.project_id.in_(workspace_ids),
+                ProjectMember.status == "active",
+            )
+            statement = statement.where(User.id.in_(known_user_ids))
+
+        term = search.strip().lower()
+        if term:
+            escaped_term = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{escaped_term}%"
+            statement = statement.where(
+                or_(
+                    func.lower(User.name).like(pattern, escape="\\"),
+                    func.lower(User.username).like(pattern, escape="\\"),
+                    func.lower(User.email).like(pattern, escape="\\"),
+                    func.lower(User.display_name).like(pattern, escape="\\"),
+                )
+            )
+        users = list(self.db.scalars(statement.order_by(User.name, User.id).limit(limit + 1)))
+        return {
+            "items": [
+                {
+                    "id": str(user.id),
+                    "displayName": user.display_name or user.name,
+                    "username": user.username,
+                    "email": user.email,
+                }
+                for user in users[:limit]
+            ],
+            "hasMore": len(users) > limit,
+        }
 
     def serialize_project(self, project: Project) -> dict[str, object]:
         return {

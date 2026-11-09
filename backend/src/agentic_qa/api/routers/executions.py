@@ -189,6 +189,13 @@ def list_metrics(request: Request, task_id: UUID, db=Depends(get_db), user=Depen
     return success_response(request, service.list_metrics(task_id))
 
 
+@router.get("/tasks/{task_id}/finding-observations")
+def list_finding_observations(request: Request, task_id: UUID, db=Depends(get_db), user=Depends(get_current_user)) -> dict[str, object]:
+    service = ExecutionService(db)
+    _authorize_task(db, task_id, request, user)
+    return success_response(request, service.list_finding_observations(task_id))
+
+
 @router.get("/executions/{execution_id}/triage")
 def get_triage(request: Request, execution_id: UUID, db=Depends(get_db), user=Depends(get_current_user)) -> dict[str, object]:
     _authorize_execution(db, execution_id, request, user)

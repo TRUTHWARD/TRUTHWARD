@@ -26,6 +26,9 @@ class ArtifactStorageAdapter(ABC):
     def delete_artifact(self, storage_ref: str) -> None:
         raise NotImplementedError
 
+    def read_runner_report(self, *, execution_id: str, task_id: str, filename: str) -> bytes:
+        raise FileNotFoundError("runner report is unavailable through this storage adapter")
+
 
 class LocalArtifactStorageAdapter(ArtifactStorageAdapter):
     adapter_name = "local"
@@ -60,6 +63,22 @@ class LocalArtifactStorageAdapter(ArtifactStorageAdapter):
         if not target.exists():
             raise FileNotFoundError("artifact not found")
         return target.read_bytes()
+
+    def read_runner_report(self, *, execution_id: str, task_id: str, filename: str) -> bytes:
+        # Legacy named runner reports use a fixed directory beneath RUNNER_ARTIFACT_DIR.
+        # Construct the path from persisted identities; never accept a client or DB path.
+        from uuid import UUID
+
+        if filename != "zap-report.json":
+            raise FileNotFoundError("runner report is unavailable")
+        root = Path(get_settings().runner_artifact_dir).resolve()
+        target = root / str(UUID(execution_id)) / str(UUID(task_id)) / filename
+        if any(path.is_symlink() for path in (target.parent.parent, target.parent, target)):
+            raise FileNotFoundError("runner report is unavailable")
+        resolved = target.resolve()
+        if resolved != target or not resolved.is_file() or resolved.stat().st_size > 16 * 1024 * 1024:
+            raise FileNotFoundError("runner report is unavailable")
+        return resolved.read_bytes()
 
     def delete_artifact(self, storage_ref: str) -> None:
         target = self._path_from_ref(storage_ref)

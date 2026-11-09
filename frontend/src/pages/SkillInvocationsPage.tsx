@@ -10,6 +10,7 @@ import type { ApprovalItem, GuardrailEventItem, ReplayItem, SkillInvocationItem 
 
 type SkillInvocationsPageProps = {
   approvals: ApprovalItem[];
+  canViewPrivilegedSnapshots: boolean;
   guardrailEvents: GuardrailEventItem[];
   locale: Locale;
   replay: ReplayItem | null;
@@ -18,6 +19,7 @@ type SkillInvocationsPageProps = {
 
 export function SkillInvocationsPage({
   approvals,
+  canViewPrivilegedSnapshots,
   guardrailEvents,
   locale,
   replay,
@@ -173,10 +175,22 @@ export function SkillInvocationsPage({
                 />
               </div>
 
-              <div className="empty-state">
-                <strong>{t(locale, "privilegedSnapshotsNotExposed")}</strong>
-                <p>{t(locale, "privilegedSnapshotsNotExposedNotice")}</p>
-              </div>
+              {canViewPrivilegedSnapshots && (selectedInvocation.inputSnapshot || selectedInvocation.outputSnapshot || selectedInvocation.policySnapshot) ? (
+                <div>
+                  <h3>{t(locale, "privilegedSnapshots")}</h3>
+                  <p className="empty-copy">{t(locale, "privilegedSnapshotsNotice")}</p>
+                  <div className="detail-grid">
+                    {selectedInvocation.inputSnapshot ? <ObservationSnapshot locale={locale} title={t(locale, "input")} value={selectedInvocation.inputSnapshot} /> : null}
+                    {selectedInvocation.outputSnapshot ? <ObservationSnapshot locale={locale} title={t(locale, "output")} value={selectedInvocation.outputSnapshot} /> : null}
+                    {selectedInvocation.policySnapshot ? <ObservationSnapshot locale={locale} title={t(locale, "policy")} value={selectedInvocation.policySnapshot} /> : null}
+                  </div>
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <strong>{t(locale, "privilegedSnapshotsNotExposed")}</strong>
+                  <p>{t(locale, "privilegedSnapshotsNotExposedNotice")}</p>
+                </div>
+              )}
             </div>
           ) : (
             <p className="empty-copy">{t(locale, "noSkillInvocations")}</p>

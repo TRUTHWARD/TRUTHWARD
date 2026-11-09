@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   ApiRequestError,
@@ -9,6 +9,7 @@ import {
   cancelApproval,
   cancelExecution,
   clearCommunityAuthToken,
+  hasStoredLocalAuthToken,
   claimWorkItem,
   createExecution,
   createPlan,
@@ -35,6 +36,7 @@ import {
   fetchExecutionTaskArtifacts,
   fetchExecutionTaskLogs,
   fetchExecutionTaskMetrics,
+  fetchExecutionTaskFindingObservations,
   fetchExecutionTasks,
   fetchExecutions,
   fetchProjectMembers,
@@ -80,6 +82,7 @@ import {
   type EnvironmentMutationPayload,
   type EnvironmentItem,
   type ExecutionFinding,
+  type ExecutionFindingObservation,
   type ExecutionTaskArtifact,
   type ExecutionTaskLog,
   type ExecutionTaskMetric,
@@ -581,6 +584,8 @@ function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [workflowLoading, setWorkflowLoading] = useState(false);
   const [workflowError, setWorkflowError] = useState<string | null>(null);
+  const [approvalsLoading, setApprovalsLoading] = useState(false);
+  const [approvalsError, setApprovalsError] = useState<string | null>(null);
   const [proofLoading, setProofLoading] = useState(false);
   const [proofError, setProofError] = useState<string | null>(null);
   const [coverageLoading, setCoverageLoading] = useState(false);
@@ -604,6 +609,9 @@ function App() {
   const [executionTaskArtifacts, setExecutionTaskArtifacts] = useState<ExecutionTaskArtifact[]>([]);
   const [executionTaskLogs, setExecutionTaskLogs] = useState<ExecutionTaskLog[]>([]);
   const [executionTaskMetrics, setExecutionTaskMetrics] = useState<ExecutionTaskMetric[]>([]);
+  const [executionTaskFindingObservations, setExecutionTaskFindingObservations] = useState<ExecutionFindingObservation[]>([]);
+  const [executionTaskObservationsLoading, setExecutionTaskObservationsLoading] = useState(false);
+  const [executionTaskObservationsError, setExecutionTaskObservationsError] = useState(false);
   const [executionTaskDetailLoading, setExecutionTaskDetailLoading] = useState(false);
   const [executionTaskDetailError, setExecutionTaskDetailError] = useState<string | null>(null);
   const [executionFindings, setExecutionFindings] = useState<ExecutionFinding[]>([]);
@@ -656,7 +664,9 @@ function App() {
       .filter((group) => group.sectionIds.length > 0),
     [currentUser?.capabilities],
   );
-  const canManageModels = hasCapability("model.governance.manage") || hasCapability("model.config.manage");
+  const canManageModels = IS_OSS_PROFILE
+    ? hasCapability("model.config.manage")
+    : hasCapability("model.governance.manage");
   const issueTrackerBindings: ConnectorBindingItem[] = connectorBindings.filter(
     (binding) => ["jira", "zentao", "mock-issue-tracker"].includes(binding.connectorName) && binding.status === "active",
   );
@@ -723,6 +733,24 @@ function App() {
     const modelsData = await enterpriseApi.fetchModels();
     setModels(modelsData.items);
   };
+
+  const refreshPendingApprovals = useCallback(async () => {
+    if (!currentUser || IS_OSS_PROFILE) return;
+    setApprovalsLoading(true);
+    setApprovalsError(null);
+    try {
+      const response = await loadApprovalsForUser(currentUser, { status: "pending", pageSize: 100 });
+      setApprovals(response.items);
+    } catch (error) {
+      setApprovalsError(userFacingError(locale, error, "approvalsLoadFailed"));
+    } finally {
+      setApprovalsLoading(false);
+    }
+  }, [currentUser, locale, setApprovals]);
+
+  useEffect(() => {
+    if (activeSection === "workflow") void refreshPendingApprovals();
+  }, [activeSection, refreshPendingApprovals]);
 
   const refreshSkills = async () => {
     if (!currentUser || !hasUserCapability(currentUser, "skills.catalog.read")) {
@@ -1131,8 +1159,8 @@ function App() {
     }
   };
 
-  const handleApproveApproval = async (approvalId: string, comment: string) => {
-    await approveApproval(approvalId, comment || null);
+  const handleApproveApproval = async (approvalId: string, comment: string, apiKeyRef?: string) => {
+    await approveApproval(approvalId, comment || null, apiKeyRef);
     await refreshAfterApprovalDecision();
   };
 
@@ -1488,6 +1516,8 @@ function App() {
     setExecutionTaskArtifacts([]);
     setExecutionTaskLogs([]);
     setExecutionTaskMetrics([]);
+    setExecutionTaskFindingObservations([]);
+    setExecutionTaskObservationsError(false);
     setExecutionTaskDetailError(null);
   }, [selectedExecutionId]);
 
@@ -1549,6 +1579,29 @@ function App() {
       cancelled = true;
     };
   }, [executionTasks, locale, selectedExecutionTaskId]);
+
+  const selectedTaskObservationRevision = executionTasks.find((task) => task.id === selectedExecutionTaskId);
+  useEffect(() => {
+    let cancelled = false;
+    setExecutionTaskFindingObservations([]);
+    setExecutionTaskObservationsError(false);
+    if (!selectedExecutionTaskId) {
+      setExecutionTaskObservationsLoading(false);
+      return;
+    }
+    setExecutionTaskObservationsLoading(true);
+    void fetchExecutionTaskFindingObservations(selectedExecutionTaskId)
+      .then((data) => {
+        if (!cancelled) setExecutionTaskFindingObservations(data.items);
+      })
+      .catch(() => {
+        if (!cancelled) setExecutionTaskObservationsError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setExecutionTaskObservationsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedExecutionTaskId, selectedTaskObservationRevision?.status, selectedTaskObservationRevision?.retryCount, selectedTaskObservationRevision?.endedAt]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1841,6 +1894,8 @@ function App() {
         return (
           <WorkflowPage
             approvals={approvals}
+            approvalsError={approvalsError}
+            approvalsLoading={approvalsLoading}
             clarifications={requirementClarifications}
             currentUser={currentUser}
             environments={environments}
@@ -1866,6 +1921,7 @@ function App() {
             onHealExecution={handleHealExecution}
             onNavigateRoute={(route) => navigateToSection(sectionFromPath(route))}
             onRejectApproval={handleRejectApproval}
+            onRefreshApprovals={refreshPendingApprovals}
             onRetryExecution={handleRetryExecution}
             onSelectExecution={setSelectedExecutionId}
             onSelectPipeline={loadRequirementPipelineDetails}
@@ -2159,6 +2215,9 @@ function App() {
             selectedTaskId={selectedExecutionTaskId}
             selectedTaskLogs={executionTaskLogs}
             selectedTaskMetrics={executionTaskMetrics}
+            findingObservations={executionTaskFindingObservations}
+            findingObservationsLoading={executionTaskObservationsLoading}
+            findingObservationsError={executionTaskObservationsError}
             syncingFindingId={syncingIssueFindingId}
             tasks={executionTasks}
           />
@@ -2207,6 +2266,7 @@ function App() {
         return (
           <SkillInvocationsPage
             approvals={approvals}
+            canViewPrivilegedSnapshots={!IS_OSS_PROFILE && Boolean(currentUser && hasUserCapability(currentUser, "capability_bindings.admin"))}
             guardrailEvents={guardrailEvents}
             locale={locale}
             replay={latestReplay}
@@ -2299,6 +2359,12 @@ function App() {
             environments={environments}
             locale={locale}
             models={models}
+            {...(!IS_OSS_PROFILE && currentUser && hasUserRole(currentUser, "admin") ? {
+              onOpenApprovals: () => {
+                navigateToSection("workflow");
+                window.requestAnimationFrame(() => document.getElementById("approval-center")?.scrollIntoView({ block: "start" }));
+              },
+            } : {})}
             onRefreshModels={refreshModels}
             projects={projects}
             selectedProjectId={selectedProjectId}
@@ -2393,7 +2459,7 @@ function App() {
               selectedProjectId={selectedProject?.id ?? selectedProjectId}
             />
             <LocaleSwitch locale={locale} onChange={setLocale} />
-            {IS_OSS_PROFILE ? <CommunityLogoutButton locale={locale} /> : null}
+            {IS_OSS_PROFILE || hasStoredLocalAuthToken() ? <CommunityLogoutButton locale={locale} /> : null}
           </div>
         </header>
 

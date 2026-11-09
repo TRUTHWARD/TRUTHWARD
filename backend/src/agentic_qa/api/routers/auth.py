@@ -40,13 +40,15 @@ def _raise_auth_error(exc: CommunityAuthenticationError) -> NoReturn:
     code = str(exc)
     status_code = {
         "COMMUNITY_LOGIN_INVALID": status.HTTP_401_UNAUTHORIZED,
+        "FULL_LOGIN_INVALID": status.HTTP_401_UNAUTHORIZED,
+        "FULL_LOCAL_AUTH_DISABLED": status.HTTP_404_NOT_FOUND,
         "COMMUNITY_BOOTSTRAP_ALREADY_COMPLETED": status.HTTP_409_CONFLICT,
         "COMMUNITY_IDENTITY_ALREADY_EXISTS": status.HTTP_409_CONFLICT,
         "COMMUNITY_AUTH_REQUIRES_OSS_PROFILE": status.HTTP_404_NOT_FOUND,
         "COMMUNITY_TOKEN_NOT_FOUND": status.HTTP_401_UNAUTHORIZED,
         "COMMUNITY_USER_NOT_FOUND": status.HTTP_404_NOT_FOUND,
     }.get(code, status.HTTP_400_BAD_REQUEST)
-    raise HTTPException(status_code=status_code, detail={"code": code, "message": "Community authentication request was rejected"}) from exc
+    raise HTTPException(status_code=status_code, detail={"code": code, "message": "Authentication request was rejected"}) from exc
 
 
 @router.get("/auth/bootstrap-status")
@@ -85,7 +87,7 @@ def community_login(
     db=Depends(get_db),
 ) -> dict[str, object]:
     try:
-        token, expires_at, _ = CommunityAuthService(db).login(
+        token, expires_at, _ = CommunityAuthService(db).login_for_profile(
             payload,
             request_id=get_request_id(request),
             trace_id=get_trace_id(request),

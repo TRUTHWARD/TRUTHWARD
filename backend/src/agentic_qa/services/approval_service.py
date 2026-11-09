@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from agentic_qa.domain.enums import ApprovalStatus, ApprovalType
 from agentic_qa.domain.models import Approval
 from agentic_qa.infra.audit import write_audit_log
+from agentic_qa.infra.credentials import CredentialReferenceError
 from agentic_qa.infra.redaction import redact_sensitive_data
 from agentic_qa.infra.safe_projection import ConnectorBindingSafeProjectionBuilder
 from agentic_qa.services.common import (
@@ -25,6 +26,10 @@ from agentic_qa.services.capability_service import require_capability
 
 class ApprovalConflictError(ValueError):
     """Raised when an approval cannot transition from its current state."""
+
+
+class ApprovalCredentialError(ValueError):
+    """Raised when a model approval needs a valid runtime credential reference."""
 
 
 class ApprovalService:
@@ -594,7 +599,14 @@ class ApprovalService:
             "status": approval.status.value,
         }
 
-    def approve(self, approval_id: UUID, comment: str | None, context: ServiceContext) -> dict[str, object]:
+    def approve(
+        self,
+        approval_id: UUID,
+        comment: str | None,
+        context: ServiceContext,
+        *,
+        model_credential_ref: str | None = None,
+    ) -> dict[str, object]:
         acquire_transaction_advisory_lock(
             self.db,
             "approval-decision",
@@ -609,7 +621,9 @@ class ApprovalService:
         approval.decision_comment = comment
         approval.decided_at = datetime.now(timezone.utc)
         try:
-            action_result = self._apply_approved_action(approval, context)
+            action_result = self._apply_approved_action(
+                approval, context, model_credential_ref=model_credential_ref
+            )
             write_audit_log(
                 self.db,
                 str(context.user.id),
@@ -799,10 +813,20 @@ class ApprovalService:
             self.db.refresh(approval)
         return approval
 
-    def _apply_approved_action(self, approval: Approval, context: ServiceContext) -> dict[str, object] | None:
+    def _apply_approved_action(
+        self,
+        approval: Approval,
+        context: ServiceContext,
+        *,
+        model_credential_ref: str | None = None,
+    ) -> dict[str, object] | None:
         from agentic_qa.services.execution_service import ExecutionService
 
         action = str(approval.payload.get("action") or "")
+        if model_credential_ref is not None and not (
+            approval.type == ApprovalType.OTHER and action == "model_governance.apply"
+        ):
+            raise ApprovalConflictError("apiKeyRef is only accepted for model governance approvals")
         execution_service = ExecutionService(self.db)
         if approval.type == ApprovalType.HEALING_PATCH and action == "execution.heal":
             return execution_service.execute_approved_heal(
@@ -920,11 +944,15 @@ class ApprovalService:
         if approval.type == ApprovalType.OTHER and action == "model_governance.apply":
             from agentic_qa.services.model_service import ModelService
 
-            result = ModelService(self.db).execute_approved_model_governance_action(
-                approval_payload=approval.payload,
-                approval_id=approval.id,
-                context=context,
-            )
+            try:
+                result = ModelService(self.db).execute_approved_model_governance_action(
+                    approval_payload=approval.payload,
+                    approval_id=approval.id,
+                    context=context,
+                    credential_ref=model_credential_ref,
+                )
+            except CredentialReferenceError as exc:
+                raise ApprovalCredentialError(str(exc)) from exc
             return {"modelGovernance": result}
         if approval.type == ApprovalType.OTHER and action == "routing_policy_governance.apply":
             from agentic_qa.services.routing_service import RoutingPolicyService

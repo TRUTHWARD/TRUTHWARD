@@ -7,7 +7,7 @@ import {
   clearCommunityAuthToken,
   fetchCommunityBootstrapStatus,
   fetchCurrentUser,
-  getStoredAuthToken,
+  hasStoredLocalAuthToken,
   loginCommunity,
   storeCommunityAuthToken,
 } from "../lib/api";
@@ -17,7 +17,7 @@ import { IS_OSS_PROFILE } from "../productProfile";
 type AuthMode = "checking" | "ready" | "bootstrap" | "login";
 
 export function CommunityAuthBoundary({ children }: { children: ReactNode }) {
-  const [mode, setMode] = useState<AuthMode>(IS_OSS_PROFILE ? "checking" : "ready");
+  const [mode, setMode] = useState<AuthMode>("checking");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [bootstrapForm, setBootstrapForm] = useState({ username: "admin", email: "admin@example.com", displayName: "Community Admin", password: "" });
@@ -25,16 +25,19 @@ export function CommunityAuthBoundary({ children }: { children: ReactNode }) {
   const locale = typeof window !== "undefined" && window.localStorage.getItem("agentic-qa.locale") === "zh-CN" ? "zh-CN" : "en-US";
 
   useEffect(() => {
-    if (!IS_OSS_PROFILE) return;
     let cancelled = false;
     void fetchCommunityBootstrapStatus()
       .then(async (status) => {
         if (cancelled) return;
+        if (status.authenticationMode === "demo") {
+          setMode("ready");
+          return;
+        }
         if (status.bootstrapRequired) {
           setMode("bootstrap");
           return;
         }
-        if (!getStoredAuthToken()) {
+        if (!hasStoredLocalAuthToken()) {
           setMode("login");
           return;
         }
@@ -100,7 +103,7 @@ export function CommunityAuthBoundary({ children }: { children: ReactNode }) {
     setBusy(true);
     setError(null);
     try {
-      const response = await loginCommunity({ ...loginForm, tokenName: "community-web" });
+      const response = await loginCommunity({ ...loginForm, tokenName: IS_OSS_PROFILE ? "community-web" : "full-web" });
       storeCommunityAuthToken(response.token);
       setMode("ready");
     } catch (requestError) {
@@ -132,7 +135,7 @@ export function CommunityAuthBoundary({ children }: { children: ReactNode }) {
         ) : null}
         {mode === "login" ? (
           <form className="control-form" onSubmit={submitLogin}>
-            <h1>{t(locale, "communityLoginTitle")}</h1>
+            <h1>{t(locale, IS_OSS_PROFILE ? "communityLoginTitle" : "fullLoginTitle")}</h1>
             <label className="form-field">{t(locale, "usernameOrEmail")}<input required value={loginForm.identity} onChange={(event) => setLoginForm((current) => ({ ...current, identity: event.target.value }))} /></label>
             <label className="form-field">{t(locale, "passwordMinimum12")}<input required type="password" value={loginForm.password} onChange={(event) => setLoginForm((current) => ({ ...current, password: event.target.value }))} /></label>
             <button disabled={busy} type="submit">{t(locale, "signIn")}</button>

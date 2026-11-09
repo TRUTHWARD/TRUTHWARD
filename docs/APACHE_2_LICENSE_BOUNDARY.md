@@ -1,7 +1,8 @@
 # Apache-2.0 license boundary
 
-Status: Apache-2.0 public source distribution authorized on 2026-09-01; no
-external repository publication or artifact upload was performed by this workflow.
+Status: the historical Apache-2.0 source publication remains recorded separately.
+The 2026-10-28 candidate is approved for a non-publishable evidence build only;
+current exact-export evidence and publication authorization are pending.
 
 This document defines how the private TRUTHWARD source repository may produce
 a separately licensed Apache-2.0 source distribution. It is release governance,

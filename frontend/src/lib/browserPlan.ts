@@ -2,6 +2,20 @@
 export type BrowserActionType = "navigate" | "fill" | "click" | "assert_visible" | "assert_text";
 export type BrowserScenarioStatus = "draft" | "needs_input" | "confirmed" | "stale";
 
+export type BrowserAcceptance = {
+  schemaVersion: "community.scenario-acceptance.v1";
+  expectedOutcome: string;
+  sourceCriterionRef: string;
+  sourceText: string;
+  basis: "requirement" | "inferred" | "manual";
+  openQuestions: string[];
+  reviewed: boolean;
+};
+
+export function newBrowserAcceptance(): BrowserAcceptance {
+  return { schemaVersion: "community.scenario-acceptance.v1", expectedOutcome: "", sourceCriterionRef: "", sourceText: "", basis: "manual", openQuestions: [], reviewed: false };
+}
+
 export type BrowserActionDraft = {
   actionId: string;
   actionType: BrowserActionType;
@@ -26,6 +40,7 @@ export type BrowserScenarioDraft = {
   goal: string;
   targetUrl: string;
   preconditions: string[];
+  acceptance?: BrowserAcceptance;
   actions: BrowserActionDraft[];
   sourceRefs: Array<Record<string, unknown>>;
   confidence: number;
@@ -50,6 +65,7 @@ export type BrowserScenarioInsights = {
   schemaVersion?: string;
   environmentTargetUrl?: string | null;
   historicalLocatorHints?: Array<Record<string, unknown>>;
+  acceptanceSources?: Array<{ ref: string; text: string }>;
 };
 
 export type DomainConfiguration = Record<string, Record<string, unknown>>;
@@ -108,12 +124,22 @@ function readScenario(value: unknown, index: number, fallbackUrl: string): Brows
   const actions = Array.isArray(scenario.actions)
     ? scenario.actions.map((action, actionIndex) => readAction(action, `${scenarioId}-action-${actionIndex + 1}`))
     : [];
+  const acceptance = record(scenario.acceptance);
   return {
     scenarioId,
     name: String(scenario.name || `Scenario ${index + 1}`),
     goal: String(scenario.goal || ""),
     targetUrl: String(scenario.targetUrl || fallbackUrl),
     preconditions: stringArray(scenario.preconditions),
+    ...(scenario.acceptance ? { acceptance: {
+      ...newBrowserAcceptance(),
+      expectedOutcome: String(acceptance.expectedOutcome ?? ""),
+      sourceCriterionRef: String(acceptance.sourceCriterionRef ?? ""),
+      sourceText: String(acceptance.sourceText ?? ""),
+      basis: acceptance.basis === "requirement" || acceptance.basis === "inferred" ? acceptance.basis : "manual" as const,
+      openQuestions: stringArray(acceptance.openQuestions),
+      reviewed: acceptance.reviewed === true,
+    } } : {}),
     actions,
     sourceRefs: referenceArray(scenario.sourceRefs),
     confidence: Number(scenario.confidence ?? 1),
@@ -152,6 +178,7 @@ export function newBrowserScenario(index: number, targetUrl = ""): BrowserScenar
     goal: "",
     targetUrl,
     preconditions: [],
+    acceptance: newBrowserAcceptance(),
     actions: [newBrowserAction(scenarioId, 0)],
     sourceRefs: [],
     confidence: 1,
@@ -210,6 +237,7 @@ export function readBrowserPlan(config: DomainConfiguration): BrowserPlanDraft {
         name: "Legacy browser scenario",
         goal: "Preserved browser execution configuration",
         actions: legacyActions.map((action, index) => readAction(action, `legacy-browser-action-${index + 1}`)),
+        acceptance: undefined,
         status: "confirmed",
         origin: "legacy",
       }],
@@ -232,15 +260,33 @@ export function browserPlanError(draft: BrowserPlanDraft): string | null {
   const confirmed = draft.scenarios.filter((scenario) => scenario.status === "confirmed");
   if (draft.sourceChanged && confirmed.length > 0 && !draft.acceptCurrentSource) return "browserSourceChanged";
   for (const scenario of confirmed) {
-    if (!validUrl(scenario.targetUrl)) return "browserTargetUrlInvalid";
-    if (scenario.actions.length === 0) return "browserActionsRequired";
-    for (const action of scenario.actions) {
-      const hasTarget = Boolean(action.selector.trim() || action.testId.trim() || action.name.trim());
-      if (action.actionType !== "navigate" && !hasTarget) return "browserTargetRequired";
-      if (action.actionType === "assert_text" && !action.expectedText.trim()) return "browserExpectedTextRequired";
-      if (action.actionType === "fill" && Boolean(action.valueRef.trim()) === Boolean(action.secretRef.trim())) return "browserFillReferenceRequired";
-    }
+    const error = browserScenarioReadinessError(scenario);
+    if (error) return error;
   }
+  return null;
+}
+
+export function browserScenarioReadinessError(scenario: BrowserScenarioDraft): string | null {
+  const acceptanceError = browserAcceptanceError(scenario);
+  if (acceptanceError) return acceptanceError;
+  if (!validUrl(scenario.targetUrl)) return "browserTargetUrlInvalid";
+  if (scenario.actions.length === 0) return "browserActionsRequired";
+  for (const action of scenario.actions) {
+    const hasTarget = Boolean(action.selector.trim() || action.testId.trim() || action.name.trim());
+    if (action.actionType === "navigate" && action.url.trim() && !validUrl(action.url.trim())) return "browserTargetUrlInvalid";
+    if (action.actionType !== "navigate" && !hasTarget) return "browserTargetRequired";
+    if (action.actionType === "assert_text" && !action.expectedText.trim()) return "browserExpectedTextRequired";
+    if (action.actionType === "fill" && Boolean(action.valueRef.trim()) === Boolean(action.secretRef.trim())) return "browserFillReferenceRequired";
+  }
+  return null;
+}
+
+export function browserAcceptanceError(scenario: BrowserScenarioDraft): string | null {
+  if (!scenario.acceptance) return null;
+  if (!scenario.acceptance.expectedOutcome.trim()) return "browserBusinessExpectationRequired";
+  if (scenario.acceptance.openQuestions.length) return "browserBusinessQuestionsUnresolved";
+  if (!scenario.acceptance.reviewed) return "browserBusinessReviewRequired";
+  if (!scenario.actions.some(action => action.actionType.startsWith("assert_"))) return "browserBusinessAssertionRequired";
   return null;
 }
 
@@ -290,6 +336,7 @@ export function buildBrowserPlan(config: DomainConfiguration, draft: BrowserPlan
     goal: scenario.goal.trim(),
     targetUrl: scenario.targetUrl.trim(),
     preconditions: scenario.preconditions,
+    ...(scenario.acceptance ? { acceptance: scenario.acceptance } : {}),
     actions: scenario.actions.map((action) => buildAction(action, riskLevel)),
     sourceRefs: scenario.sourceRefs,
     confidence: scenario.confidence,

@@ -16,7 +16,7 @@ from agentic_qa.services.core_loop_service import CoreLoopService
 from agentic_qa.services.orchestrator_service import (
     OrchestrationConflictError,
     OrchestratorService,
-    RequirementPipelineQueueUnavailable,
+    PipelineQueueUnavailableError,
 )
 from agentic_qa.services.requirement_library_service import RequirementLibraryService
 from agentic_qa.services.scope_service import ScopeAuthorizationError
@@ -31,6 +31,16 @@ def _context(request: Request, user) -> ServiceContext:
 
 def _raise_scope_error(exc: ScopeAuthorizationError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+
+
+def _dispatch_queued_pipeline(data: dict[str, object], context: ServiceContext, background_tasks: BackgroundTasks) -> None:
+    try:
+        OrchestratorService.dispatch_queued_requirement_pipeline(data, context, background_tasks.add_task)
+    except PipelineQueueUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "PIPELINE_QUEUE_UNAVAILABLE", "orchestrationId": str(exc)},
+        ) from exc
 
 
 @router.post("/requirements/pipelines")
@@ -92,7 +102,9 @@ def create_requirement_library_pipeline(
     user=Depends(capability_dependency("requirements.manage")),
 ) -> dict[str, object]:
     context = _context(request, user)
-    defer_execution = user.edition == "community"
+    # Queue delivery must rehydrate a persisted user. Demo bearer identities are
+    # intentionally kept on the legacy synchronous path.
+    defer_execution = user.token_id is not None
     try:
         data = OrchestratorService(db).run_requirement_library_pipeline(
             payload, context, defer_execution=defer_execution
@@ -107,13 +119,7 @@ def create_requirement_library_pipeline(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if defer_execution:
         response.status_code = status.HTTP_202_ACCEPTED
-        try:
-            OrchestratorService.dispatch_queued_requirement_pipeline(data, context, background_tasks.add_task)
-        except RequirementPipelineQueueUnavailable as exc:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail={"code": "PIPELINE_QUEUE_UNAVAILABLE", "orchestrationId": exc.orchestration_id},
-            ) from exc
+        _dispatch_queued_pipeline(data, context, background_tasks)
     return success_response(request, data, "accepted")
 
 
@@ -174,23 +180,29 @@ def list_requirement_clarifications(
 @router.post("/requirements/pipelines/{run_id}/clarifications/{clarification_id}/answer")
 def answer_requirement_clarification(
     request: Request,
+    response: Response,
+    background_tasks: BackgroundTasks,
     run_id: UUID,
     clarification_id: UUID,
     payload: ClarificationAnswerRequest,
     db=Depends(get_db),
     user=Depends(capability_dependency("requirements.manage")),
 ) -> dict[str, object]:
+    context = _context(request, user)
     try:
         data = OrchestratorService(db).answer_requirement_clarification(
             run_id,
             clarification_id,
             payload.answer,
-            _context(request, user),
+            context,
         )
     except OrchestrationConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    if data.get("deferred"):
+        response.status_code = status.HTTP_202_ACCEPTED
+        _dispatch_queued_pipeline(data, context, background_tasks)
     return success_response(request, data)
 
 

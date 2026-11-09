@@ -4,14 +4,15 @@ import { createRegressionPresentation, type RegressionPresentation } from "../li
 
 import { SectionCard } from "../components/SectionCard";
 import { EvidenceReferenceList } from "../components/EvidenceReferenceList";
-import { Locale, t, userFacingError } from "../i18n";
-import type { ExecutionFinding, ExecutionTaskArtifact, ExecutionTaskLog, ExecutionTaskMetric, ExecutionTaskRecord } from "../lib/api";
+import { formatT, Locale, t, userFacingError } from "../i18n";
+import type { ExecutionFinding, ExecutionFindingObservation, ExecutionTaskArtifact, ExecutionTaskLog, ExecutionTaskMetric, ExecutionTaskRecord } from "../lib/api";
 import { findingEvidenceReferences } from "../lib/findingEvidence";
 import {
   displayArtifactLabel,
   displayDomainLabel,
   displayEventKind,
   displayFindingTitle,
+  displayFindingExplanation,
   displayLogLevel,
   displayLogMessage,
   displayMetricLabel,
@@ -55,6 +56,9 @@ type ExecutionsPageProps = {
   selectedTaskArtifacts: ExecutionTaskArtifact[];
   selectedTaskLogs: ExecutionTaskLog[];
   selectedTaskMetrics: ExecutionTaskMetric[];
+  findingObservations?: ExecutionFindingObservation[];
+  findingObservationsLoading?: boolean;
+  findingObservationsError?: boolean;
   selectedTaskDetailLoading: boolean;
   selectedTaskDetailError: string | null;
   onSelectTask: (taskId: string) => void;
@@ -82,6 +86,9 @@ export function ExecutionsPage({
   selectedTaskArtifacts,
   selectedTaskLogs,
   selectedTaskMetrics,
+  findingObservations = [],
+  findingObservationsLoading = false,
+  findingObservationsError = false,
   selectedTaskDetailLoading,
   selectedTaskDetailError,
   onSelectTask,
@@ -101,7 +108,15 @@ export function ExecutionsPage({
   const selectedExecution = executions.find((execution) => execution.id === selectedExecutionId) ?? executions[0] ?? null;
   const separator = t(locale, "valueSeparator");
   const canUseIssueTracker = canSyncIssueTracker && issueTrackerBindingCount > 0;
-  const selectedTaskFindings = selectedTaskId ? findings.filter((finding) => finding.taskId === selectedTaskId) : [];
+  const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+  const selectedTaskFindings = selectedTaskId
+    ? findings.filter((finding) => finding.taskId === selectedTaskId)
+      .sort((left, right) => (severityOrder[left.severity] ?? 5) - (severityOrder[right.severity] ?? 5))
+    : [];
+  const taskFindingCounts = {
+    medium: selectedTaskFindings.filter((finding) => finding.severity === "medium").length,
+    low: selectedTaskFindings.filter((finding) => finding.severity === "low").length,
+  };
   const runtime = selectedExecution?.runtime ?? null;
   const currentPresentation = presentation?.executionId === selectedExecution?.id ? presentation?.data : null;
   const executionIsTerminal = progress
@@ -114,14 +129,23 @@ export function ExecutionsPage({
   const selectedTaskIsSimulatedSecurity = selectedTask?.domain === "security"
     && selectedTask.resultPayload.executionMode === "simulated"
     && selectedTask.resultPayload.actualExecution === false;
+  const selectedTaskHasSecurityFindings = selectedTask?.domain === "security"
+    && selectedTask.status === "failed"
+    && selectedTask.resultPayload.runnerStatus === "completed"
+    && selectedTask.resultPayload.toolStatus === "findings_detected";
+  const securityFindingCount = typeof selectedTask?.resultPayload.findingCount === "number"
+    ? selectedTask.resultPayload.findingCount
+    : selectedTaskFindings.length;
   const selectedTaskError = selectedTask?.errorMessage
     ? selectedTaskIsSimulatedSecurity
       ? t(locale, "simulatedSecurityResultNotActualEvidence")
+      : selectedTaskHasSecurityFindings
+        ? formatT(locale, "securityScanFindingsDetected", { count: securityFindingCount })
       : selectedTask.resultPayload.toolStatus === "unavailable"
         ? selectedTaskReasonCode === "SECURITY_SCAN_TARGET_UNAVAILABLE"
           ? t(locale, "securityScanTargetUnavailable")
           : t(locale, "securityScanRunnerUnavailable")
-      : userFacingError(locale, new Error(selectedTask.errorMessage), "executionTaskDetailLoadFailed")
+      : userFacingError(locale, new Error(selectedTask.errorMessage), "executionTaskFailed")
     : null;
   const generatePresentation = async () => {
     if (!selectedExecution || !canGenerateRegressionPresentation) return;
@@ -377,27 +401,83 @@ export function ExecutionsPage({
                 </div>
 
                 <div>
-                  <h3>{t(locale, "linkedFindings")}</h3>
-                  <div className="stack-list">
-                    {selectedTaskFindings.map((finding) => (
-                      <div className="stack-row stack-row--dense" key={finding.id}>
-                        <div>
-                          <strong>{displayFindingTitle(locale, finding.title)}</strong>
-                          <p>{finding.source} {separator} {displayDomainLabel(locale, finding.domain)}</p>
-                        </div>
-                        <span>{displayStatus(locale, finding.severity)}</span>
-                      </div>
-                    ))}
+                  <h3>{t(locale, "linkedFindings")} <span className="finding-count">{selectedTaskFindings.length}</span></h3>
+                  {selectedTaskFindings.length ? (
+                    <p className="finding-review-note">
+                      {formatT(locale, "findingReviewSummary", {
+                        medium: taskFindingCounts.medium,
+                        low: taskFindingCounts.low,
+                      })}
+                    </p>
+                  ) : null}
+                  <div className="finding-card-list">
+                    {selectedTaskFindings.map((finding, index) => {
+                      const observation = findingObservations.find((item) => item.findingId === finding.id);
+                      const firstRequest = observation?.observations[0];
+                      const affectedTarget = typeof finding.location?.target === "string" ? finding.location.target : null;
+                      const references = findingEvidenceReferences(finding);
+                      const scannerRule = observation?.scannerReference
+                        || finding.evidence?.map((item) => item.type === "inline_fact" && typeof item.ref === "string" ? item.ref : "").find(Boolean)
+                        || t(locale, "none");
+                      return (
+                        <article className={`finding-card finding-card--${finding.severity}`} key={finding.id}>
+                          <div className="finding-card__heading">
+                            <span className="finding-card__index">{index + 1}</span>
+                            <strong>{displayFindingTitle(locale, finding.title)}</strong>
+                            <span className={`status-pill status-pill--${finding.severity}`}>{displayStatus(locale, finding.severity)}</span>
+                          </div>
+                          <p className="finding-card__explanation">{displayFindingExplanation(locale, finding.title, finding.summary)}</p>
+                          <dl className="finding-card__facts">
+                            {affectedTarget ? <div><dt>{t(locale, "findingAffectedTarget")}</dt><dd>{affectedTarget}</dd></div> : null}
+                            <div>
+                              <dt>{t(locale, "findingObservedRequest")}</dt>
+                              <dd>{firstRequest ? `${firstRequest.method} ${firstRequest.target}` : findingObservationsLoading ? t(locale, "findingObservationLoading") : findingObservationsError ? t(locale, "findingObservationUnavailable") : t(locale, "findingObservationMissing")}</dd>
+                            </div>
+                            {firstRequest ? (
+                              <div><dt>{t(locale, "findingResponseEvidence")}</dt><dd>{firstRequest.evidenceSnippet ?? t(locale, "findingNoResponseSnippet")}</dd></div>
+                            ) : null}
+                          </dl>
+                          <details className="finding-card__more">
+                            <summary>{t(locale, finding.source === "zap" ? "findingZapReportDetails" : "findingEvidenceDetails")}</summary>
+                            {finding.source === "zap" ? (
+                              observation?.reportExcerpt ? (
+                                <div className="finding-card__report">
+                                  <strong>{t(locale, "findingReportExcerpt")}</strong>
+                                  <dl className="finding-card__facts">
+                                    <div><dt>{t(locale, "findingReportDescription")}</dt><dd>{observation.reportExcerpt.description || t(locale, "findingReportTextMissing")}</dd></div>
+                                    <div><dt>{t(locale, "findingReportSolution")}</dt><dd>{observation.reportExcerpt.solution || t(locale, "findingReportTextMissing")}</dd></div>
+                                  </dl>
+                                  <p className="muted-text">{t(locale, "findingReportSource")}: {observation.reportExcerpt.fileName} · SHA-256 <code>{observation.reportExcerpt.sha256}</code></p>
+                                </div>
+                              ) : <p className="muted-text">{findingObservationsLoading ? t(locale, "findingObservationLoading") : findingObservationsError ? t(locale, "findingObservationUnavailable") : t(locale, "findingReportExcerptUnavailable")}</p>
+                            ) : null}
+                            {observation?.observations.length ? (
+                              <div className="finding-card__requests">
+                                <strong>{formatT(locale, "findingObservedCount", { count: observation.instanceCount })}</strong>
+                                {observation.observations.map((item, itemIndex) => (
+                                  <div key={`${item.method}:${item.target}:${itemIndex}`}>
+                                    <code>{item.method} {item.target}</code>
+                                    <p>{item.evidenceSnippet ?? t(locale, "findingNoResponseSnippet")}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                            <p className="muted-text">{t(locale, "findingScannerRule")}: {scannerRule}</p>
+                            {finding.source !== "zap" ? (
+                              <EvidenceReferenceList
+                                emptyLabel={t(locale, "evidencePreviewUnavailable")}
+                                label={t(locale, "findingOriginalReferences")}
+                                locale={locale}
+                                maxVisible={1}
+                                refs={references}
+                              />
+                            ) : null}
+                          </details>
+                        </article>
+                      );
+                    })}
                     {selectedTaskFindings.length === 0 ? <p className="empty-copy">{t(locale, "noTaskFindings")}</p> : null}
                   </div>
-                  {selectedTaskFindings.length ? (
-                    <EvidenceReferenceList
-                      emptyLabel={t(locale, "evidencePreviewUnavailable")}
-                      label={t(locale, "evidenceRefs")}
-                      locale={locale}
-                      refs={selectedTaskFindings.flatMap(findingEvidenceReferences)}
-                    />
-                  ) : null}
                 </div>
               </div>
 

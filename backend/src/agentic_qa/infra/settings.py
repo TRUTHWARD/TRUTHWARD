@@ -14,6 +14,7 @@ class Settings(BaseSettings):
         default="full",
         alias="DEPLOYMENT_PROFILE",
     )
+    full_auth_mode: Literal["demo", "local"] = Field(default="demo", alias="FULL_AUTH_MODE")
     api_prefix: str = Field(default="/api/v1", alias="API_PREFIX")
     database_url: str = Field(
         default="postgresql+psycopg://postgres:postgres@localhost:5432/agentic_qa",
@@ -191,6 +192,12 @@ class Settings(BaseSettings):
         le=3600.0,
         alias="SKILL_INVOCATION_TIMEOUT_SECONDS",
     )
+    skill_invocation_runner_timeout_seconds: float = Field(
+        default=900.0,
+        gt=0.0,
+        le=3600.0,
+        alias="SKILL_INVOCATION_RUNNER_TIMEOUT_SECONDS",
+    )
     skill_invocation_max_attempts: int = Field(
         default=3,
         ge=1,
@@ -270,6 +277,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def database_pool_capacity_is_bounded(self) -> "Settings":
+        if (
+            self.deployment_profile == "full"
+            and self.full_auth_mode == "demo"
+            and self.app_env.strip().lower() in {"production", "prod"}
+        ):
+            raise ValueError("FULL_AUTH_MODE=demo is unavailable in production")
         per_process = self.database_pool_size + self.database_max_overflow
         if per_process > 256:
             raise ValueError(

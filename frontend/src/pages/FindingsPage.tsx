@@ -5,6 +5,7 @@ import { EvidenceReferenceList } from "../components/EvidenceReferenceList";
 import { Locale, t, userFacingError } from "../i18n";
 import type { ExecutionFinding } from "../lib/api";
 import { findingEvidenceReferences } from "../lib/findingEvidence";
+import { displayFindingExplanation, displayFindingTitle } from "../lib/presentation";
 import { ExecutionItem } from "../store/platform";
 
 type FindingItem = Pick<ExecutionFinding, "id" | "domain" | "severity" | "source" | "title" | "summary" | "confidence" | "externalIssueLink">
@@ -139,8 +140,8 @@ export function FindingsPage({
                       return (
                         <tr key={finding.id}>
                           <td>
-                            <strong>{finding.title}</strong>
-                            <p>{finding.summary}</p>
+                            <strong>{displayFindingTitle(locale, finding.title)}</strong>
+                            <p>{displayFindingExplanation(locale, finding.title, finding.summary)}</p>
                             <EvidenceReferenceList
                               emptyLabel={t(locale, "evidencePreviewUnavailable")}
                               label={t(locale, "evidenceRefs")}

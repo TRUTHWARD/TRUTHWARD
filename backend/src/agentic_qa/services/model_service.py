@@ -18,9 +18,10 @@ from agentic_qa.guardrails.result import GuardrailDecision, GuardrailResult
 from agentic_qa.guardrails.runtime.audit import RuntimeGuardrailEngine
 from agentic_qa.infra.audit import write_audit_log
 from agentic_qa.infra.credentials import CredentialResolver
+from agentic_qa.infra.redaction import REDACTION
 from agentic_qa.infra.settings import get_settings
 from agentic_qa.schemas.models import CreateModelRequest, UpdateModelRequest, VisualTargetResolveOutput
-from agentic_qa.services.approval_service import ApprovalService
+from agentic_qa.services.approval_service import ApprovalConflictError, ApprovalService
 from agentic_qa.services.common import ServiceContext, paginate_query, paginate_result
 from agentic_qa.services.scope_service import ScopeAuthorizationService
 from agentic_qa.tools.model_gateway import ModelGatewayTool
@@ -152,7 +153,11 @@ class ModelService:
         model = self._require_model(model_id)
         self._authorize_model_scope(model, context, write=True)
         target_project_id = payload.projectId or model.project_id
-        target_environment_id = payload.environmentId if payload.environmentId is not None else model.environment_id
+        target_environment_id = (
+            payload.environmentId
+            if "environmentId" in payload.model_fields_set
+            else model.environment_id
+        )
         if target_project_id is not None:
             scope = ScopeAuthorizationService(self.db).resolve_project(
                 target_project_id,
@@ -450,6 +455,7 @@ class ModelService:
         approval_payload: dict[str, object],
         approval_id: UUID | None,
         context: ServiceContext,
+        credential_ref: str | None = None,
     ) -> dict[str, object]:
         action = str(approval_payload.get("governanceAction") or "")
         raw_model_payload = approval_payload.get("modelPayload")
@@ -459,6 +465,17 @@ class ModelService:
             model_payload = dict(raw_model_payload)
         else:
             raise ValueError("modelPayload must be an object")
+        if model_payload.get("apiKeyRef") == REDACTION:
+            if not credential_ref:
+                raise ApprovalConflictError("MODEL_GOVERNANCE_CREDENTIAL_REF_REQUIRED")
+            project_id_value = model_payload.get("projectId")
+            self._validate_credential_ref(
+                credential_ref,
+                project_id=UUID(str(project_id_value)) if project_id_value else None,
+            )
+            model_payload["apiKeyRef"] = credential_ref
+        elif credential_ref is not None:
+            raise ApprovalConflictError("MODEL_GOVERNANCE_CREDENTIAL_REF_NOT_REQUESTED")
         model_id_value = approval_payload.get("modelId")
         model_id = UUID(str(model_id_value)) if model_id_value else None
         if action == "create":
@@ -609,9 +626,16 @@ class ModelService:
     def _validated_model_governance_payload(self, action: str, model_payload: dict[str, object]) -> dict[str, object]:
         try:
             if action == "create":
-                return CreateModelRequest.model_validate(model_payload).model_dump(mode="json", by_alias=True)
+                validated = CreateModelRequest.model_validate(model_payload)
+                self._validate_credential_ref(validated.apiKeyRef, project_id=validated.projectId)
+                return validated.model_dump(mode="json", by_alias=True)
             if action == "update":
-                return UpdateModelRequest.model_validate(model_payload).model_dump(mode="json", by_alias=True, exclude_none=True)
+                validated = UpdateModelRequest.model_validate(model_payload)
+                self._validate_credential_ref(validated.apiKeyRef, project_id=validated.projectId)
+                projected = validated.model_dump(mode="json", by_alias=True, exclude_none=True)
+                if "environmentId" in validated.model_fields_set and validated.environmentId is None:
+                    projected["environmentId"] = None
+                return projected
             if action == "delete":
                 return {}
         except ValidationError as exc:

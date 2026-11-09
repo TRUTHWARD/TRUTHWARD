@@ -9,6 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from agentic_qa.schemas.candidate_graph import CandidateBuildRequest, CandidateBuildResult
+from agentic_qa.schemas.scenario_acceptance import ScenarioAcceptanceContract
 from agentic_qa.schemas.admission import (
     AdmissionResultProjection,
     AdmissionRetryRequest,
@@ -126,6 +127,7 @@ from agentic_qa.schemas.skills import SkillContextEnvelope
 
 
 ContractName = Literal[
+    "scenario-acceptance",
     "agent-output",
     "skill-result",
     "skill-context-envelope",
@@ -1408,6 +1410,7 @@ class KnowledgePromotionRecordContract(BaseModel):
 
 
 CONTRACT_MODELS: dict[str, type[BaseModel]] = {
+    "scenario-acceptance": ScenarioAcceptanceContract,
     "agent-output": AgentOutputContract,
     "skill-result": SkillResultContract,
     "skill-context-envelope": SkillContextEnvelope,

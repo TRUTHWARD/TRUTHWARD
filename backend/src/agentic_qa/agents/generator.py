@@ -12,6 +12,7 @@ class GeneratorAgent(BaseAgent):
     output_schema = {
         "generatedCases": (
             "dict[str, list[{name, goal, targetUrl?, preconditions?, steps?, "
+            "expectedOutcome?, acceptanceCriterionRef?, openQuestions?, "
             "sourceRefs?, confidence?, limitations?}]]"
         ),
         "summary": "str",

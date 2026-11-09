@@ -228,13 +228,20 @@ class HealthService:
             return items
 
         redis_reachable = self._tcp_reachable(settings.redis_url)
+        worker_report_validated = redis_reachable and self._validated_worker_report(runtime_report)
         items.append(
             self._item(
                 "redis-worker-lifecycle",
                 "Redis / Celery worker lifecycle",
-                "deployment_specific_not_validated" if redis_reachable else "missing_dependency",
                 (
-                    "Redis is reachable; full worker lifecycle remains deployment-specific."
+                    "local_passed"
+                    if worker_report_validated
+                    else "deployment_specific_not_validated" if redis_reachable else "missing_dependency"
+                ),
+                (
+                    "An isolated Redis / Celery worker lifecycle passed the deployment runtime check."
+                    if worker_report_validated
+                    else "Redis is reachable; full worker lifecycle remains deployment-specific."
                     if redis_reachable
                     else "Redis is not reachable for QUEUE_MODE=celery."
                 ),
@@ -243,9 +250,13 @@ class HealthService:
                     "redisUrlConfigured": bool(settings.redis_url),
                     "redisReachable": redis_reachable,
                     "workerRequired": True,
-                    "workerLifecycleValidated": False,
+                    "workerLifecycleValidated": worker_report_validated,
+                    "reportPresent": runtime_report is not None,
                 },
-                ["scripts/check-celery-runtime.ps1"],
+                [
+                    "scripts/check-celery-runtime.ps1",
+                    *([str(CELERY_RUNTIME_REPORT.relative_to(PROJECT_ROOT))] if runtime_report is not None else []),
+                ],
                 "./scripts/check-celery-runtime.ps1 -RequireWorker",
             )
         )
@@ -267,6 +278,33 @@ class HealthService:
             return data
         return None
 
+    @staticmethod
+    def _validated_worker_report(report: dict[str, object] | None) -> bool:
+        if not report:
+            return False
+        status_update = report.get("statusUpdate")
+        if not isinstance(status_update, dict):
+            return False
+        return (
+            report.get("schemaVersion") == "phase8.celery-runtime-report.v1"
+            and report.get("validationKind") == "celery_redis_worker_runtime"
+            and report.get("validationClass") == "named_tool_actual"
+            and report.get("queueMode") == "celery"
+            and report.get("status") == "passed"
+            and status_update.get("allowed") is True
+            and all(
+                report.get(key) is True
+                for key in (
+                    "workerLifecycleValidated",
+                    "executionSmokeValidated",
+                    "brokerRoundTripValidated",
+                    "queueIsolationValidated",
+                    "cleanupValidated",
+                )
+            )
+            and report.get("taskAlwaysEager") is False
+        )
+
     def _celery_execution_smoke_item(
         self,
         settings,
@@ -280,6 +318,11 @@ class HealthService:
 
         status = "deployment_specific_not_validated"
         summary = "Worker-backed execution smoke has not been validated in this runtime."
+        report_accepted = (
+            settings.queue_mode == "celery"
+            and redis_reachable is True
+            and self._validated_worker_report(report)
+        )
         details: dict[str, object] = {
             "queueMode": settings.queue_mode,
             "redisUrlConfigured": bool(settings.redis_url),
@@ -289,21 +332,27 @@ class HealthService:
             "executionSmokeValidated": False,
             "reportPresent": report is not None,
         }
-        if report is not None:
+        if settings.queue_mode == "inline":
+            summary = "Inline queue mode is active; non-inline worker-backed execution smoke is deployment-specific."
+        elif redis_reachable is False:
+            status = "missing_dependency"
+            summary = "Redis is not reachable, so worker-backed execution smoke cannot run."
+        elif report is not None:
             details.update(
                 {
                     "reportStatus": report.get("status"),
                     "generatedAt": report.get("generatedAt"),
                     "queueName": report.get("queueName"),
-                    "workerLifecycleValidated": bool(report.get("workerLifecycleValidated")),
-                    "executionSmokeValidated": bool(report.get("executionSmokeValidated")),
+                    "workerLifecycleValidated": report_accepted,
+                    "executionSmokeValidated": report_accepted,
+                    "reportContractValid": self._validated_worker_report(report),
                     "executionId": report.get("executionId"),
                     "jobId": report.get("jobId"),
                     "counts": report.get("counts") if isinstance(report.get("counts"), dict) else {},
                 }
             )
             report_status = str(report.get("status") or "")
-            if report_status == "passed" and report.get("executionSmokeValidated"):
+            if report_status == "passed" and report_accepted:
                 status = "local_passed"
                 summary = "Worker-backed execution smoke completed through queue, task outputs, NORMALIZE, Gate, and replay export."
             elif report_status == "skipped":
@@ -312,12 +361,6 @@ class HealthService:
             elif report_status == "failed":
                 status = "unavailable"
                 summary = str(report.get("summary") or "Worker-backed execution smoke failed.")
-        elif settings.queue_mode == "celery" and redis_reachable is False:
-            status = "missing_dependency"
-            summary = "Redis is not reachable, so worker-backed execution smoke cannot run."
-        elif settings.queue_mode == "inline":
-            summary = "Inline queue mode is active; non-inline worker-backed execution smoke is deployment-specific."
-
         return self._item(
             "worker-backed-execution-smoke",
             "Worker-backed execution smoke",

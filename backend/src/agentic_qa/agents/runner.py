@@ -10,6 +10,7 @@ class RunnerAgent(BaseAgent):
         "taskType": "str",
         "runner": "str",
         "config": "dict",
+        "runnerTimeoutSeconds": "int",
         "parallelism": "int",
     }
     output_schema = {
@@ -27,7 +28,12 @@ class RunnerAgent(BaseAgent):
         config = input_payload.get("config", {})
         domain = str(input_payload.get("domain", "functional"))
         runner = str(input_payload.get("runner", "playwright"))
-        timeout_seconds = int(config.get("timeoutSeconds", 60)) if isinstance(config, dict) else 60
+        default_timeout = int(input_payload.get("runnerTimeoutSeconds", 60))
+        timeout_seconds = (
+            int(config.get("timeoutSeconds", default_timeout))
+            if isinstance(config, dict)
+            else default_timeout
+        )
         parallelism = int(input_payload.get("parallelism", 1))
 
         payload = {

@@ -593,14 +593,21 @@ class SkillInvocationReliabilityRuntime:
         parent_budget = caller_policy_snapshot.get("parentBudget")
         parent_budget = parent_budget if isinstance(parent_budget, dict) else {}
 
+        platform_timeout = (
+            self.settings.skill_invocation_runner_timeout_seconds
+            if extension_point_id == "EXECUTE.automated_execution"
+            and resolution.get("runtimeResultKind") == "runner_result"
+            and resolution.get("runtimeAdapter") == "execution.runner.v1"
+            else self.settings.skill_invocation_timeout_seconds
+        )
         configured_timeout = self._positive_float(
             binding_policy.get("timeoutSeconds"),
-            self.settings.skill_invocation_timeout_seconds,
+            platform_timeout,
         )
         effective_timeout = min(
-            self.settings.skill_invocation_timeout_seconds,
+            platform_timeout,
             configured_timeout,
-            self._positive_float(timeout_seconds, self.settings.skill_invocation_timeout_seconds),
+            self._positive_float(timeout_seconds, platform_timeout),
         )
         computed_deadline = now + timedelta(seconds=effective_timeout)
         if deadline_at is not None:

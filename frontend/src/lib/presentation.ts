@@ -172,6 +172,25 @@ const zhReasonCodeLabels: Record<string, string> = {
 
 const zhFindingTitles: Record<string, string> = {
   "missing authorization check": "缺少授权检查",
+  "content security policy (csp) header not set": "未设置内容安全策略（CSP）响应头",
+  "missing anti-clickjacking header": "缺少防点击劫持响应头",
+  "strict-transport-security header not set": "未设置 HSTS 响应头",
+  "x-content-type-options header missing": "未设置 X-Content-Type-Options 响应头",
+  "information disclosure - suspicious comments": "响应中存在可疑注释",
+  "modern web application": "现代 Web 应用特征提示",
+  "re-examine cache-control directives": "缓存控制配置需要复核",
+  "user agent fuzzer": "不同 User-Agent 的响应需要复核",
+};
+
+const zhFindingExplanations: Record<string, string> = {
+  "content security policy (csp) header not set": "ZAP 报告响应缺少 CSP 头。需确认页面允许加载的脚本和其他资源是否受到策略限制。",
+  "missing anti-clickjacking header": "ZAP 报告响应缺少防点击劫持保护头。需确认页面是否可能被第三方站点嵌入。",
+  "strict-transport-security header not set": "ZAP 报告 HTTPS 响应缺少 HSTS 头。需确认是否需要浏览器强制使用 HTTPS。",
+  "x-content-type-options header missing": "ZAP 报告响应未设置 X-Content-Type-Options: nosniff，浏览器可能猜测响应类型。",
+  "information disclosure - suspicious comments": "ZAP 在响应中发现可疑注释。需查看实际片段，确认是否透露了内部信息。",
+  "modern web application": "ZAP 识别到现代 Web 应用特征。这是技术识别提示，不等同于已确认漏洞。",
+  "re-examine cache-control directives": "ZAP 报告缓存控制头缺失或设置不合适。需确认敏感内容是否可能被缓存。",
+  "user agent fuzzer": "ZAP 观察到不同 User-Agent 下的响应可能不同。需确认差异是否为预期行为。",
 };
 
 const zhSignalLabels: Record<string, string> = {
@@ -209,7 +228,7 @@ const zhRuntimeItemLabels: Record<string, string> = {
 const zhRuntimeSummaries: Record<string, string> = {
   "celery-task-registration:local_passed": "必需的队列任务均已注册。",
   "celery-task-registration:missing_dependency": "缺少必需的队列任务。",
-  "redis-worker-lifecycle:local_passed": "当前队列模式的运行时要求已满足。",
+  "redis-worker-lifecycle:local_passed": "当前队列模式的运行时要求已满足；Celery 模式下表示隔离的 Worker 生命周期验证通过。",
   "redis-worker-lifecycle:deployment_specific_not_validated": "Redis 可访问；完整 Worker 生命周期仍需按部署环境验证。",
   "redis-worker-lifecycle:missing_dependency": "Redis 不可访问，Celery Worker 无法完成运行时验证。",
   "worker-backed-execution-smoke:local_passed": "已通过队列、任务输出、归一化、门禁和回放导出完成执行冒烟验证。",
@@ -362,6 +381,22 @@ export function displaySignalLabel(locale: Locale, name: unknown): string {
 
 export function displayFindingTitle(locale: Locale, title: string): string {
   return locale === "zh-CN" ? zhFindingTitles[title.trim().toLowerCase()] ?? title : title;
+}
+
+export function displayFindingExplanation(locale: Locale, title: string, summary: string): string {
+  const plainSummary = summary
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+  return locale === "zh-CN"
+    ? zhFindingExplanations[title.trim().toLowerCase()] ?? plainSummary
+    : plainSummary;
 }
 
 export function displayWorkflowActionLabel(locale: Locale, actionId: string, fallback: string): string {

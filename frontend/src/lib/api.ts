@@ -3,19 +3,28 @@ import { IS_OSS_PROFILE } from "../productProfile";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "/api/v1").trim().replace(/\/+$/, "");
 const COMMUNITY_TOKEN_STORAGE_KEY = "truthward.community.token";
+const FULL_TOKEN_STORAGE_KEY = "truthward.full.token";
+const localTokenStorageKey = IS_OSS_PROFILE ? COMMUNITY_TOKEN_STORAGE_KEY : FULL_TOKEN_STORAGE_KEY;
+let fullAuthMode: "demo" | "local" = "demo";
+
+export function hasStoredLocalAuthToken() {
+  return typeof window !== "undefined" && Boolean(window.localStorage.getItem(localTokenStorageKey));
+}
 
 export function getStoredAuthToken() {
-  if (!IS_OSS_PROFILE) return import.meta.env.VITE_DEMO_TOKEN || "admin-token";
-  if (typeof window === "undefined") return "";
-  return window.localStorage.getItem(COMMUNITY_TOKEN_STORAGE_KEY) ?? "";
+  if (typeof window !== "undefined") {
+    const localToken = window.localStorage.getItem(localTokenStorageKey);
+    if (localToken) return localToken;
+  }
+  return IS_OSS_PROFILE || fullAuthMode === "local" ? "" : import.meta.env.VITE_DEMO_TOKEN || "admin-token";
 }
 
 export function storeCommunityAuthToken(token: string) {
-  if (typeof window !== "undefined") window.localStorage.setItem(COMMUNITY_TOKEN_STORAGE_KEY, token);
+  if (typeof window !== "undefined") window.localStorage.setItem(localTokenStorageKey, token);
 }
 
 export function clearCommunityAuthToken() {
-  if (typeof window !== "undefined") window.localStorage.removeItem(COMMUNITY_TOKEN_STORAGE_KEY);
+  if (typeof window !== "undefined") window.localStorage.removeItem(localTokenStorageKey);
 }
 
 export type RequestOptions = {
@@ -275,7 +284,7 @@ export async function fetchCurrentUser() {
 export type CommunityBootstrapStatus = {
   deploymentProfile: "full" | "oss";
   bootstrapRequired: boolean;
-  authenticationMode: "demo" | "community_local";
+  authenticationMode: "demo" | "community_local" | "full_local";
 };
 
 export type CommunityTokenResponse = {
@@ -286,7 +295,9 @@ export type CommunityTokenResponse = {
 };
 
 export async function fetchCommunityBootstrapStatus() {
-  return request<CommunityBootstrapStatus>("/auth/bootstrap-status", { authenticated: false });
+  const status = await request<CommunityBootstrapStatus>("/auth/bootstrap-status", { authenticated: false });
+  if (!IS_OSS_PROFILE) fullAuthMode = status.authenticationMode === "full_local" ? "local" : "demo";
+  return status;
 }
 
 export async function bootstrapCommunity(payload: { username: string; email: string; displayName: string; password: string }) {
@@ -1480,6 +1491,19 @@ export async function fetchProjectMembers(projectId: string, filters: { pageSize
   );
 }
 
+export type ProjectMemberCandidateItem = {
+  id: string;
+  displayName: string;
+  username: string | null;
+  email: string;
+};
+
+export async function fetchProjectMemberCandidates(projectId: string, search = "") {
+  return request<{ items: ProjectMemberCandidateItem[]; hasMore: boolean }>(
+    withQuery(`/projects/${encodeURIComponent(projectId)}/member-candidates`, { search }),
+  );
+}
+
 export type ModelItemProjection = {
   id: string;
   name: string;
@@ -1659,6 +1683,7 @@ export type PlanRecord = {
     schemaVersion: string;
     environmentTargetUrl: string | null;
     historicalLocatorHints: Array<Record<string, unknown>>;
+    acceptanceSources?: Array<{ ref: string; text: string }>;
   };
 };
 
@@ -2157,7 +2182,7 @@ export function clearRequirementLibraryPipelineIntent(payload: RequirementLibrar
 }
 
 export async function createRequirementLibraryPipeline(payload: RequirementLibraryPipelinePayload) {
-  const useIntentRecovery = IS_OSS_PROFILE && !payload.idempotencyKey && typeof window !== "undefined";
+  const useIntentRecovery = !payload.idempotencyKey && typeof window !== "undefined";
   const storageKey = requirementPipelineIntentStorageKey(payload);
   let stored: { key: string; runId?: string } | null = null;
   if (useIntentRecovery) {
@@ -3111,6 +3136,20 @@ export type ExecutionFinding = {
   externalIssueLink: ExternalIssueLink | null;
 };
 
+export type ExecutionFindingObservation = {
+  findingId: string;
+  status: "available" | "unavailable";
+  scannerReference: string;
+  instanceCount: number;
+  observations: Array<{ method: string; target: string; evidenceSnippet?: string }>;
+  reportExcerpt: {
+    fileName: string;
+    sha256: string;
+    description: string;
+    solution: string;
+  } | null;
+};
+
 export async function fetchExecutionTasks(executionId: string) {
   return request<{ items: ExecutionTaskRecord[]; total: number }>(`/executions/${encodeURIComponent(executionId)}/tasks`);
 }
@@ -3129,6 +3168,10 @@ export async function fetchExecutionTaskLogs(taskId: string) {
 
 export async function fetchExecutionTaskMetrics(taskId: string) {
   return request<{ items: ExecutionTaskMetric[]; total: number }>(`/tasks/${encodeURIComponent(taskId)}/metrics`);
+}
+
+export async function fetchExecutionTaskFindingObservations(taskId: string) {
+  return request<{ items: ExecutionFindingObservation[]; total: number }>(`/tasks/${encodeURIComponent(taskId)}/finding-observations`);
 }
 
 export async function fetchExecutionFindings(
@@ -3195,7 +3238,7 @@ export async function fetchCiGate(executionId: string) {
     confidence?: number;
     decisionSnapshotHash?: string | null;
     evaluatorVersion?: string;
-  }>(`/integrations/ci/gate/${encodeURIComponent(executionId)}`);
+  } | null>(`/integrations/ci/gate/${encodeURIComponent(executionId)}`);
 }
 
 export async function fetchAgentRuns() {
@@ -4525,10 +4568,10 @@ export async function fetchApprovals(filters: { status?: string; type?: string; 
   );
 }
 
-export async function approveApproval(approvalId: string, comment?: string | null) {
+export async function approveApproval(approvalId: string, comment?: string | null, apiKeyRef?: string) {
   return request<Record<string, unknown>>(`/approvals/${encodeURIComponent(approvalId)}/approve`, {
     method: "POST",
-    body: { comment: comment ?? null },
+    body: { comment: comment ?? null, ...(apiKeyRef ? { apiKeyRef } : {}) },
   });
 }
 

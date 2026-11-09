@@ -50,6 +50,7 @@ const RISK_OPTIONS = ["low", "medium", "high"];
 const REQUIREMENT_DOCUMENT_CONNECTOR_NAMES = new Set(["mock-requirement-docs", "lark-requirement-docs", "zentao-requirement-docs"]);
 const SOURCE_FILTER_OPTIONS = ["paste", "upload", "ocr_upload", "external_link", "connector", "requirement_version"];
 const STATUS_FILTER_OPTIONS = ["draft", "previewed", "review_required", "blocked", "generated", "confirmed", "active", "superseded", "discarded"];
+const BATCH_INTENT_STORAGE_KEY = "truthward.requirement-batch-pending.v1";
 type SourceMode = "paste" | "upload" | "ocr_upload" | "external_link" | "connector";
 type WorkbenchView = "sources" | "drafts_previews" | "requirement_versions" | "requirement_items";
 
@@ -86,6 +87,19 @@ function splitBatchBlocks(value: string) {
     .filter(Boolean);
 }
 
+async function batchIntentFingerprint(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  if (globalThis.crypto?.subtle) {
+    const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  let hash = 14695981039346656037n;
+  for (const byte of bytes) {
+    hash = BigInt.asUintN(64, (hash ^ BigInt(byte)) * 1099511628211n);
+  }
+  return `${hash.toString(16)}:${bytes.length}`;
+}
+
 function compactJson(value: unknown) {
   if (value === null || value === undefined) {
     return "{}";
@@ -99,7 +113,8 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
   const riskOptions = currentUser?.edition === "community" ? RISK_OPTIONS.filter((risk) => risk !== "high") : RISK_OPTIONS;
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const ocrUploadInputRef = useRef<HTMLInputElement | null>(null);
-  const batchUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const batchSubmissionRef = useRef<{ fingerprint: string; files: File[]; key: string } | null>(null);
+  const batchSubmitInFlightRef = useRef(false);
   const [sourceMode, setSourceMode] = useState<SourceMode>("paste");
   const [activeWorkbenchView, setActiveWorkbenchView] = useState<WorkbenchView>(readRouteSelection("requirementVersionId") ? "requirement_items" : "sources");
   const [libraryProjection, setLibraryProjection] = useState<RequirementLibraryProjection | null>(null);
@@ -134,12 +149,12 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
   const [confirmedPipeline, setConfirmedPipeline] = useState<RequirementPipelineState | null>(null);
   const [batchForm, setBatchForm] = useState({
     name: "",
-    idempotencyKey: "",
     pasteDocuments: "",
     externalLinks: "",
     connectorDocumentRefs: "",
     connectorBindingId: "",
   });
+  const [batchFiles, setBatchFiles] = useState<File[]>([]);
   const [batchList, setBatchList] = useState<RequirementIntakeBatch[]>([]);
   const [activeBatch, setActiveBatch] = useState<RequirementIntakeBatch | null>(null);
   const [selectedBatchSourceIds, setSelectedBatchSourceIds] = useState<string[]>([]);
@@ -594,11 +609,13 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
 
   const submitBatch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canManageRequirements) {
+    if (!canManageRequirements || batchSubmitInFlightRef.current) {
       return;
     }
+    batchSubmitInFlightRef.current = true;
     void runAction(async () => {
       const sources: RequirementIntakeBatchSourcePayload[] = [];
+      const files = batchFiles;
       splitBatchBlocks(batchForm.pasteDocuments).forEach((document, index) => {
         sources.push({
           sourceType: "paste",
@@ -627,52 +644,90 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
           metadata: { source: "requirement-intake-batch-ui" },
         });
       });
-      if (sources.length === 0) {
+      if (sources.length === 0 && files.length === 0) {
         throw new Error(t(locale, "requirementBatchSourceRequired"));
+      }
+      if (sources.length > 0 && files.length > 0) {
+        throw new Error(t(locale, "requirementBatchMixedSourcesUnsupported"));
       }
       if (sources.some((source) => source.sourceType === "connector" && !source.connectorBindingId)) {
         throw new Error(t(locale, "requirementDocumentBindingRequired"));
       }
-      const batch = await createRequirementIntakeBatch({
+      const fingerprint = JSON.stringify({
+        userId: currentUser?.id,
         name: batchForm.name || t(locale, "requirementBatch"),
-        idempotencyKey: batchForm.idempotencyKey || null,
+        sourceRef: files.length > 0 ? form.sourceRef || null : null,
         environment: form.environment,
         projectId: form.projectId || null,
         environmentId: form.environmentId || null,
         domains: form.domains,
         riskLevel: form.riskLevel,
-        metadata: { source: "requirement-intake-batch-ui" },
         sources,
+        files: files.map((file) => ({ name: file.name, size: file.size, type: file.type, lastModified: file.lastModified })),
       });
-      setActiveBatch(batch);
-      setBatchList((current) => [batch, ...current.filter((item) => item.batchId !== batch.batchId)]);
-    }, "requirementBatchCreated");
-  };
-
-  const submitBatchUploads = () => {
-    if (!canManageRequirements) {
-      return;
-    }
-    void runAction(async () => {
-      const files = Array.from(batchUploadInputRef.current?.files ?? []);
-      if (files.length === 0) {
-        throw new Error(t(locale, "uploadFileRequired"));
+      const storedFingerprint = await batchIntentFingerprint(fingerprint);
+      let submission = batchSubmissionRef.current;
+      if (!submission || submission.fingerprint !== fingerprint
+        || submission.files.length !== files.length
+        || submission.files.some((file, index) => file !== files[index])) {
+        let stored: { fingerprint: string; key: string } | null = null;
+        try {
+          stored = JSON.parse(window.sessionStorage.getItem(BATCH_INTENT_STORAGE_KEY) ?? "null");
+        } catch {
+          // Session storage is optional; the current form still retains its key.
+        }
+        submission = {
+          fingerprint,
+          files,
+          key: stored?.fingerprint === storedFingerprint && typeof stored.key === "string" && /^[\w-]{1,120}$/.test(stored.key)
+            ? stored.key
+            : globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        };
+        batchSubmissionRef.current = submission;
+        try {
+          window.sessionStorage.setItem(BATCH_INTENT_STORAGE_KEY, JSON.stringify({ fingerprint: storedFingerprint, key: submission.key }));
+        } catch {
+          // Session storage is optional; the current form still retains its key.
+        }
       }
-      const batch = await uploadRequirementIntakeBatchSources({
-        files,
-        name: batchForm.name || t(locale, "requirementBatch"),
-        sourceRef: form.sourceRef || null,
-        environment: form.environment,
-        projectId: form.projectId || null,
-        environmentId: form.environmentId || null,
-        domains: form.domains,
-        riskLevel: form.riskLevel,
-        idempotencyKey: batchForm.idempotencyKey || null,
-        metadata: { source: "requirement-intake-batch-upload-ui" },
-      });
+      const idempotencyKey = submission.key;
+      const batch = files.length > 0
+        ? await uploadRequirementIntakeBatchSources({
+            files,
+            name: batchForm.name || t(locale, "requirementBatch"),
+            sourceRef: form.sourceRef || null,
+            environment: form.environment,
+            projectId: form.projectId || null,
+            environmentId: form.environmentId || null,
+            domains: form.domains,
+            riskLevel: form.riskLevel,
+            idempotencyKey,
+            metadata: { source: "requirement-intake-batch-upload-ui" },
+          })
+        : await createRequirementIntakeBatch({
+            name: batchForm.name || t(locale, "requirementBatch"),
+            idempotencyKey,
+            environment: form.environment,
+            projectId: form.projectId || null,
+            environmentId: form.environmentId || null,
+            domains: form.domains,
+            riskLevel: form.riskLevel,
+            metadata: { source: "requirement-intake-batch-ui" },
+            sources,
+          });
       setActiveBatch(batch);
       setBatchList((current) => [batch, ...current.filter((item) => item.batchId !== batch.batchId)]);
-    }, "requirementBatchCreated");
+      try {
+        const stored = JSON.parse(window.sessionStorage.getItem(BATCH_INTENT_STORAGE_KEY) ?? "null");
+        if (stored?.key === idempotencyKey) {
+          window.sessionStorage.removeItem(BATCH_INTENT_STORAGE_KEY);
+        }
+      } catch {
+        // Session storage is optional; the current form still retains its key.
+      }
+    }, "requirementBatchCreated").finally(() => {
+      batchSubmitInFlightRef.current = false;
+    });
   };
 
   const confirmBatchSources = () => {
@@ -738,14 +793,6 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
               />
             </label>
             <label className="form-field">
-              {t(locale, "idempotencyKey")}
-              <input
-                disabled={!canManageRequirements || submitting}
-                onChange={(event) => setBatchForm((current) => ({ ...current, idempotencyKey: event.target.value }))}
-                value={batchForm.idempotencyKey}
-              />
-            </label>
-            <label className="form-field">
               {t(locale, "requirementDocumentConnectorBinding")}
               <select
                 disabled={!canManageRequirements || submitting}
@@ -758,23 +805,33 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
                 ))}
               </select>
             </label>
-            <label className="form-field">
-              {t(locale, "multiFileSources")}
+            <div className="form-field">
+              <label htmlFor="requirement-batch-files">{t(locale, "multiFileSources")}</label>
               <input
                 accept=".txt,.md,.json,.csv,text/plain,text/markdown,application/json,text/csv"
+                aria-describedby={batchFiles.length > 0 ? "requirement-batch-files-ready" : undefined}
                 disabled={!canManageRequirements || submitting}
+                id="requirement-batch-files"
                 multiple
-                ref={batchUploadInputRef}
+                onChange={(event) => {
+                  setBatchFiles(Array.from(event.currentTarget.files ?? []));
+                  setError(null);
+                  setMessage(null);
+                }}
                 type="file"
               />
-            </label>
+              {batchFiles.length > 0 ? <small id="requirement-batch-files-ready" role="status">{t(locale, "batchFilesReady")}</small> : null}
+            </div>
           </div>
           <div className="form-grid">
             <label className="form-field">
               {t(locale, "pasteSources")}
               <textarea
                 disabled={!canManageRequirements || submitting}
-                onChange={(event) => setBatchForm((current) => ({ ...current, pasteDocuments: event.target.value }))}
+                onChange={(event) => {
+                  setBatchForm((current) => ({ ...current, pasteDocuments: event.target.value }));
+                  setError(null);
+                }}
                 rows={5}
                 value={batchForm.pasteDocuments}
               />
@@ -783,7 +840,10 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
               {t(locale, "externalLinkSources")}
               <textarea
                 disabled={!canManageRequirements || submitting}
-                onChange={(event) => setBatchForm((current) => ({ ...current, externalLinks: event.target.value }))}
+                onChange={(event) => {
+                  setBatchForm((current) => ({ ...current, externalLinks: event.target.value }));
+                  setError(null);
+                }}
                 rows={5}
                 value={batchForm.externalLinks}
               />
@@ -792,7 +852,10 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
               {t(locale, "connectorDocumentSources")}
               <textarea
                 disabled={!canManageRequirements || submitting}
-                onChange={(event) => setBatchForm((current) => ({ ...current, connectorDocumentRefs: event.target.value }))}
+                onChange={(event) => {
+                  setBatchForm((current) => ({ ...current, connectorDocumentRefs: event.target.value }));
+                  setError(null);
+                }}
                 rows={5}
                 value={batchForm.connectorDocumentRefs}
               />
@@ -800,7 +863,6 @@ export function RequirementIntakePage({ connectorBindings, currentUser, environm
           </div>
           <div className="button-row">
             <button className="primary-button" disabled={!canManageRequirements || submitting} type="submit">{t(locale, "createBatch")}</button>
-            <button className="secondary-button" disabled={!canManageRequirements || submitting} onClick={submitBatchUploads} type="button">{t(locale, "uploadBatchFiles")}</button>
             {activeBatch ? (
               <button className="secondary-button" disabled={!canManageRequirements || submitting || selectedBatchSourceIds.length === 0} onClick={confirmBatchSources} type="button">
                 {t(locale, "confirmSelectedSources")}

@@ -26,7 +26,7 @@ class CommunityAuthenticationError(ValueError):
 
 
 class CommunityAuthService:
-    """Local self-hosted authentication for the OSS Community profile.
+    """Persisted local authentication for OSS and opt-in full deployments.
 
     The service stores only scrypt password verifiers and SHA-256 token hashes.
     Demo identities remain a separate full-profile development mechanism.
@@ -41,7 +41,7 @@ class CommunityAuthService:
             return {
                 "deploymentProfile": "full",
                 "bootstrapRequired": False,
-                "authenticationMode": "demo",
+                "authenticationMode": "full_local" if self.settings.full_auth_mode == "local" else "demo",
             }
         return {
             "deploymentProfile": "oss",
@@ -131,6 +131,54 @@ class CommunityAuthService:
         self.db.commit()
         return token, expires_at, user.id
 
+    def login_full(
+        self,
+        payload: CommunityLoginRequest,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> tuple[str, datetime, UUID]:
+        if self.settings.deployment_profile != "full" or self.settings.full_auth_mode != "local":
+            raise CommunityAuthenticationError("FULL_LOCAL_AUTH_DISABLED")
+        identity = payload.identity.strip().lower()
+        user = self.db.scalar(
+            select(User).where(
+                or_(User.username == identity, User.email == identity),
+                User.edition != EDITION_COMMUNITY,
+            )
+        )
+        if (
+            user is None
+            or user.status != UserStatus.ACTIVE
+            or not user.password_hash
+            or not self.verify_password(payload.password, user.password_hash)
+        ):
+            raise CommunityAuthenticationError("FULL_LOGIN_INVALID")
+        user.last_login_at = datetime.now(timezone.utc)
+        token, expires_at, _ = self._issue_token(user, payload.tokenName)
+        write_audit_log(
+            self.db,
+            str(user.id),
+            "auth.login",
+            "auth_token",
+            str(user.id),
+            request_id,
+            trace_id,
+            details={"tokenName": payload.tokenName},
+        )
+        self.db.commit()
+        return token, expires_at, user.id
+
+    def login_for_profile(
+        self,
+        payload: CommunityLoginRequest,
+        *,
+        request_id: str,
+        trace_id: str,
+    ) -> tuple[str, datetime, UUID]:
+        login = self.login if self.settings.deployment_profile == "oss" else self.login_full
+        return login(payload, request_id=request_id, trace_id=trace_id)
+
     def list_users(self) -> list[dict[str, object]]:
         self._require_oss_profile()
         users = list(
@@ -195,7 +243,7 @@ class CommunityAuthService:
         write_audit_log(
             self.db,
             str(user_id),
-            "community.logout",
+            "community.logout" if self.settings.deployment_profile == "oss" else "auth.logout",
             "auth_token",
             str(token.id),
             request_id,
@@ -223,7 +271,7 @@ class CommunityAuthService:
         write_audit_log(
             self.db,
             str(user_id),
-            "community.tokens.revoke_all",
+            "community.tokens.revoke_all" if self.settings.deployment_profile == "oss" else "auth.tokens.revoke_all",
             "user",
             str(user_id),
             request_id,
@@ -287,7 +335,7 @@ class CommunityAuthService:
             raise CommunityAuthenticationError("COMMUNITY_IDENTITY_ALREADY_EXISTS")
 
     def _issue_token(self, user: User, token_name: str) -> tuple[str, datetime, UUID]:
-        token = "twc_" + secrets.token_urlsafe(32)
+        token = ("twc_" if self.settings.deployment_profile == "oss" else "twf_") + secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(hours=self.settings.community_token_ttl_hours)
         row = AuthToken(
             id=uuid4(),

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "community.scenario-acceptance.v1",
+  "title": "Reviewed scenario business expectation",
+  "description": "Review metadata, not an independent proof of business correctness. Source quotations and basis are derived by the Service.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "expectedOutcome", "sourceCriterionRef", "sourceText", "basis", "openQuestions", "reviewed"],
+  "properties": {
+    "schemaVersion": {"const": "community.scenario-acceptance.v1"},
+    "expectedOutcome": {"type": "string", "maxLength": 4000},
+    "sourceCriterionRef": {"type": "string", "maxLength": 1000},
+    "sourceText": {"type": "string", "maxLength": 4000},
+    "basis": {"enum": ["requirement", "inferred", "manual"]},
+    "openQuestions": {"type": "array", "maxItems": 50, "items": {"type": "string", "maxLength": 4000}},
+    "reviewed": {"type": "boolean"}
+  },
+  "allOf": [{
+    "if": {"properties": {"reviewed": {"const": true}}},
+    "then": {"properties": {"expectedOutcome": {"minLength": 1}, "openQuestions": {"maxItems": 0}}}
+  }]
+}

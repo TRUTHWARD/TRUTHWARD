@@ -2,14 +2,17 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 from pathlib import Path
+import re
 import shutil
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
+from urllib.parse import urlsplit
 
 from sqlalchemy import String, cast, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -101,6 +104,7 @@ from agentic_qa.services.gate_evaluator import GATE_EVALUATOR_VERSION, GateEvalu
 from agentic_qa.services.gate_input_assembler import GateInputAssembler
 from agentic_qa.services.executable_scenario_compiler import (
     ExecutableScenarioError,
+    acceptance_sources,
     compile_confirmed_scenarios,
     source_fingerprint,
 )
@@ -3283,6 +3287,142 @@ class ExecutionService(SelectiveReplayQueryService):
         ]
         return {"items": rows, "total": len(rows)}
 
+    def list_finding_observations(self, task_id: UUID) -> dict[str, object]:
+        task = self._require_task(task_id)
+        findings = list(
+            self.db.scalars(
+                select(Finding).where(Finding.task_id == task_id).order_by(Finding.id)
+            )
+        )
+        zap_findings = [finding for finding in findings if finding.source == FindingSource.ZAP]
+        if not zap_findings:
+            return {"items": [], "total": 0}
+        report_digest = ""
+        try:
+            report_bytes = self._artifact_storage_adapter().read_runner_report(
+                execution_id=str(task.execution_id),
+                task_id=str(task.id),
+                filename="zap-report.json",
+            )
+            report = json.loads(report_bytes)
+            alerts = self._zap_report_alerts(report)
+            report_digest = hashlib.sha256(report_bytes).hexdigest()
+        except (FileNotFoundError, ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+            alerts = []
+
+        items: list[dict[str, object]] = []
+        for finding in zap_findings:
+            scanner_reference = next(
+                (
+                    str(item.get("ref"))
+                    for item in finding.evidence
+                    if isinstance(item, dict) and item.get("type") == "inline_fact" and item.get("ref")
+                ),
+                "",
+            )
+            target = str(finding.location.get("target") or "")
+            alert = next(
+                (
+                    item for site_target, item in alerts
+                    if str(item.get("pluginid") or item.get("pluginId") or "") == scanner_reference
+                    and str(item.get("alert") or "") == finding.title
+                    and (not site_target or site_target == target)
+                ),
+                None,
+            )
+            raw_instances = alert.get("instances") if isinstance(alert, dict) else None
+            instances = raw_instances if isinstance(raw_instances, list) else []
+            observations = [
+                observation
+                for instance in instances[:8]
+                if isinstance(instance, dict)
+                if (observation := self._safe_zap_observation(instance, target)) is not None
+            ][:3]
+            report_excerpt = None
+            if alert is not None:
+                report_excerpt = {
+                    "fileName": "zap-report.json",
+                    "sha256": report_digest,
+                    "description": self._safe_zap_report_text(alert.get("desc"), max_chars=800),
+                    "solution": self._safe_zap_report_text(alert.get("solution"), max_chars=800),
+                }
+            items.append(
+                {
+                    "findingId": str(finding.id),
+                    "status": "available" if alert is not None else "unavailable",
+                    "scannerReference": redact_sensitive_text(scanner_reference[:80]),
+                    "instanceCount": min(len(instances), 10000),
+                    "observations": observations,
+                    "reportExcerpt": report_excerpt,
+                }
+            )
+        return {"items": items, "total": len(items)}
+
+    @staticmethod
+    def _safe_zap_report_text(value: object, *, max_chars: int) -> str:
+        if not isinstance(value, str) or len(value) > 8000:
+            return ""
+        plain = " ".join(re.sub(r"<[^>]*>", " ", html.unescape(value)).split())
+        redacted = redact_sensitive_text(plain)
+        if redacted == "[REDACTED]":
+            return ""
+        return redacted[:max_chars]
+
+    @staticmethod
+    def _zap_report_alerts(report: object) -> list[tuple[str, dict[str, object]]]:
+        if not isinstance(report, dict):
+            return []
+        rows: list[tuple[str, dict[str, object]]] = []
+        sites = report.get("site")
+        if isinstance(sites, list):
+            for site in sites[:32]:
+                if not isinstance(site, dict):
+                    continue
+                target = str(site.get("@name") or "")
+                alerts = site.get("alerts")
+                if isinstance(alerts, list):
+                    rows.extend((target, alert) for alert in alerts[:500] if isinstance(alert, dict))
+        else:
+            alerts = report.get("alerts")
+            if isinstance(alerts, list):
+                rows.extend(("", alert) for alert in alerts[:500] if isinstance(alert, dict))
+        return rows
+
+    @staticmethod
+    def _safe_zap_observation(instance: dict[str, object], site_target: str) -> dict[str, str] | None:
+        try:
+            source = urlsplit(str(instance.get("uri") or ""))
+            site = urlsplit(site_target)
+            if (
+                source.scheme not in {"http", "https"}
+                or not source.hostname
+                or source.username or source.password
+                or source.hostname != site.hostname
+            ):
+                return None
+            host = source.hostname
+            port = source.port
+        except ValueError:
+            return None
+        method = str(instance.get("method") or "GET").upper()
+        if method not in {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}:
+            method = "HTTP"
+        path = source.path or "/"
+        if len(path) > 220 or any(ord(character) < 32 for character in path):
+            return None
+        authority = f"{host}:{port}" if port is not None else host
+        target = redact_sensitive_text(f"{source.scheme}://{authority}{path}")
+        if not target or len(target) > 300:
+            return None
+        observation = {"method": method, "target": target}
+        raw_evidence = instance.get("evidence")
+        if isinstance(raw_evidence, str) and raw_evidence.strip():
+            snippet = re.sub(r"<[^>]*>", " ", html.unescape(raw_evidence[:2000]))
+            snippet = redact_sensitive_text(" ".join(snippet.split())[:240])
+            if snippet and snippet != "[REDACTED]":
+                observation["evidenceSnippet"] = snippet
+        return observation
+
     def list_findings(
         self,
         execution_id: UUID,
@@ -4013,6 +4153,7 @@ class ExecutionService(SelectiveReplayQueryService):
                     selected_scenario_ids=selected_scenario_ids,
                     current_source_fingerprint=plan_source_fingerprint,
                     environment_base_url=environment_base_url,
+                    sources=acceptance_sources(dict(plan.input_payload or {}), plan.requirement_version_id) if plan else [],
                 )
                 if scenarios:
                     base_config = {
@@ -4103,6 +4244,7 @@ class ExecutionService(SelectiveReplayQueryService):
                 else None
             ),
             environment_base_url=environment_base_url,
+            sources=acceptance_sources(dict(plan.input_payload or {}), plan.requirement_version_id) if plan else [],
         )
         if not compiled:
             raise ExecutableScenarioError("EXECUTABLE_SCENARIOS_CONFIRMATION_REQUIRED")
@@ -4132,6 +4274,7 @@ class ExecutionService(SelectiveReplayQueryService):
             "scenarioRevision": scenario["revision"],
             "scenarioConfidence": scenario["confidence"],
             "scenarioLimitations": scenario["limitations"],
+            **({"scenarioAcceptance": scenario["acceptance"]} if "acceptance" in scenario else {}),
         }
 
     def _prepare_tasks_for_run(self, execution_id: UUID) -> None:
@@ -4163,11 +4306,15 @@ class ExecutionService(SelectiveReplayQueryService):
             statement = statement.where(ExecutionTask.id.in_(task_ids))
         tasks = list(self.db.scalars(statement.order_by(ExecutionTask.created_at.asc())))
         for task in tasks:
+            dispatch_config = self._runner_dispatch_config(task)
             dispatch_input = {
                 "domain": task.domain.value,
                 "taskType": task.task_type,
                 "runner": task.runner,
-                "config": task.config,
+                "config": dispatch_config,
+                "runnerTimeoutSeconds": self.capability_gateway.default_timeout_seconds(
+                    task.runner
+                ),
                 "parallelism": execution.options.get("parallelism", 1),
             }
             runner_model_response = self.model_tool.invoke_structured(
@@ -4416,6 +4563,28 @@ class ExecutionService(SelectiveReplayQueryService):
                     self.db.flush()
                     continue
                 raise
+
+    def _runner_dispatch_config(self, task: ExecutionTask) -> dict[str, object]:
+        config = dict(task.config)
+        if "timeoutSeconds" not in config:
+            return config
+        first_dispatch = self.db.scalar(
+            select(AgentRun)
+            .where(
+                AgentRun.task_id == task.id,
+                AgentRun.agent_name == self.runner_agent.name,
+            )
+            .order_by(AgentRun.created_at.asc())
+            .limit(1)
+        )
+        original_config = (
+            (first_dispatch.input_payload or {}).get("config")
+            if first_dispatch is not None
+            else None
+        )
+        if isinstance(original_config, dict) and "timeoutSeconds" not in original_config:
+            config.pop("timeoutSeconds", None)
+        return config
 
     def _apply_skill_invocation_terminal_to_task(
         self,
@@ -6268,6 +6437,9 @@ class ExecutionService(SelectiveReplayQueryService):
             redact_sensitive_text(task.error_message) if task.error_message is not None else None
         )
         existing_payload = dict(task.result_payload or {})
+        # A retry result supersedes terminal metadata from the previous attempt.
+        existing_payload.pop("skillInvocationStatus", None)
+        existing_payload.pop("reasonCode", None)
         attempts = list(existing_payload.get("attempts") or [])
         attempts.append(
             {

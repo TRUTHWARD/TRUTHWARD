@@ -15,7 +15,7 @@ type JobsPageProps = {
 
 export function JobsPage({ locale, jobs, selectedJobId, onSelectJob, runtimeReadiness }: JobsPageProps) {
   const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? jobs[0] ?? null;
-  const activeJobs = jobs.filter((job) => job.status === "queued" || job.status === "running");
+  const activeJobs = jobs.filter((job) => isActiveJob(job.status));
   const queueRuntime = runtimeReadiness?.categories.find((category) => category.id === "queue-runtime") ?? null;
   const separator = t(locale, "valueSeparator");
 
@@ -70,8 +70,11 @@ export function JobsPage({ locale, jobs, selectedJobId, onSelectJob, runtimeRead
                 <div>
                   <strong>{job.jobType}</strong>
                   <p>{job.id.slice(0, 8)}</p>
+                  {job.status === "failed" && job.errorMessage ? (
+                    <p>{jobFailureMessage(locale, job.errorMessage)}</p>
+                  ) : null}
                 </div>
-                <span>{displayStatus(locale, job.status)} {separator} {job.progress}%</span>
+                <span>{displayStatus(locale, job.status)}{isActiveJob(job.status) ? ` ${separator} ${job.progress}%` : ""}</span>
               </button>
             ))}
           </div>
@@ -85,12 +88,14 @@ export function JobsPage({ locale, jobs, selectedJobId, onSelectJob, runtimeRead
                   <strong>{selectedJob.jobType}</strong>
                   <p>{displayStatus(locale, selectedJob.status)}</p>
                 </div>
-                <span>{selectedJob.progress}%</span>
+                {isActiveJob(selectedJob.status) ? <span>{selectedJob.progress}%</span> : null}
               </div>
 
-              <div className="progress-bar">
-                <div className="progress-bar__value" style={{ width: `${selectedJob.progress}%` }} />
-              </div>
+              {isActiveJob(selectedJob.status) ? (
+                <div className="progress-bar">
+                  <div className="progress-bar__value" style={{ width: `${selectedJob.progress}%` }} />
+                </div>
+              ) : null}
 
               <div className="detail-grid">
                 <div>
@@ -121,7 +126,7 @@ export function JobsPage({ locale, jobs, selectedJobId, onSelectJob, runtimeRead
               {selectedJob.errorMessage ? (
                 <div className="error-banner">
                   <strong>{t(locale, "errorState")}</strong>
-                  <p>{userFacingError(locale, new Error(selectedJob.errorMessage), "operationFailed")}</p>
+                  <p>{jobFailureMessage(locale, selectedJob.errorMessage)}</p>
                 </div>
               ) : null}
             </div>
@@ -132,6 +137,20 @@ export function JobsPage({ locale, jobs, selectedJobId, onSelectJob, runtimeRead
       </div>
     </div>
   );
+}
+
+function isActiveJob(status: string): boolean {
+  return status === "queued" || status === "running";
+}
+
+function jobFailureMessage(locale: Locale, message: string): string {
+  if (message === "ZAP authorization scan was not executed because no runnable scanner is configured") {
+    return t(locale, "securityScanRunnerUnavailable");
+  }
+  if (message === "ZAP authorization scan was not executed because no target URL is configured") {
+    return t(locale, "securityScanTargetUnavailable");
+  }
+  return userFacingError(locale, new Error(message), "operationFailed");
 }
 
 function labelForRuntimeReadinessStatus(status: RuntimeReadinessStatus): Parameters<typeof t>[1] {

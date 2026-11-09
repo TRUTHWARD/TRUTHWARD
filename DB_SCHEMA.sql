@@ -5851,3 +5851,9 @@ COMMIT;
 -- policy, revision and hash-protected validation report; pending_change stores the
 -- latest lifecycle idempotency receipt. skill_invocations.resolution_snapshot
 -- freezes the validated communityProfile. No Approval or evaluation is fabricated.
+
+-- Browser business expectation review (no schema or migration change): existing
+-- test_plan_domains.config stores optional scenario acceptance metadata governed
+-- by community.scenario-acceptance.v1. Existing execution_tasks.config freezes
+-- scenarioAcceptance with scenario/source content hashes. Source quotations come
+-- from persisted plan input; review is not independent proof of correctness.

@@ -251,6 +251,8 @@ class RequirementIntakeService:
     def create_batch(self, payload: RequirementIntakeBatchCreateRequest, context: ServiceContext) -> dict[str, object]:
         request_hash = self._batch_request_hash(payload)
         idempotency_key = (payload.idempotencyKey or "").strip()
+        if payload.idempotencyKey is not None and not idempotency_key:
+            raise ValueError("idempotencyKey must not be blank")
         lock_key = f"{context.user.id}:{idempotency_key}" if idempotency_key else str(uuid4())
         with session_advisory_lock(
             self.db,
@@ -343,16 +345,53 @@ class RequirementIntakeService:
         self,
         payload: RequirementIntakeBatchCreateRequest,
     ) -> str:
-        normalized = redact_sensitive_data(
-            payload.model_dump(mode="json", exclude_none=True)
-        )
+        return self._hash_batch_request(payload.model_dump(mode="json", exclude_none=True))
+
+    @staticmethod
+    def _hash_batch_request(snapshot: dict[str, Any]) -> str:
         encoded = json.dumps(
-            normalized,
+            snapshot,
             sort_keys=True,
             separators=(",", ":"),
             default=str,
         ).encode("utf-8")
         return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+    def _upload_batch_request_hash(
+        self,
+        *,
+        name: str,
+        files: list[dict[str, object]],
+        source_ref: str | None,
+        environment: str,
+        project_id: UUID | None,
+        environment_id: UUID | None,
+        domains: list[str],
+        risk_level: str,
+        metadata: dict[str, Any],
+        idempotency_key: str | None,
+    ) -> str:
+        return self._hash_batch_request({
+            "requestType": "upload",
+            "name": name,
+            "files": [
+                {
+                    "fileName": file_data.get("fileName"),
+                    "contentType": file_data.get("contentType"),
+                    "byteSize": len(bytes(file_data.get("payload") or b"")),
+                    "contentHash": hashlib.sha256(bytes(file_data.get("payload") or b"")).hexdigest(),
+                }
+                for file_data in files
+            ],
+            "sourceRef": source_ref,
+            "environment": environment,
+            "projectId": str(project_id) if project_id else None,
+            "environmentId": str(environment_id) if environment_id else None,
+            "domains": domains,
+            "riskLevel": risk_level,
+            "metadata": metadata,
+            "idempotencyKey": idempotency_key,
+        })
 
     def create_upload_batch(
         self,
@@ -371,6 +410,54 @@ class RequirementIntakeService:
     ) -> dict[str, object]:
         if not files:
             raise ValueError("batch upload requires at least one file")
+        key = (idempotency_key or "").strip()
+        if idempotency_key is not None and (not key or len(idempotency_key) > 120):
+            raise ValueError("idempotencyKey must contain 1 to 120 non-whitespace characters")
+        request_hash = self._upload_batch_request_hash(
+            name=name,
+            files=files,
+            source_ref=source_ref,
+            environment=environment,
+            project_id=project_id,
+            environment_id=environment_id,
+            domains=domains,
+            risk_level=risk_level,
+            metadata=metadata,
+            idempotency_key=idempotency_key,
+        )
+        lock_key = f"{context.user.id}:{key}" if key else str(uuid4())
+        with session_advisory_lock(self.db, "requirement-intake-batch", lock_key):
+            return self._create_upload_batch_locked(
+                name=name,
+                files=files,
+                source_ref=source_ref,
+                environment=environment,
+                project_id=project_id,
+                environment_id=environment_id,
+                domains=domains,
+                risk_level=risk_level,
+                metadata=metadata,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+                context=context,
+            )
+
+    def _create_upload_batch_locked(
+        self,
+        *,
+        name: str,
+        files: list[dict[str, object]],
+        source_ref: str | None,
+        environment: str,
+        project_id: UUID | None,
+        environment_id: UUID | None,
+        domains: list[str],
+        risk_level: str,
+        metadata: dict[str, Any],
+        idempotency_key: str | None,
+        request_hash: str,
+        context: ServiceContext,
+    ) -> dict[str, object]:
         existing = self._batch_for_idempotency(idempotency_key, context)
         if existing is not None:
             self._authorize_project_environment(
@@ -379,6 +466,10 @@ class RequirementIntakeService:
                 context,
                 write=True,
             )
+            if existing.metadata_json.get("idempotencyRequestHash") != request_hash:
+                raise IdempotencyConflictError(
+                    "idempotency conflict for requirement intake batch upload"
+                )
             return self.serialize_batch(existing)
         self._authorize_project_environment(project_id, environment_id, context, write=True)
         parsed_domains = self._parse_domains(domains)
@@ -401,6 +492,7 @@ class RequirementIntakeService:
                 "source": "requirement-intake-batch-upload",
                 "sourceCount": len(files),
                 "supportedSourceTypes": SUPPORTED_INTAKE_SOURCE_TYPES,
+                "idempotencyRequestHash": request_hash,
             },
             created_by=context.user.id,
             updated_by=context.user.id,

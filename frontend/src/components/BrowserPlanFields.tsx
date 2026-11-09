@@ -2,6 +2,8 @@
 import { Locale, t } from "../i18n";
 import {
   newBrowserAction,
+  newBrowserAcceptance,
+  browserScenarioReadinessError,
   newBrowserScenario,
   type BrowserActionDraft,
   type BrowserPlanDraft,
@@ -18,11 +20,16 @@ export function BrowserPlanFields({ locale, value, insights, disabled, onChange 
 }) {
   const environmentTargetUrl = String(insights?.environmentTargetUrl ?? "");
   const locatorHints = insights?.historicalLocatorHints ?? [];
+  const acceptanceSources = insights?.acceptanceSources ?? [];
   const updateScenario = (index: number, update: Partial<BrowserScenarioDraft>, preserveStatus = false) => {
     onChange({
       ...value,
       scenarios: value.scenarios.map((scenario, scenarioIndex) => scenarioIndex === index
-        ? { ...scenario, ...update, status: preserveStatus ? (update.status ?? scenario.status) : "draft" }
+        ? {
+          ...scenario, ...update,
+          acceptance: update.acceptance ?? (scenario.acceptance && !preserveStatus ? { ...scenario.acceptance, reviewed: false } : scenario.acceptance),
+          status: preserveStatus ? (update.status ?? scenario.status) : "draft",
+        }
         : scenario),
     });
   };
@@ -92,6 +99,7 @@ export function BrowserPlanFields({ locale, value, insights, disabled, onChange 
                   ...scenario,
                   targetUrl: scenario.targetUrl || environmentTargetUrl,
                   status: scenario.targetUrl ? scenario.status : "draft",
+                  acceptance: scenario.acceptance && !scenario.targetUrl ? { ...scenario.acceptance, reviewed: false } : scenario.acceptance,
                 })),
               })}
             >
@@ -111,7 +119,7 @@ export function BrowserPlanFields({ locale, value, insights, disabled, onChange 
                   ...value,
                   acceptCurrentSource: event.target.checked,
                   scenarios: event.target.checked
-                    ? value.scenarios.map((scenario) => ({ ...scenario, status: "draft" }))
+                    ? value.scenarios.map((scenario) => ({ ...scenario, status: "draft", acceptance: scenario.acceptance ? { ...scenario.acceptance, reviewed: false } : undefined }))
                     : value.scenarios,
                 })}
               />
@@ -181,6 +189,82 @@ export function BrowserPlanFields({ locale, value, insights, disabled, onChange 
                   onChange={(event) => updateScenario(scenarioIndex, { preconditions: splitLines(event.target.value) })}
                 />
               </label>
+              {scenario.acceptance ? (
+                <section className="browser-business-review detail-stack" aria-label={`${t(locale, "browserBusinessReview")} ${scenarioIndex + 1}`}>
+                  <strong>{t(locale, "browserBusinessReview")}</strong>
+                  <p>{t(locale, "browserBusinessReviewHelp")}</p>
+                  <label className="form-field">
+                    {t(locale, "browserBusinessExpectedOutcome")}
+                    <textarea
+                      aria-label={`${t(locale, "browserBusinessExpectedOutcome")} ${scenarioIndex + 1}`}
+                      rows={3}
+                      value={scenario.acceptance.expectedOutcome}
+                      onChange={(event) => updateScenario(scenarioIndex, { acceptance: { ...scenario.acceptance!, expectedOutcome: event.target.value, reviewed: false } })}
+                    />
+                  </label>
+                  <label className="form-field">
+                    {t(locale, "browserBusinessSource")}
+                    <select
+                      aria-label={`${t(locale, "browserBusinessSource")} ${scenarioIndex + 1}`}
+                      value={scenario.acceptance.sourceCriterionRef}
+                      onChange={(event) => {
+                        const source = acceptanceSources.find(item => item.ref === event.target.value);
+                        updateScenario(scenarioIndex, { acceptance: {
+                          ...scenario.acceptance!, sourceCriterionRef: source?.ref ?? "", sourceText: source?.text ?? "",
+                          expectedOutcome: scenario.acceptance!.expectedOutcome.trim() ? scenario.acceptance!.expectedOutcome : source?.text ?? "",
+                          basis: source ? "requirement" : scenario.origin === "generated" ? "inferred" : "manual", reviewed: false,
+                        } });
+                      }}
+                    >
+                      <option value="">{t(locale, scenario.origin === "generated" ? "browserBusinessBasisInferred" : "browserBusinessBasisManual")}</option>
+                      {acceptanceSources.map(source => <option key={source.ref} value={source.ref}>{source.text}</option>)}
+                      {scenario.acceptance.sourceCriterionRef && !acceptanceSources.some(source => source.ref === scenario.acceptance!.sourceCriterionRef)
+                        ? <option value={scenario.acceptance.sourceCriterionRef}>{scenario.acceptance.sourceText || scenario.acceptance.sourceCriterionRef}</option> : null}
+                    </select>
+                  </label>
+                  {scenario.acceptance.sourceText ? <blockquote className="browser-source-quote">{scenario.acceptance.sourceText}</blockquote> : <small>{t(locale, "browserBusinessNoSourceHelp")}</small>}
+                  <label className="form-field">
+                    {t(locale, "browserBusinessOpenQuestions")}
+                    <textarea
+                      aria-label={`${t(locale, "browserBusinessOpenQuestions")} ${scenarioIndex + 1}`}
+                      rows={2}
+                      value={scenario.acceptance.openQuestions.join("\n")}
+                      onChange={(event) => updateScenario(scenarioIndex, { acceptance: { ...scenario.acceptance!, openQuestions: splitLines(event.target.value), reviewed: false } })}
+                    />
+                  </label>
+                  <small>{t(locale, "browserBusinessQuestionsHelp")}</small>
+                  <label className="check-row">
+                    <input
+                      type="checkbox"
+                      aria-label={`${t(locale, "browserBusinessConfirm")} ${scenarioIndex + 1}`}
+                      checked={scenario.acceptance.reviewed}
+                      disabled={!scenario.acceptance.expectedOutcome.trim() || scenario.acceptance.openQuestions.length > 0 || (value.sourceChanged && !value.acceptCurrentSource)}
+                      onChange={(event) => updateScenario(scenarioIndex, { acceptance: { ...scenario.acceptance!, reviewed: event.target.checked } })}
+                    />
+                    <span>{t(locale, "browserBusinessConfirm")}</span>
+                  </label>
+                </section>
+              ) : (
+                <div className="browser-business-review">
+                  <p>{t(locale, "browserBusinessLegacyHelp")}</p>
+                  <button type="button" className="secondary-button" onClick={() => updateScenario(scenarioIndex, { acceptance: newBrowserAcceptance() })}>{t(locale, "browserBusinessAdd")}</button>
+                </div>
+              )}
+              <div className="browser-business-summary">
+                <strong>{t(locale, "browserBusinessOperations")}</strong>
+                <ol>{scenario.actions.map(action => (
+                  <li key={action.actionId}>
+                    {t(locale, { navigate: "browserNavigate", fill: "browserFill", click: "browserClick", assert_visible: "browserAssertVisible", assert_text: "browserAssertText" }[action.actionType])}
+                    {action.actionType === "navigate"
+                      ? ` · ${action.url || scenario.targetUrl || t(locale, "browserBusinessTargetMissing")}`
+                      : ` · ${action.name || action.testId || action.selector || t(locale, "browserBusinessTargetMissing")}`}
+                    {action.actionType === "assert_text" && action.expectedText ? ` → ${action.expectedText}` : ""}
+                  </li>
+                ))}</ol>
+              </div>
+              <details className="browser-execution-details">
+                <summary>{t(locale, "browserExecutionDetails")}</summary>
+                <p>{t(locale, "browserExecutionDetailsHelp")}</p>
               <div className="browser-action-list">
                 {scenario.actions.map((action, actionIndex) => (
                   <div className="browser-action-card" key={action.actionId}>
@@ -254,18 +338,20 @@ export function BrowserPlanFields({ locale, value, insights, disabled, onChange 
                         </select>
                       </label>
                     </> : null}
-                    {action.limitations.length > 0 ? <small>{t(locale, "browserGenerationLimitations")}: {action.limitations.join(", ")}</small> : null}
+                    {candidateLimitations(action.limitations).length > 0 ? <small>{t(locale, "browserGenerationLimitations")}: {candidateLimitations(action.limitations).join(", ")}</small> : null}
                   </div>
                 ))}
               </div>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => updateScenario(scenarioIndex, { actions: [...scenario.actions, newBrowserAction(scenario.scenarioId, scenario.actions.length)] })}
+              >
+                {t(locale, "browserAddAction")}
+              </button>
+              </details>
               <div className="button-row">
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => updateScenario(scenarioIndex, { actions: [...scenario.actions, newBrowserAction(scenario.scenarioId, scenario.actions.length)] })}
-                >
-                  {t(locale, "browserAddAction")}
-                </button>
+                <small>{t(locale, "browserBusinessExecutionConfirmHelp")}</small>
                 <label className="check-row">
                   <input
                     aria-label={`${t(locale, "browserConfirmScenario")} ${scenarioIndex + 1}`}
@@ -281,8 +367,9 @@ export function BrowserPlanFields({ locale, value, insights, disabled, onChange 
                   <span>{t(locale, "browserConfirmScenario")}</span>
                 </label>
               </div>
+              {browserScenarioReadinessError(scenario) ? <p className="browser-readiness-hint" role="status">{t(locale, browserScenarioReadinessError(scenario)!)}</p> : null}
               {scenario.sourceRefs.length > 0 ? <small>{t(locale, "browserSourceRefs")}: {scenario.sourceRefs.length}</small> : null}
-              {scenario.limitations.length > 0 ? <small>{t(locale, "browserGenerationLimitations")}: {scenario.limitations.join(", ")}</small> : null}
+              {candidateLimitations(scenario.limitations).length > 0 ? <small>{t(locale, "browserGenerationLimitations")}: {candidateLimitations(scenario.limitations).join(", ")}</small> : null}
             </article>
           ))}
         </div>
@@ -309,4 +396,15 @@ export function BrowserPlanFields({ locale, value, insights, disabled, onChange 
 
 function splitLines(value: string) {
   return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+}
+
+// Validation reasons are recomputed from the edited draft by the readiness hint.
+// Persisted reasons may describe the candidate before the user completed it.
+function candidateLimitations(limitations: string[]) {
+  const validationReasons = new Set([
+    "TARGET_URL_REQUIRED", "ACTIONS_REQUIRED", "ELEMENT_TARGET_REQUIRED",
+    "EXPECTED_TEXT_REQUIRED", "FILL_REFERENCE_REQUIRED", "BUSINESS_EXPECTATION_REQUIRED",
+    "BUSINESS_EXPECTATION_REVIEW_REQUIRED", "BUSINESS_QUESTIONS_UNRESOLVED", "BUSINESS_ASSERTION_REQUIRED",
+  ]);
+  return limitations.filter(item => !validationReasons.has(item));
 }

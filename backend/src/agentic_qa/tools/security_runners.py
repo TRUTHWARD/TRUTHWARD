@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import socket
 from typing import Any
 
 from agentic_qa.domain.enums import ArtifactType, TestDomain
@@ -677,12 +678,19 @@ class _BaseSecurityRunner(RunnerAdapter):
             report_path = artifact_dir / "zap-report.json"
             zap_home = artifact_dir / "zap-home"
             zap_home.mkdir(parents=True, exist_ok=True)
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as proxy_socket:
+                proxy_socket.bind(("127.0.0.1", 0))
+                proxy_port = proxy_socket.getsockname()[1]
             command = [
                 executable,
                 "-cmd",
                 "-silent",
                 "-dir",
                 str(zap_home),
+                "-host",
+                "127.0.0.1",
+                "-port",
+                str(proxy_port),
                 "-quickurl",
                 zap_target,
                 "-quickout",

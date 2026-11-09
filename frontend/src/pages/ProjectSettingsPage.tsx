@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ApiRequestError, createCommunityUser, fetchCommunityUsers, type CommunityUserItem, type CurrentUser, type ProjectItem, type ProjectMemberItem, type ProjectMemberMutationPayload, type ProjectMutationPayload } from "../lib/api";
+import { ApiRequestError, createCommunityUser, fetchCommunityUsers, fetchProjectMemberCandidates, type CommunityUserItem, type CurrentUser, type ProjectItem, type ProjectMemberCandidateItem, type ProjectMemberItem, type ProjectMemberMutationPayload, type ProjectMutationPayload } from "../lib/api";
 import { Locale, t, userFacingError } from "../i18n";
 import { IS_OSS_PROFILE } from "../productProfile";
 
@@ -51,8 +51,12 @@ export function ProjectSettingsPage({
     [projects, selectedProjectId],
   );
   const [projectForm, setProjectForm] = useState({ key: "", name: "", description: "", status: "active" });
-  const [memberForm, setMemberForm] = useState({ userId: currentUser?.id ?? "", role: "viewer", status: "active" });
+  const [memberForm, setMemberForm] = useState({ userId: "", role: "viewer", status: "active" });
   const [communityUsers, setCommunityUsers] = useState<CommunityUserItem[]>([]);
+  const [memberSearch, setMemberSearch] = useState("");
+  const [fullCandidates, setFullCandidates] = useState<{ key: string; items: ProjectMemberCandidateItem[]; hasMore: boolean } | null>(null);
+  const [candidateLoading, setCandidateLoading] = useState(false);
+  const [candidateError, setCandidateError] = useState(false);
   const [userForm, setUserForm] = useState({ username: "", email: "", displayName: "", password: "" });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -61,15 +65,25 @@ export function ProjectSettingsPage({
     () => members.filter((member) => member.role === "owner" && member.status === "active").length,
     [members],
   );
-  const availableCommunityUsers = useMemo(
-    () => communityUsers.filter((communityUser) => !members.some((member) => member.userId === communityUser.id)),
-    [communityUsers, members],
+  const currentProjectId = selectedProject?.id ?? "";
+  const memberSearchTerm = memberSearch.trim();
+  const candidateKey = `${currentProjectId}\0${memberSearchTerm}`;
+  const availableUsers = useMemo(
+    () => {
+      const candidates = IS_OSS_PROFILE
+        ? communityUsers
+        : !candidateLoading && !candidateError && fullCandidates?.key === candidateKey
+          ? fullCandidates.items
+          : [];
+      return candidates.filter((candidate) => !members.some((member) => member.userId === candidate.id));
+    },
+    [communityUsers, fullCandidates, candidateKey, candidateLoading, candidateError, members],
   );
+  const selectedUserId = availableUsers.some((candidate) => candidate.id === memberForm.userId) ? memberForm.userId : "";
 
   const loadCommunityUsers = useCallback(async () => {
     const result = await fetchCommunityUsers();
     setCommunityUsers(result.items);
-    setMemberForm((current) => ({ ...current, userId: current.userId || result.items[0]?.id || "" }));
     return result.items;
   }, []);
 
@@ -91,13 +105,27 @@ export function ProjectSettingsPage({
   }, [canManageMembers, loadCommunityUsers]);
 
   useEffect(() => {
-    if (!IS_OSS_PROFILE) return;
-    setMemberForm((current) => {
-      const selectedUserIsAvailable = availableCommunityUsers.some((communityUser) => communityUser.id === current.userId);
-      const userId = selectedUserIsAvailable ? current.userId : availableCommunityUsers[0]?.id ?? "";
-      return userId === current.userId ? current : { ...current, userId };
-    });
-  }, [availableCommunityUsers]);
+    if (IS_OSS_PROFILE || !canManageMembers || !currentProjectId) return;
+    let cancelled = false;
+    setCandidateLoading(true);
+    setCandidateError(false);
+    const timer = window.setTimeout(() => {
+      void fetchProjectMemberCandidates(currentProjectId, memberSearchTerm)
+        .then((result) => {
+          if (!cancelled) setFullCandidates({ key: candidateKey, ...result });
+        })
+        .catch(() => {
+          if (!cancelled) setCandidateError(true);
+        })
+        .finally(() => {
+          if (!cancelled) setCandidateLoading(false);
+        });
+    }, memberSearchTerm ? 200 : 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [canManageMembers, candidateKey, currentProjectId, memberSearchTerm]);
 
   const submitNewProject = async () => {
     if (!canManageProjects) {
@@ -148,18 +176,19 @@ export function ProjectSettingsPage({
   };
 
   const submitMember = async () => {
-    if (!canManageMembers || !selectedProject) {
+    if (!canManageMembers || !selectedProject || !selectedUserId) {
       return;
     }
     setSaving(true);
     setMessage(null);
     try {
       await onCreateMember(selectedProject.id, {
-        userId: memberForm.userId,
+        userId: selectedUserId,
         role: memberForm.role,
         status: memberForm.status,
         metadata: {},
       });
+      setMemberForm((current) => ({ ...current, userId: "" }));
       setMessage(t(locale, "memberSaved"));
       setMessageTone("success");
     } catch (error) {
@@ -477,19 +506,33 @@ export function ProjectSettingsPage({
           </table>
         </div>
         <div className="control-form control-form--inline">
+          {!IS_OSS_PROFILE ? (
+            <label className="form-field">
+              {t(locale, "memberCandidateSearch")}
+              <input
+                disabled={!canManageMembers}
+                onChange={(event) => setMemberSearch(event.target.value)}
+                value={memberSearch}
+              />
+            </label>
+          ) : null}
           <label className="form-field">
             {t(locale, "userId")}
             <select
               disabled={!canManageMembers}
               onChange={(event) => setMemberForm((current) => ({ ...current, userId: event.target.value }))}
-              value={memberForm.userId}
+              value={selectedUserId}
             >
               <option value="">{t(locale, "select")}</option>
-              {availableCommunityUsers.map((communityUser) => (
-                <option key={communityUser.id} value={communityUser.id}>{communityUser.displayName} ({communityUser.username})</option>
+              {availableUsers.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>{candidate.displayName} ({candidate.username || candidate.email})</option>
               ))}
             </select>
           </label>
+          {!IS_OSS_PROFILE && candidateLoading ? <span role="status">{t(locale, "memberCandidatesLoading")}</span> : null}
+          {!IS_OSS_PROFILE && candidateError ? <span role="alert">{t(locale, "memberCandidatesLoadFailed")}</span> : null}
+          {!IS_OSS_PROFILE && !candidateLoading && !candidateError && fullCandidates?.key === candidateKey && availableUsers.length === 0 ? <span>{t(locale, "noMemberCandidates")}</span> : null}
+          {!IS_OSS_PROFILE && !candidateLoading && !candidateError && fullCandidates?.key === candidateKey && fullCandidates.hasMore ? <span>{t(locale, "memberCandidatesMore")}</span> : null}
           <label className="form-field">
             {t(locale, "role")}
             <select
@@ -518,7 +561,7 @@ export function ProjectSettingsPage({
               ))}
             </select>
           </label>
-          <button disabled={!canManageMembers || !selectedProject || !memberForm.userId || saving} onClick={submitMember} type="button">
+          <button disabled={!canManageMembers || !selectedProject || !selectedUserId || saving} onClick={submitMember} type="button">
             {t(locale, "addMember")}
           </button>
         </div>

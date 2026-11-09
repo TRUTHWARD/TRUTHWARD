@@ -16,18 +16,18 @@
       "properties": {
         "matchMethod": {"type": ["string", "null"], "enum": ["explicit_reference", "manual_mapping", "verified_traceability", "project_rule", "historical_overlap", "ai_suggestion", null]},
         "explicitSources": {"type": "array", "items": {"enum": ["pr_title", "pr_template", "commit_message"]}, "maxItems": 3},
-        "configuredPullRequestNumber": {"type": ["string", "null"], "maxLength": 1000},
-        "matchedPullRequestNumber": {"type": ["string", "null"], "maxLength": 1000},
-        "configuredLabels": {"type": "array", "items": {"type": "string"}, "maxItems": 200},
-        "matchedLabels": {"type": "array", "items": {"type": "string"}, "maxItems": 200},
-        "configuredPathPrefixes": {"type": "array", "items": {"type": "string"}, "maxItems": 200},
-        "matchedPaths": {"type": "array", "items": {"type": "string"}, "maxItems": 200},
+        "configuredPullRequestNumber": {"type": ["string", "null"]},
+        "matchedPullRequestNumber": {"type": ["string", "null"]},
+        "configuredLabels": {"type": "array", "items": {"type": "string"}},
+        "matchedLabels": {"type": "array", "items": {"type": "string"}},
+        "configuredPathPrefixes": {"type": "array", "items": {"type": "string"}},
+        "matchedPaths": {"type": "array", "items": {"type": "string"}},
         "appliesToAll": {"type": ["boolean", "null"]},
-        "traceabilityPath": {"type": ["string", "null"], "maxLength": 1000},
-        "capabilityRef": {"type": ["string", "null"], "maxLength": 500},
+        "traceabilityPath": {"type": ["string", "null"]},
+        "capabilityRef": {"type": ["string", "null"]},
         "historicalContextRef": {"type": ["object", "null"]},
-        "overlappingLabels": {"type": "array", "items": {"type": "string"}, "maxItems": 200},
-        "overlappingPaths": {"type": "array", "items": {"type": "string"}, "maxItems": 200},
+        "overlappingLabels": {"type": "array", "items": {"type": "string"}},
+        "overlappingPaths": {"type": "array", "items": {"type": "string"}},
         "factsTruncated": {"type": "boolean"}
       }
     }

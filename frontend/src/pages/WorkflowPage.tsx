@@ -32,6 +32,8 @@ import type { ApprovalItem, ExecutionItem, JobItem, PlanItem, ReplayItem } from 
 
 type WorkflowPageProps = {
   approvals: ApprovalItem[];
+  approvalsError?: string | null;
+  approvalsLoading?: boolean;
   clarifications: RequirementClarification[];
   currentUser: CurrentUser | null;
   environments: EnvironmentItem[];
@@ -62,7 +64,7 @@ type WorkflowPageProps = {
   loading: boolean;
   locale: Locale;
   onAnswerClarification: (runId: string, clarificationId: string, answer: string) => Promise<void>;
-  onApproveApproval: (approvalId: string, comment: string) => Promise<void>;
+  onApproveApproval: (approvalId: string, comment: string, apiKeyRef?: string) => Promise<void>;
   onCancelApproval: (approvalId: string, comment: string) => Promise<void>;
   onCancelExecution: (executionId: string) => Promise<void>;
   onCreateExecution: (payload: ExecutionPayload) => Promise<void>;
@@ -74,6 +76,7 @@ type WorkflowPageProps = {
   onGeneratePlan: (planId: string) => Promise<void>;
   onHealExecution: (executionId: string) => Promise<void>;
   onRejectApproval: (approvalId: string, comment: string) => Promise<void>;
+  onRefreshApprovals?: () => Promise<void>;
   onRetryExecution: (executionId: string) => Promise<void>;
   onNavigateRoute: (route: string) => void;
   onSelectExecution: (executionId: string) => void;
@@ -131,6 +134,8 @@ function compactJson(value: unknown) {
 
 export function WorkflowPage({
   approvals,
+  approvalsError = null,
+  approvalsLoading = false,
   clarifications,
   currentUser,
   environments,
@@ -155,6 +160,7 @@ export function WorkflowPage({
   onGeneratePlan,
   onHealExecution,
   onRejectApproval,
+  onRefreshApprovals,
   onRetryExecution,
   onNavigateRoute,
   onSelectExecution,
@@ -254,9 +260,11 @@ export function WorkflowPage({
   });
   const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
   const [approvalComments, setApprovalComments] = useState<Record<string, string>>({});
+  const [approvalCredentialRefs, setApprovalCredentialRefs] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [messageTone, setMessageTone] = useState<"success" | "error">("success");
+  const [planFeedback, setPlanFeedback] = useState<{ tone: "success" | "error"; text: string } | null>(null);
 
   const environmentsForLibraryProject = useMemo(
     () => environments.filter((environment) => !libraryFilters.projectId || environment.projectId === libraryFilters.projectId),
@@ -377,16 +385,25 @@ export function WorkflowPage({
   const environmentOptionsForProject = (projectId: string) =>
     environments.filter((environment) => !projectId || environment.projectId === projectId);
 
-  const runAction = async (action: () => Promise<void>, successKey: Parameters<typeof t>[1]) => {
+  const runAction = async (action: () => Promise<void>, successKey: Parameters<typeof t>[1], feedbackTarget: "page" | "plan" = "page") => {
     setSubmitting(true);
     setMessage(null);
+    if (feedbackTarget === "plan") setPlanFeedback(null);
     try {
       await action();
-      setMessage(t(locale, successKey));
-      setMessageTone("success");
+      const text = t(locale, successKey);
+      if (feedbackTarget === "plan") setPlanFeedback({ tone: "success", text });
+      else {
+        setMessage(text);
+        setMessageTone("success");
+      }
     } catch (actionError) {
-      setMessage(userFacingError(locale, actionError, "workflowActionFailed"));
-      setMessageTone("error");
+      const text = userFacingError(locale, actionError, "workflowActionFailed");
+      if (feedbackTarget === "plan") setPlanFeedback({ tone: "error", text });
+      else {
+        setMessage(text);
+        setMessageTone("error");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -481,17 +498,24 @@ export function WorkflowPage({
   };
 
   const validateBrowserForm = () => {
+    if (!planForm.name.trim()) {
+      setPlanFeedback({ tone: "error", text: t(locale, "planNameRequired") });
+      return false;
+    }
+    if (!planForm.environment.trim()) {
+      setPlanFeedback({ tone: "error", text: t(locale, "planEnvironmentRequired") });
+      return false;
+    }
     const error = browserEdited ? browserPlanError(browserForm) : null;
     if (error) {
-      setMessage(t(locale, error));
-      setMessageTone("error");
+      setPlanFeedback({ tone: "error", text: t(locale, error) });
       return false;
     }
     if (browserForm.mode !== "none" && (!planForm.projectId || !planForm.environmentId || !planForm.domains.includes("functional"))) {
-      setMessage(t(locale, "browserScopeRequired"));
-      setMessageTone("error");
+      setPlanFeedback({ tone: "error", text: t(locale, "browserScopeRequired") });
       return false;
     }
+    setPlanFeedback(null);
     return true;
   };
   const planDomainConfig = () => browserEdited
@@ -515,7 +539,7 @@ export function WorkflowPage({
       riskLevel: planForm.riskLevel,
       input: { source: "workflow-ui" },
     };
-    void runAction(() => onCreatePlan(payload), "planSaved");
+    void runAction(() => onCreatePlan(payload), "planSaved", "plan");
   };
 
   const updateSelectedPlan = () => {
@@ -535,6 +559,7 @@ export function WorkflowPage({
           input: selectedPlan.input,
         }),
       "planSaved",
+      "plan",
     );
   };
 
@@ -1050,7 +1075,7 @@ export function WorkflowPage({
             <span className="eyebrow">{t(locale, "planning")}</span>
             <h2>{t(locale, "testPlanManagement")}</h2>
           </div>
-          <form className="control-form" onSubmit={submitPlanCreate}>
+          <form className="control-form" noValidate onSubmit={submitPlanCreate}>
             <label className="form-field">
               {t(locale, "planName")}
               <input
@@ -1150,6 +1175,11 @@ export function WorkflowPage({
               onToggle={(domain) => setPlanForm((current) => ({ ...current, domains: toggleOption(current.domains, domain) }))}
               selected={planForm.domains}
             />
+            {planFeedback ? (
+              <div className={`notice-banner notice-banner--${planFeedback.tone}`} role={planFeedback.tone === "error" ? "alert" : "status"}>
+                {planFeedback.text}
+              </div>
+            ) : null}
             <div className="button-row">
               <button className="primary-button" disabled={!canManagePlans || submitting} type="submit">
                 {t(locale, "createPlan")}
@@ -1160,7 +1190,7 @@ export function WorkflowPage({
               <button
                 className="secondary-button"
                 disabled={!canManagePlans || submitting || !selectedPlan}
-                onClick={() => selectedPlan && void runAction(() => onDeletePlan(selectedPlan.id), "planDeleted")}
+                onClick={() => selectedPlan && void runAction(() => onDeletePlan(selectedPlan.id), "planDeleted", "plan")}
                 type="button"
               >
                 {t(locale, "deletePlan")}
@@ -1169,7 +1199,7 @@ export function WorkflowPage({
                 <button
                   className="secondary-button"
                   disabled={!canManagePlans || submitting || !selectedPlan}
-                  onClick={() => selectedPlan && void runAction(() => onGeneratePlan(selectedPlan.id), "planGenerationStarted")}
+                  onClick={() => selectedPlan && void runAction(() => onGeneratePlan(selectedPlan.id), "planGenerationStarted", "plan")}
                   type="button"
                 >
                   {t(locale, "generatePlan")}
@@ -1385,16 +1415,26 @@ export function WorkflowPage({
         </section>
       </div>
 
-      {!isCommunityEdition ? <section className="panel">
+      {!isCommunityEdition ? <section className="panel" id="approval-center">
         <div className="panel__header">
-          <span className="eyebrow">{t(locale, "approvalCenter")}</span>
-          <h2>{t(locale, "pendingApprovals")}</h2>
+          <div>
+            <span className="eyebrow">{t(locale, "approvalCenter")}</span>
+            <h2>{t(locale, "pendingApprovals")}</h2>
+          </div>
+          {canManageApprovals && onRefreshApprovals ? (
+            <button className="button button--secondary" disabled={approvalsLoading} onClick={() => void onRefreshApprovals()} type="button">
+              {t(locale, "refresh")}
+            </button>
+          ) : null}
         </div>
         {!canManageApprovals ? <div className="empty-state">{t(locale, "approvalReadOnlyNotice")}</div> : null}
-        <div className="table-wrap">
+        {canManageApprovals && approvalsError ? <div className="error-banner" role="alert">{approvalsError}</div> : null}
+        {canManageApprovals && approvalsLoading ? <div className="empty-state">{t(locale, "loading")}</div> : null}
+        {canManageApprovals ? <div className="table-wrap">
           <table className="data-table data-table--compact">
             <thead>
               <tr>
+                <th>{t(locale, "approvalId")}</th>
                 <th>{t(locale, "summary")}</th>
                 <th>{t(locale, "type")}</th>
                 <th>{t(locale, "resource")}</th>
@@ -1406,6 +1446,7 @@ export function WorkflowPage({
             <tbody>
               {approvals.map((approval) => (
                 <tr key={approval.id}>
+                  <td><code title={approval.id}>{approval.id.slice(0, 8)}</code></td>
                   <td>{approval.summary}</td>
                   <td>{approval.type}</td>
                   <td>{approval.resourceType}</td>
@@ -1420,10 +1461,31 @@ export function WorkflowPage({
                   </td>
                   <td>
                     <div className="button-row">
+                      {requiresModelApprovalCredentialRef(approval) ? (
+                        <label>
+                          <span>{t(locale, "modelApprovalCredentialRef")}</span>
+                          <input
+                            autoComplete="off"
+                            className="text-input"
+                            disabled={!canManageApprovals || approval.status !== "pending" || submitting}
+                            onChange={(event) => setApprovalCredentialRefs((current) => ({ ...current, [approval.id]: event.target.value }))}
+                        placeholder={t(locale, "modelApprovalCredentialRefPlaceholder")}
+                            type="text"
+                            value={approvalCredentialRefs[approval.id] ?? ""}
+                          />
+                        </label>
+                      ) : null}
                       <button
                         className="link-button"
-                        disabled={!canManageApprovals || approval.status !== "pending" || submitting}
-                        onClick={() => void runAction(() => onApproveApproval(approval.id, approvalComments[approval.id] ?? ""), "approvalApproved")}
+                        disabled={!canManageApprovals || approval.status !== "pending" || submitting || (requiresModelApprovalCredentialRef(approval) && !approvalCredentialRefs[approval.id]?.trim())}
+                        onClick={() => void runAction(async () => {
+                          await onApproveApproval(approval.id, approvalComments[approval.id] ?? "", approvalCredentialRefs[approval.id]?.trim());
+                          setApprovalCredentialRefs((current) => {
+                            const next = { ...current };
+                            delete next[approval.id];
+                            return next;
+                          });
+                        }, "approvalApproved")}
                         type="button"
                       >
                         {t(locale, "approve")}
@@ -1448,17 +1510,24 @@ export function WorkflowPage({
                   </td>
                 </tr>
               ))}
-              {approvals.length === 0 ? (
+              {approvals.length === 0 && !approvalsLoading && !approvalsError ? (
                 <tr>
-                  <td colSpan={6}>{t(locale, "noPendingApprovals")}</td>
+                  <td colSpan={7}>{t(locale, "noPendingApprovals")}</td>
                 </tr>
               ) : null}
             </tbody>
           </table>
-        </div>
+        </div> : null}
       </section> : null}
     </div>
   );
+}
+
+function requiresModelApprovalCredentialRef(approval: ApprovalItem): boolean {
+  if (approval.resourceType !== "model_governance_action") return false;
+  const modelPayload = approval.payload.modelPayload;
+  return typeof modelPayload === "object" && modelPayload !== null && !Array.isArray(modelPayload)
+    && (modelPayload as Record<string, unknown>).apiKeyRef === "[REDACTED]";
 }
 
 function countRefs(value: unknown) {
