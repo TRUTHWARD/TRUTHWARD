@@ -1,5 +1,5 @@
 {
-  "contentSha256": "92f6ef789cd60b591c437d4e8a62104140530cdff6faad83b4471f13ed689380",
+  "contentSha256": "ad91c2b8198911bce4f487217094c9bb71733da1a5bd9952aecbb80c2974b5a2",
   "evidenceBuild": true,
   "files": [
     {
@@ -2414,6 +2414,62 @@
       "transformation": "inject-apache-2.0-spdx-header"
     },
     {
+      "path": "frontend/tests/BrowserAcceptance.test.tsx",
+      "sha256": "7130dfacd520c727da0a90c2d936ce07515dcd073f7366a70fbc4bbde550ca77",
+      "size": 7064,
+      "sourceSha256": "3dbb7e458e2c9033602d0367b222647b6c1b674eefaeefe87b8cc8b060b5e853",
+      "transformation": "inject-apache-2.0-spdx-header"
+    },
+    {
+      "path": "frontend/tests/BrowserPlan.test.tsx",
+      "sha256": "41196fa95c97edbe90b5ccf296aa481845b18349611502f7ef0b0dfda63986e7",
+      "size": 12376,
+      "sourceSha256": "e2fd75622f919b3853f61d5a8307ebb6c0ebf0fb57442590a93e080c63749280",
+      "transformation": "inject-apache-2.0-spdx-header"
+    },
+    {
+      "path": "frontend/tests/CommunityRequirementIntakeWorkbench.test.tsx",
+      "sha256": "dbee907b4b6c63b5b27942f463b23570c2400b08d8c2c950c43f91a343a76269",
+      "size": 15163,
+      "sourceSha256": "aa7910632e7ca0d2c6fc37778c7cd35e13aeef5e504c1c30dcb531997a24999f",
+      "transformation": "inject-apache-2.0-spdx-header"
+    },
+    {
+      "path": "frontend/tests/CoverageEvidencePresentation.test.tsx",
+      "sha256": "a27e14f1177a7d8a14a5d751b2529ad8d1b199ffbe162dbe7c8542c09de87c76",
+      "size": 2283,
+      "sourceSha256": "aea8c07291f74cae375d074f26cd7ecfdd3dd00a0bbe680af6ea1f1e253da808",
+      "transformation": "inject-apache-2.0-spdx-header"
+    },
+    {
+      "path": "frontend/tests/EvidenceReferenceList.test.tsx",
+      "sha256": "28be206c2dd3b9d25f5d9732bb50cce4f7a3226bce16094fae8a45f4aec5debc",
+      "size": 2205,
+      "sourceSha256": "256fc4094c43ffd7520181d894f370d5f460ce0210623be8cca023293e1cd45e",
+      "transformation": "inject-apache-2.0-spdx-header"
+    },
+    {
+      "path": "frontend/tests/JobsPageFailureReason.test.tsx",
+      "sha256": "68f81fe6c7d76d04e350833c0bfb8465ef666412f5c18418491457cb5092ca67",
+      "size": 1238,
+      "sourceSha256": "574b9ca93e6c878b9f1c184cb7d3497f861db589eb5f733deb6ec8f3a23cdc04",
+      "transformation": "inject-apache-2.0-spdx-header"
+    },
+    {
+      "path": "frontend/tests/SkillTimeoutMessage.test.ts",
+      "sha256": "3250f1dadd2b57d51a52f3cd0b8081b4a0c09a1819e9ad3a308863528c8720a7",
+      "size": 543,
+      "sourceSha256": "4d172e0cd3c872dad8e5c696bac600fe6b8572d93474ea4d63c6a6dd51c7e4bb",
+      "transformation": "inject-apache-2.0-spdx-header"
+    },
+    {
+      "path": "frontend/tests/setup.ts",
+      "sha256": "70c8d1c6a628aacab7e501a9164352b230e6251866619af5ee3fcad797fa8adf",
+      "size": 420,
+      "sourceSha256": "a00d5ce80818ff571852ee5d9b4748fe77fc6e5bcbceea604d513b48a4dfdbca",
+      "transformation": "inject-apache-2.0-spdx-header"
+    },
+    {
       "path": "frontend/tsconfig.json",
       "sha256": "555938ef65301f755a0c658ae415ba1d34f6150981d35af2ea88808296b62796",
       "size": 754
@@ -3479,7 +3535,7 @@
     },
     {
       "path": "SBOM.spdx.json",
-      "sha256": "b3677c9d950b48de4a3fef905fb37635cda68489b9f0a465c0479fbc7333233d",
+      "sha256": "9bd02736e7b6e6537e6e0b410d164d267650a0ade2b1fcd29787ed5597081591",
       "size": 502052
     }
   ],
@@ -3488,6 +3544,6 @@
   "publicationRequiresExternalEvidence": true,
   "publishable": false,
   "schemaVersion": "truthward.oss-source-provenance.v1",
-  "sourceCommit": "5592eb08af44741a991bef34610375d328244e64",
+  "sourceCommit": "d51997ed261303d7f263f82000d02dd4fc086430",
   "thirdPartyInventorySha256": "a356ee8f8d6379345145930b929533702aa898ef003fdf67688d316d5dfe2083"
 }
